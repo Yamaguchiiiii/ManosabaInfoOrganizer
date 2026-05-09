@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Study\\\\ManoSabaInfoOrganizer\\\\src\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"D:\\\\Study\\\\ManoSabaInfoOrganizer\"\\), \".\" } | Sort-Object)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Study\\\\ManoSabaInfoOrganizer\" | Where-Object { $_.PSIsContainer -eq $false } | Select-Object Name | Sort-Object)",
+      "PowerShell(ls \"D:\\\\Study\\\\ManoSabaInfoOrganizer\\\\src-tauri\" -Force | Where-Object { $_.Name -eq \"tauri.conf.json\" -or $_.Extension -eq \".json\" })",
+      "Bash(Test-Path *)"
+    ]
+  }
+}
