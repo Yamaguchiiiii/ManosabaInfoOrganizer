@@ -1,0 +1,261 @@
+// src/App.scss
+
+// 変数定義
+$bg-dark: #1e1e1e;
+$bg-sidebar: #252526;
+$text-main: #cccccc;
+$accent-color: #007acc;
+$border-color: #3e3e42;
+$hover-color: #3e3e42;
+$active-bg: #37373d;
+
+// 定数
+$max-sidebar-width: 250px;
+
+* {
+  // Firefox用
+  scrollbar-width: none; 
+  // IE, Edge Legacy用
+  -ms-overflow-style: none; 
+
+  // Chrome, Safari, Edge, Tauri (WebView2)用
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: $bg-dark;
+  color: $text-main;
+  font-family: 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  // JSから渡される --sidebar-width がない場合のフォールバック
+  --sidebar-width: #{$max-sidebar-width};
+
+  // サイドバーの現在の幅が最大幅に対して何割かを計算 (例: 0.8)
+  // calc()内で除算を行うため、単位を外すテクニックを使用
+  --scale-factor: calc(var(--sidebar-width) / 250);
+
+  // 左サイドバー
+  .sidebar {
+    // widthはJS側でインラインスタイルとして設定されるためここでは指定しない
+    background-color: $bg-sidebar;
+    border-right: 1px solid $border-color;
+    display: flex;
+    flex-direction: row; // コンテンツとリサイザーを横並びにする
+    position: relative;
+    flex-shrink: 0;
+
+    // テキスト選択と画像ドラッグを無効化
+    user-select: none;
+    -webkit-user-select: none;  //safari chrome
+
+    .sidebar-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      overflow-y: auto; // 内容が多い場合はスクロール
+      overflow-x: hidden;
+
+      // 動的なフォントサイズ計算
+      // clamp(最小値, 推奨値(スケール連動), 最大値)
+      --dynamic-font-size-base: clamp(12px, calc(14px * var(--scale-factor)), 14px);
+      --dynamic-font-size-small: clamp(10px, calc(12px * var(--scale-factor)), 12px);
+
+      .section-title {
+        font-size: var(--dynamic-font-size-small);
+        font-weight: bold;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        color: #888;
+        white-space: nowrap; // 文字が折り返されないようにする
+      }
+
+      .menu-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        border-radius: 4px;
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+        transition: background-color 0.2s;
+        font-size: var(--dynamic-font-size-base);
+        white-space: nowrap;
+
+        &:hover {
+          background-color: $hover-color;
+        }
+
+        &.active {
+          background-color: $active-bg;
+          color: white;
+          border-left: 3px solid $accent-color;
+        }
+      }
+
+      // ▼▼▼ 追加: サブメニュー（ツリー表示）のスタイル ▼▼▼
+      .sub-menu-container {
+        display: flex;
+        flex-direction: column;
+        margin-left: 20px; // インデント
+        border-left: 1px solid #555; // 縦線
+        margin-bottom: 10px;
+
+        .sub-menu-item {
+            position: relative;
+            padding: 6px 10px 6px 15px; // 左パディングを増やして線と文字の間隔を空ける
+            font-size: var(--dynamic-font-size-base);
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+
+            // 横線
+            &::before {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 0;
+                width: 10px; // 線の長さ
+                height: 1px;
+                background-color: #555;
+            }
+
+            &:hover {
+                color: #fff;
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+
+            &.active {
+                color: $accent-color;
+                font-weight: bold;
+                background-color: rgba(0, 122, 204, 0.1);
+            }
+        }
+      }
+
+      // アイコングリッド
+      .icon-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr); // 3列
+        
+        gap: clamp(1px, calc(8px * var(--scale-factor)), 8px);
+        padding: clamp(1px, calc(4px * var(--scale-factor)), 4px);
+        // gap: 8px;
+        // padding: 4px;
+
+        .icon-item {
+          aspect-ratio: 1 / 1; // 正方形を維持
+          background-color: $hover-color;
+          border-radius: 4px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+          transition: transform 0.2s;
+
+          &:hover {
+            background-color: $active-bg;
+            transform: scale(1.05);
+          }
+
+          // 選択状態のスタイル
+          &.selected {
+            background-color: $active-bg;
+            border: 2px solid $accent-color; // 青い枠線をつける
+            box-shadow: 0 0 8px rgba(0, 122, 204, 0.5);
+          }
+
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            // 画像自体のサイズもサイドバー幅に合わせて微調整（任意）
+            // transform: scale(var(--scale-factor)); 
+          }
+        }
+      }
+    }
+
+    // ドラッグハンドル（リサイザー）
+    .resizer {
+      width: 5px;
+      height: 100%;
+      background-color: transparent; // 通常は透明
+      cursor: col-resize; // カーソルをリサイズ用に
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 10;
+      transition: background-color 0.2s;
+
+      &:hover {
+        background-color: $accent-color; // ホバー時に色を出す
+      }
+    }
+  }
+
+  // メインコンテンツエリア（変更なし）
+  .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: $bg-dark;
+    overflow: hidden;
+
+    .top-bar {
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid $border-color;
+      background-color: $bg-sidebar;
+      flex-shrink: 0;
+
+      // テキスト選択と画像ドラッグを無効化
+      user-select: none;
+      -webkit-user-select: none;  //safari chrome
+
+      .current-icon-display {
+        display: flex;
+        align-items: center;
+        background-color: #2d2d2d;
+        padding: 4px 10px;
+        border-radius: 20px;
+        border: 1px solid $border-color;
+        margin-left: 15px;
+
+        img {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%; // 丸く切り抜く
+          object-fit: cover;
+          border: 1px solid #555;
+        }
+      }
+    }
+
+    .workspace {
+      flex: 1;
+      position: relative;
+      background-color: #111;
+      overflow: hidden;
+      
+      .konvajs-content {
+        background-color: #111; 
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+// src/styles/AnimateView.scss
+
+.animate-view-container {
+  display: grid;
+  // 2列 x 2行 のグリッド
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100%;
+  height: 100%;
+  background-color: #111;
+  gap: 4px; // グリッド間の隙間
+  padding: 4px;
+  box-sizing: border-box;
+
+  .grid-cell {
+    position: relative;
+    
+    // ▼ 修正: NoteViewと同じ背景スタイルを適用 ▼
+    background-color: #ECD2B3; 
+    background-image: url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E");
+    background-size: 24px 24px;
+    
+    overflow: hidden;
+    border: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+
+    // マップラベル (Map 1, Map 2...)
+    .cell-label {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background-color: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 10;
+      pointer-events: none;
+      user-select: none;
+    }
+  }
+
+  // 右下のセル（操作盤 + メモ）
+  .control-cell-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: #252526;
+    
+    .timeline-section {
+      flex: 0 0 auto; 
+      border-bottom: 2px solid #333;
+      overflow: hidden;
+    }
+
+    .notes-section {
+      flex: 1; 
+      overflow: hidden;
+      padding: 0;
+    }
+  }
+}
