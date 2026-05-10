@@ -5,7 +5,8 @@
       "PowerShell(Get-ChildItem *)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\Study\\\\ManoSabaInfoOrganizer\" | Where-Object { $_.PSIsContainer -eq $false } | Select-Object Name | Sort-Object)",
       "PowerShell(ls \"D:\\\\Study\\\\ManoSabaInfoOrganizer\\\\src-tauri\" -Force | Where-Object { $_.Name -eq \"tauri.conf.json\" -or $_.Extension -eq \".json\" })",
-      "Bash(Test-Path *)"
+      "Bash(Test-Path *)",
+      "Bash(npm run *)"
     ]
   }
 }

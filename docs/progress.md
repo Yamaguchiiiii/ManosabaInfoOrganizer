@@ -38,7 +38,7 @@ claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
 
 ---
 
-## 確認済みバグ（未修正）
+## 確認済みバグ（修正済み）
 
 ### バグ1: Animate モードでキャラクターアイコンの動きがカクカクする
 
@@ -48,7 +48,7 @@ claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
 2. `AnimateView.tsx:59-108` — `useMemo(activeCharData)` が `currentTime` を依存に持つため、毎フレーム `calculateRawPosition()` (O(n)) + `getCollisionOffsets()` (O(n²)) が再実行される
 3. `AnimateView.tsx:110-112` — `targetPositionsRef` の更新が `useEffect`（コミット後の非同期実行）なため、LERP ループが 1 フレーム古い値を読む
 
-**修正方針:** `docs/resolve_error.md` の Step 1〜6 を参照
+**修正状況:** **完了（2026-05-10）** — `useAnimationPositions.ts` 新規作成、`AnimateView.tsx` 全面改修済み
 
 ---
 
@@ -63,11 +63,11 @@ claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
 5. N 個の Konva ノード（`KonvaImage`）が生成されてメモリを圧迫 → OOM
 6. キャラクターを切り替えるたびに `notes.characters` が肥大化し、React レンダーが遅くなり N が増える自己増幅的な悪化
 
-**修正方針:** `docs/resolve_error.md` の Step 7〜9 を参照
+**修正状況:** **完了（2026-05-10）** — `NoteView.tsx` の `initDefaultImage` エフェクト修正、`store.ts` の `updateCanvasState` 早期リターン追加、`addNoteAsset` 事前重複チェック追加済み
 
 ---
 
-## 修正計画（未着手）
+## 修正計画（すべて完了）
 
 `docs/resolve_error.md` に詳細な実装ステップを記載済み。以下は概要。
 
@@ -106,10 +106,11 @@ claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
 
 ## 次のセッションで最初にやること
 
-1. `docs/architecture.md` のバグ分析セクション（末尾）を読んで根本原因を把握する
-2. `docs/resolve_error.md` を読んで修正手順を確認する
-3. **バグ2から着手する**（Step 7: `NoteView.tsx` の `initDefaultImage` エフェクト修正）
-4. 修正後は `npm run dev` → `npm run tauri dev` の順で両環境を検証する
-5. 問題なければバグ1（Step 1: `useAnimationPositions.ts` 新規作成）へ進む
+両バグの修正は完了。次回は以下を実施する。
+
+1. `npm run dev` でブラウザを開き、Animate モードを再生してスムーズに動くか確認
+2. キャラクターノートで全 13 キャラを順番に開いてクラッシュしないか確認
+3. 問題なければ `npm run tauri dev` でデスクトップ版も確認
+4. その後、新機能追加や残存する TypeScript エラー（MapView.tsx / TopBar.tsx）の対応などを検討する
 
 

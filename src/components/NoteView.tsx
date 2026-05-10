@@ -1253,33 +1253,38 @@ export const NoteView: React.FC = React.memo(() => {
     }, [activeNoteTab, notes.miscPages, actualMiscPageId]);
 
     const selectedChar = ICON_FILES[actualCharIndex];
+    const initializedCharsRef = useRef<Set<string>>(new Set());
 
     const addNoteAsset = useAppStore(state => state.addNoteAsset);
     const addNoteObject = useAppStore(state => state.addNoteObject);
     
     useEffect(() => {
-        const initDefaultImage = async () => {
-            if (activeNoteTab === 'character') {
-                const charData = notes.characters?.[selectedChar];
-                if (!charData || charData.objects.length === 0) {
-                    const defaultImgSrc = `./icon/${selectedChar}`;
-                    addNoteAsset('character', selectedChar, defaultImgSrc);
-                    getImageSizeFromUrl(defaultImgSrc, 500).then(size => {
-                        addNoteObject('character', selectedChar, {
-                            id: `default_char_${Date.now()}`,
-                            type: 'image',
-                            x: 50, y: 100,
-                            width: size.width, height: size.height,
-                            content: defaultImgSrc,
-                            rotation: 0, scaleX: 1, scaleY: 1,
-                            canvasIndex: 0 
-                        });
-                    });
-                }
-            }
-        };
-        initDefaultImage();
-    }, [selectedChar, activeNoteTab, notes.characters, addNoteAsset, addNoteObject]);
+        if (activeNoteTab !== 'character') return;
+        if (initializedCharsRef.current.has(selectedChar)) return;
+
+        const charData = useAppStore.getState().notes.characters?.[selectedChar];
+        if (charData && charData.objects.length > 0) {
+            initializedCharsRef.current.add(selectedChar);
+            return;
+        }
+
+        // 非同期処理開始前にマーク（ループ防止の核心）
+        initializedCharsRef.current.add(selectedChar);
+
+        const defaultImgSrc = `./icon/${selectedChar}`;
+        addNoteAsset('character', selectedChar, defaultImgSrc);
+        getImageSizeFromUrl(defaultImgSrc, 500).then(size => {
+            addNoteObject('character', selectedChar, {
+                id: `default_char_${Date.now()}`,
+                type: 'image',
+                x: 50, y: 100,
+                width: size.width, height: size.height,
+                content: defaultImgSrc,
+                rotation: 0, scaleX: 1, scaleY: 1,
+                canvasIndex: 0
+            });
+        });
+    }, [selectedChar, activeNoteTab, addNoteAsset, addNoteObject]);
 
     return (
         <div className="note-view-container">

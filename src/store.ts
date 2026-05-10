@@ -188,31 +188,48 @@ const idbStorage: StateStorage = {
 };
 
 const updateCanvasState = (
-    state: AppState, 
-    targetType: NoteTargetType, 
-    targetId: string, 
+    state: AppState,
+    targetType: NoteTargetType,
+    targetId: string,
     updater: (canvas: CanvasState) => CanvasState
 ): Partial<AppState> => {
+    const emptyCanvas: CanvasState = { objects: [], assets: [] };
+
+    let currentCanvas: CanvasState | undefined;
+    if (targetType === 'overview') {
+        currentCanvas = state.notes.overviewCanvas;
+    } else if (targetType === 'preset') {
+        currentCanvas = (state.notes.presets || {})[targetId];
+    } else if (targetType === 'character') {
+        currentCanvas = (state.notes.characters || {})[targetId];
+    } else if (targetType === 'misc') {
+        currentCanvas = state.notes.miscPages?.find(p => p.id === targetId)?.canvas;
+    }
+
+    const resolvedCanvas = currentCanvas || emptyCanvas;
+    const newCanvas = updater(resolvedCanvas);
+
+    // 内容変化なし → state 参照を更新しない（無限ループ防止）
+    if (newCanvas === resolvedCanvas) return {};
+
     const newNotes: NoteData = {
         overview: state.notes.overview || '',
-        overviewCanvas: state.notes.overviewCanvas || { objects: [], assets: [] },
+        overviewCanvas: state.notes.overviewCanvas || emptyCanvas,
         presets: state.notes.presets || {},
         characters: state.notes.characters || {},
         misc: state.notes.misc || {},
         miscPages: state.notes.miscPages || []
     };
 
-    const emptyCanvas: CanvasState = { objects: [], assets: [] };
-    
     if (targetType === 'overview') {
-        newNotes.overviewCanvas = updater(newNotes.overviewCanvas || emptyCanvas);
+        newNotes.overviewCanvas = newCanvas;
     } else if (targetType === 'preset') {
-        newNotes.presets = { ...newNotes.presets, [targetId]: updater((newNotes.presets || {})[targetId] || emptyCanvas) };
+        newNotes.presets = { ...newNotes.presets, [targetId]: newCanvas };
     } else if (targetType === 'character') {
-        newNotes.characters = { ...newNotes.characters, [targetId]: updater((newNotes.characters || {})[targetId] || emptyCanvas) };
+        newNotes.characters = { ...newNotes.characters, [targetId]: newCanvas };
     } else if (targetType === 'misc') {
-        newNotes.miscPages = newNotes.miscPages.map(p => 
-            p.id === targetId ? { ...p, canvas: updater(p.canvas || emptyCanvas) } : p
+        newNotes.miscPages = newNotes.miscPages.map(p =>
+            p.id === targetId ? { ...p, canvas: newCanvas } : p
         );
     }
     return { notes: newNotes };
@@ -369,11 +386,26 @@ export const useAppStore = create<AppState>()(
         },
         addNoteAsset: (targetType, targetId, asset) => {
             if (!get()._hasHydrated) return;
+
+            // 事前重複チェック（重複なら履歴保存も state 更新もスキップ）
+            const state = get();
+            let currentCanvas: CanvasState | undefined;
+            if (targetType === 'overview') {
+                currentCanvas = state.notes.overviewCanvas;
+            } else if (targetType === 'preset') {
+                currentCanvas = state.notes.presets?.[targetId];
+            } else if (targetType === 'character') {
+                currentCanvas = state.notes.characters?.[targetId];
+            } else if (targetType === 'misc') {
+                currentCanvas = state.notes.miscPages?.find(p => p.id === targetId)?.canvas;
+            }
+            if (currentCanvas?.assets.includes(asset)) return;
+
             get().saveNoteHistory();
-            set((state) => updateCanvasState(state, targetType, targetId, (canvas) => {
-                if (canvas.assets.includes(asset)) return canvas;
-                return { ...canvas, assets: [...canvas.assets, asset] };
-            }));
+            set((s) => updateCanvasState(s, targetType, targetId, (canvas) => ({
+                ...canvas,
+                assets: [...canvas.assets, asset]
+            })));
         },
         removeNoteAsset: (targetType, targetId, index) => {
             if (!get()._hasHydrated) return;
