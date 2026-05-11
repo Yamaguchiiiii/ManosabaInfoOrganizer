@@ -246,8 +246,8 @@ export const useAppStore = create<AppState>()(
         nodes: INITIAL_NODES, edges: INITIAL_EDGES, history: [],
         sidebarWidth: 200, setSidebarWidth: (width) => set({ sidebarWidth: width }),
 
-        presets: [{ id: 'day1', name: 'Day 1', data: {}, deadIcons: [] }],
-        activePresetId: 'day1',
+        presets: [{ id: 'chapter1', name: 'Chapter 1', data: {}, deadIcons: [] }],
+        activePresetId: 'chapter1',
 
         isPlaying: false, currentTime: 0, playbackSpeed: 1.0,
 

@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { useAppStore, ICON_FILES, MapNode, CharacterTimelineData } from '../store';
-import { calculateRawPosition, getCollisionOffsets, PositionWithVelocity } from '../utils/animationUtils';
+import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity } from '../utils/animationUtils';
 
 export const FLOOR_IDS = ['1F', '2F', 'B1'] as const;
 export type AnimFloorId = typeof FLOOR_IDS[number];
@@ -22,31 +22,54 @@ function toCharacterTimelineData(raw: unknown): CharacterTimelineData | null {
 
 type ActivePosition = PositionWithVelocity & { isFinished: boolean };
 
+type PathCacheEntry = { charData: CharacterTimelineData; cached: PrecomputedPath };
+
 // charNodeRefs のキーは "${icon}:${floorId}" の形式（例: "1_sakuraba_ema.png:1F"）
 export const useAnimationPositions = (
     nodesMapRef: React.MutableRefObject<Record<string, MapNode>>,
     charNodeRefs: React.MutableRefObject<Map<string, Konva.Group>>,
     currentVisualPositions: React.MutableRefObject<Record<string, { x: number; y: number }>>
 ): void => {
+    const pathCacheRef = useRef<Map<string, PathCacheEntry>>(new Map());
+    const activePresetId = useAppStore(state => state.activePresetId);
+
+    // プリセットが変わったときだけパスキャッシュを再構築（毎フレームではない）
+    useEffect(() => {
+        const { presets } = useAppStore.getState();
+        const activePreset = presets.find(p => p.id === activePresetId);
+        if (!activePreset) {
+            pathCacheRef.current.clear();
+            return;
+        }
+        const nodesMap = nodesMapRef.current;
+        const newCache = new Map<string, PathCacheEntry>();
+        const data = activePreset.data as Record<string, unknown>;
+        ICON_FILES.forEach(icon => {
+            const charData = toCharacterTimelineData(data[icon]);
+            if (charData) {
+                newCache.set(icon, { charData, cached: precomputePath(charData.path, nodesMap) });
+            }
+        });
+        pathCacheRef.current = newCache;
+    }, [activePresetId]);
+
     useEffect(() => {
         const lastVelocities: Record<string, { vx: number; vy: number }> = {};
         let animId: number;
 
         const animate = () => {
-            const { currentTime, presets, activePresetId } = useAppStore.getState();
-            const activePreset = presets.find(p => p.id === activePresetId);
+            const { currentTime, presets, activePresetId: currentPresetId } = useAppStore.getState();
+            const activePreset = presets.find(p => p.id === currentPresetId);
             const deadIcons: string[] = activePreset?.deadIcons ?? [];
-            const timelineData: Record<string, unknown> = activePreset?.data ?? {};
-            const nodesMap = nodesMapRef.current;
 
-            // 1. 全キャラの目標座標を計算
+            // 1. 全キャラの目標座標を計算（キャッシュ済みパスを使用、毎フレーム配列生成なし）
             const activePositions: ActivePosition[] = [];
             ICON_FILES.forEach(icon => {
                 if (deadIcons.includes(icon)) return;
-                const charData = toCharacterTimelineData(timelineData[icon]);
-                if (!charData) return;
+                const entry = pathCacheRef.current.get(icon);
+                if (!entry) return;
 
-                const pos = calculateRawPosition(charData, currentTime, nodesMap);
+                const pos = calculateRawPositionCached(entry.charData, currentTime, entry.cached);
                 if (!pos || !pos.visible) return;
 
                 let { vx, vy } = pos;

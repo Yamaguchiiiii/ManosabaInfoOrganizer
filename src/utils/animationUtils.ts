@@ -151,6 +151,86 @@ const getNode = (id: string, source: MapNode[] | Record<string, MapNode>): MapNo
     }
 };
 
+// ----------------------------------------------------------------------------
+// Pre-computation (call once per preset change, not every frame)
+// ----------------------------------------------------------------------------
+
+export interface PrecomputedPath {
+    pathNodes: MapNode[];
+    distances: number[];
+    totalDistance: number;
+}
+
+export const precomputePath = (
+    path: string[],
+    allNodes: MapNode[] | Record<string, MapNode>
+): PrecomputedPath => {
+    const pathNodes = path.map(id => getNode(id, allNodes)).filter((n): n is MapNode => !!n);
+    const distances: number[] = [];
+    let totalDistance = 0;
+    for (let i = 0; i < pathNodes.length - 1; i++) {
+        const nodeA = pathNodes[i];
+        const nodeB = pathNodes[i + 1];
+        let d = 0;
+        if (nodeA.id === nodeB.id) {
+            d = WAIT_VIRTUAL_DISTANCE;
+        } else {
+            const isStairJump = (nodeA.type === 'stair' && nodeB.type === 'stair');
+            const isFloorChange = (nodeA.floor !== nodeB.floor);
+            d = (isStairJump || isFloorChange) ? 0 : getDistance(nodeA, nodeB);
+        }
+        distances.push(d);
+        totalDistance += d;
+    }
+    return { pathNodes, distances, totalDistance };
+};
+
+export const calculateRawPositionCached = (
+    charData: CharacterTimelineData,
+    currentTime: number,
+    cached: PrecomputedPath
+): { x: number; y: number; floor: string; visible: boolean; vx: number; vy: number; isFinished: boolean } | null => {
+    const { path, startTime, duration } = charData;
+    const { pathNodes, distances, totalDistance } = cached;
+
+    if (!path || path.length === 0 || pathNodes.length === 0) return null;
+
+    if (currentTime < startTime) {
+        const startNode = pathNodes[0];
+        return { x: startNode.x, y: startNode.y, floor: startNode.floor, visible: true, vx: 0, vy: 0, isFinished: false };
+    }
+
+    if (pathNodes.length === 1) {
+        const node = pathNodes[0];
+        return { x: node.x, y: node.y, floor: node.floor, visible: true, vx: 0, vy: 0, isFinished: false };
+    }
+
+    const rawProgress = duration > 0 ? (currentTime - startTime) / duration : 1;
+    const progress = Math.min(Math.max(rawProgress, 0), 1);
+    const isFinished = rawProgress >= 1.0;
+    const targetDistance = totalDistance * progress;
+
+    let currentDistSum = 0;
+    for (let i = 0; i < distances.length; i++) {
+        const segmentDist = distances[i];
+        if (segmentDist === 0) continue;
+        if (currentDistSum + segmentDist >= targetDistance) {
+            const segmentProgress = (targetDistance - currentDistSum) / segmentDist;
+            const nodeA = pathNodes[i];
+            const nodeB = pathNodes[i + 1];
+            const x = nodeA.x + (nodeB.x - nodeA.x) * segmentProgress;
+            const y = nodeA.y + (nodeB.y - nodeA.y) * segmentProgress;
+            const vx = nodeB.x - nodeA.x;
+            const vy = nodeB.y - nodeA.y;
+            return { x, y, floor: nodeA.floor, visible: true, vx, vy, isFinished: isFinished && progress === 1 };
+        }
+        currentDistSum += segmentDist;
+    }
+
+    const lastNode = pathNodes[pathNodes.length - 1];
+    return { x: lastNode.x, y: lastNode.y, floor: lastNode.floor, visible: true, vx: 0, vy: 0, isFinished: true };
+};
+
 // 時刻 t における基本座標を計算
 // ▼▼▼ 修正: allNodes は 配列 または Record<string, MapNode> を受け取れるように変更 ▼▼▼
 export const calculateRawPosition = (

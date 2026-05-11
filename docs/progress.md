@@ -2,9 +2,8 @@
 
 最終更新: 2026-05-10
 
-# セッション情報
-Resume this session with:
-claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
+セッション情報：
+claude --resume eb765f05-3903-4b31-97f2-b04aa5ec752e
 
 ---
 
@@ -29,67 +28,12 @@ claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
 | 機能 | 主要ファイル | 状態 |
 |---|---|---|
 | **Create モード** — マップグラフ編集 | `CreateView`, `MapObjectLayer`, `WaypointPanel`, `NodeEditModal` | 実装済み・動作確認済み |
-| **Animate モード** — タイムライン付きアニメーション再生 | `AnimateView`, `AnimationTimeline`, `ReadOnlyMapView`, `CharacterSelectModal` | 実装済み・**バグあり**（後述） |
-| **Note モード** — キャンバスノート (overview / preset / character / misc) | `NoteView`, `NotesPanel`, `CanvasWorkspace` | 実装済み・**バグあり**（後述） |
+| **Animate モード** — タイムライン付きアニメーション再生 | `AnimateView`, `AnimationTimeline`, `ReadOnlyMapView`, `CharacterSelectModal` | 実装済み |
+| **Note モード** — キャンバスノート (overview / preset / character / misc) | `NoteView`, `NotesPanel`, `CanvasWorkspace` | 実装済み |
 | **共通 UI** | `Sidebar`, `TopBar`, `SuggestionSidebar`, `PresetSelector` | 実装済み |
-| **カスタム Hook** | `useAnimationLoop`, `useSidebarResizer`, `useStageZoom`, `useWaypointPath` | 実装済み |
+| **カスタム Hook** | `useAnimationLoop`, `useAnimationPositions`, `useSidebarResizer`, `useStageZoom`, `useWaypointPath` | 実装済み |
 | **ユーティリティ** | `dijkstra.ts`, `animationUtils.ts`, `mapDrawUtils.ts` | 実装済み |
 | **アダプター層** | `src/services/`, `src/adapters/` | **未作成**（現時点では必要な機能なし） |
-
----
-
-## 確認済みバグ（修正済み）
-
-### バグ1: Animate モードでキャラクターアイコンの動きがカクカクする
-
-**根本原因:**
-
-1. `AnimateView.tsx:32` — `useAppStore()` をセレクタなしで使用しており、`currentTime` が毎フレーム更新されるたびにコンポーネント全体が再レンダリングされる
-2. `AnimateView.tsx:59-108` — `useMemo(activeCharData)` が `currentTime` を依存に持つため、毎フレーム `calculateRawPosition()` (O(n)) + `getCollisionOffsets()` (O(n²)) が再実行される
-3. `AnimateView.tsx:110-112` — `targetPositionsRef` の更新が `useEffect`（コミット後の非同期実行）なため、LERP ループが 1 フレーム古い値を読む
-
-**修正状況:** **完了（2026-05-10）** — `useAnimationPositions.ts` 新規作成、`AnimateView.tsx` 全面改修済み
-
----
-
-### バグ2: キャラクターノートで 2 枚目以降のキャラクターを開くと Out of Memory エラー
-
-**根本原因:**
-
-1. `NoteView.tsx:1260-1282` の `initDefaultImage` エフェクトが `notes.characters` を依存に持つ
-2. `store.ts:190-219` の `updateCanvasState` が、内容変化なしでも必ず新しい `notes.characters` オブジェクト参照を生成する（`{ ...newNotes.characters, [targetId]: canvas }` のスプレッド）
-3. 新参照 → エフェクト再実行 → `addNoteAsset` → 新参照 → … の無限ループが形成される
-4. ループ中に `getImageSizeFromUrl` が N 回呼ばれ、画像ロード完了時に N 個の `addNoteObject` が一斉発火 → キャンバスに N 個の重複 `NoteObject` が蓄積
-5. N 個の Konva ノード（`KonvaImage`）が生成されてメモリを圧迫 → OOM
-6. キャラクターを切り替えるたびに `notes.characters` が肥大化し、React レンダーが遅くなり N が増える自己増幅的な悪化
-
-**修正状況:** **完了（2026-05-10）** — `NoteView.tsx` の `initDefaultImage` エフェクト修正、`store.ts` の `updateCanvasState` 早期リターン追加、`addNoteAsset` 事前重複チェック追加済み
-
----
-
-## 修正計画（すべて完了）
-
-`docs/resolve_error.md` に詳細な実装ステップを記載済み。以下は概要。
-
-### バグ1 修正（4ファイル）
-
-| Step | ファイル | 作業内容 |
-|---|---|---|
-| 1 | `src/hooks/useAnimationPositions.ts` | **新規作成** — 位置計算 + LERP + Konva 直接操作の統合 Hook |
-| 2 | `src/components/AnimateView.tsx:32` | `useAppStore()` → 個別セレクタに変更。`currentTime` を除外 |
-| 3 | `src/components/AnimateView.tsx:40-44` | `useMemo(nodesMap)` → `useRef` + `useEffect` に変更 |
-| 4 | `src/components/AnimateView.tsx` | `useMemo(activeCharData)` + 2つの `useEffect` を削除し Hook 呼び出しに置き換え |
-| 5 | `src/components/AnimateView.tsx` | `renderFloorChars` → 全キャラ全フロア事前レンダリング方式に変更 |
-
-### バグ2 修正（2ファイル）
-
-| Step | ファイル | 作業内容 |
-|---|---|---|
-| 7 | `src/components/NoteView.tsx:1260-1282` | `initializedCharsRef = useRef<Set<string>>(new Set())` を追加し、依存配列から `notes.characters` を除去 |
-| 8 | `src/store.ts:190-219` | `updateCanvasState` に早期リターン追加（内容変化なし時に参照を生成しない） |
-| 9 | `src/store.ts` `addNoteAsset` | 呼び出し冒頭に重複チェックを追加し、重複なら履歴保存も state 更新もスキップ |
-
-**推奨実装順序:** バグ2（Step 7→8→9）を先に修正してからバグ1（Step 1→2→3→4→5）を対応する。バグ2のほうがクラッシュするため優先度が高く、修正範囲も局所的で確認しやすい。
 
 ---
 
@@ -99,18 +43,105 @@ claude --resume b53b7d98-16ec-4fb4-b73b-085fb5471f16
 |---|---|
 | `CLAUDE.md` | プロジェクト規約（クロスプラットフォーム設計・コーディング規約・レスポンシブ規約） |
 | `docs/architecture.md` | 実装状況の把握内容 + 確認済みバグの根本原因分析（詳細） |
-| `docs/resolve_error.md` | バグ修正の実装ステップ（コードレベルの具体的な手順） |
+| `docs/resolve_error.md` | バグ1（カクつき）・バグ2（OOM）の修正ステップ（完了済み） |
+| `docs/resolve_error2.md` | 3問題の根本原因分析と修正ステップ（完了済み） |
+| `docs/resolve_error3.md` | 4問題の根本原因分析と修正ステップ（**すべて完了**） |
 | `docs/progress.md` | 本ファイル（引き継ぎ資料） |
+
+---
+
+## 修正済みバグ一覧（時系列）
+
+### 【セッション1】resolve_error.md 分（2026-05-10 完了）
+
+#### バグ1: Animate モードでキャラクターアイコンの動きがカクカクする
+- `useAppStore()` をセレクタなしで使用 → `currentTime` 毎フレーム全体再レンダリング
+- **修正:** `useAnimationPositions.ts` 新規作成（Konva 直接操作 + 単一 RAF ループ）、`AnimateView.tsx` 全面改修
+
+#### バグ2: キャラクターノートで 2 枚目以降を開くと Out of Memory エラー
+- `initDefaultImage` エフェクトの無限ループ → Konva ノード蓄積 → OOM
+- **修正:** `NoteView.tsx` の `initializedCharsRef` 追加、`store.ts` の `updateCanvasState` 早期リターン・`addNoteAsset` 重複チェック追加
+
+---
+
+### 【セッション2】resolve_error2.md 分（2026-05-10 完了）
+
+#### 問題1: Create ページで経由地を設定しても経由した経路にならない
+- `handleWaypointChange` が `name` のみ更新し `id` を更新しない → Dijkstra が経由地をスキップ
+- **修正:** `useWaypointPath.ts` に name→id 補完ステップ追加、`CreateView.tsx` の `handleWaypointChange` で即時 id 解決
+
+#### 問題2: 経由地に Sync ボタンが消える
+- 問題1の連鎖（`wp.id === ""` のため `{wp.id && ...}` が非表示）
+- **修正:** 問題1の修正で連鎖的に解消（独立変更なし）
+
+#### 問題3: Animate ページのアニメーションがカクカクする（ReadOnlyMapView 全購読）
+- `ReadOnlyMapView.tsx` が `useAppStore()` 全購読 → `currentTime` 変化で 60fps × 3インスタンス 再レンダリング
+- **修正:** `ReadOnlyMapView.tsx` を個別セレクタ（`state => state.nodes` / `state.edges`）に変更
+
+---
+
+### 【セッション3】resolve_error3.md 分（2026-05-10 完了）
+
+#### 問題1: Animate ページのアニメーションがまだカクカクする（計算ボトルネック）
+
+**根本原因3点:**
+1. `calculateRawPosition` が毎フレーム `pathNodes`・`distances` 配列を生成（234,000要素/秒）
+2. `useAnimationLoop` が毎フレーム `maxDuration` を再計算（`any` 型使用）
+3. 2本の RAF ループ（`useAnimationLoop` + `useAnimationPositions`）のタイミングずれで LERP ジッター
+
+**修正ファイル:**
+- `src/utils/animationUtils.ts` — `PrecomputedPath` 型・`precomputePath()`・`calculateRawPositionCached()` を追加（`getNode` の後に配置）
+- `src/hooks/useAnimationPositions.ts` — `pathCacheRef` を追加。`useEffect([activePresetId])` でプリセット変更時のみキャッシュ再構築。RAF 内で `calculateRawPositionCached` を使用
+- `src/hooks/useAnimationLoop.ts` — `maxDurationRef` + `useEffect([activePresetId])` でプリセット変更時のみ再計算。`any` 型を除去して `CharacterTimelineData` 型ガードに変更
+
+#### 問題2: Animate ページでアニメーションを動かし続けると OutOfMemory が出る
+- 問題1と同根（毎フレーム配列生成 → GC 枯渇 → OOM）
+- **修正:** 問題1の修正で連鎖的に解消（独立変更なし）
+
+#### 問題3: 4 ペインウィンドウにすると上 2 つのペインがだんだん下に伸びていく
+- `NotesPanel.tsx` の `overflow: 'visible'` が `CanvasWorkspace` 内 `ResizeObserver` と正のフィードバックループを形成
+- **修正:** `src/components/NotesPanel.tsx` — `overflow: 'visible'` → `overflow: 'hidden'`（1行変更）
+
+#### 問題4: Timeline notes (canvas) の背景が真っ黒
+- `NoteView.scss` の `.konvajs-content { transparent }` ルールが `.character-canvas-layout` にネストされており、compactMode（AnimateView 文脈）では適用されない
+- **修正:** `src/styles/NoteView.scss` — ファイル末尾に独立セレクター `.char-canvas-wrapper .konvajs-content { background-color: transparent !important; }` を追加
+
+---
+
+## 既知の残存 TypeScript エラー（未修正・機能影響なし）
+
+以下のエラーはセッション開始時点から存在しており、今回の修正対象外。
+
+| ファイル | エラー内容 |
+|---|---|
+| `src/components/MapView.tsx` | `updateCharacterMemo`・`addCharacterImage`・`removeCharacterImage`・`customImages`・`memo` が store 型に存在しない |
+| `src/components/TopBar.tsx` | `setActivePreset`・`addPreset` が store 型に存在しない、未使用変数複数 |
+| `src/components/common/MapElements.tsx` | `React` が未使用 |
+| `src/components/CreateView.tsx` | `findShortestPath`・`nodeId` が未使用 |
+| `src/components/modals/MergeModal.tsx` | `useCallback` が未使用 |
+| `src/utils/dijkstra.ts` | `FloorId` が未使用 |
 
 ---
 
 ## 次のセッションで最初にやること
 
-両バグの修正は完了。次回は以下を実施する。
+現在、修正待ちの既知問題はありません。  
+`npm run dev` と `npm run tauri dev` で以下を確認してください。
 
-1. `npm run dev` でブラウザを開き、Animate モードを再生してスムーズに動くか確認
-2. キャラクターノートで全 13 キャラを順番に開いてクラッシュしないか確認
-3. 問題なければ `npm run tauri dev` でデスクトップ版も確認
-4. その後、新機能追加や残存する TypeScript エラー（MapView.tsx / TopBar.tsx）の対応などを検討する
+### 動作確認チェックリスト
 
+**Animate モード:**
+- [ ] 再生ボタンを押し 30 秒以上連続再生してもアイコンがスムーズに動く
+- [ ] 10 分以上再生しても OOM が発生しない
+- [ ] 4 ペイン表示（Timeline Notes のグリッドモード）のペインサイズが安定している
+- [ ] Timeline Notes キャンバスの背景が beige（方眼紙）色で表示される
+- [ ] プリセット切り替え時にアイコン位置が正しくリセットされる
 
+**Create モード:**
+- [ ] 経由地をノード名で直接タイプしたとき、マップ上の経路が経由地を通る
+- [ ] 経由地に Sync ボタン（⏱）が表示される
+
+**Note モード:**
+- [ ] キャラクターノートを複数キャラ連続で開いても OOM が発生しない
+
+新たなバグや問題が見つかった場合は `docs/resolve_error4.md` を作成して根本原因を分析してから実装してください。

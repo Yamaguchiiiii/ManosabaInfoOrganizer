@@ -52,8 +52,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <div className="top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '40px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-        <span style={{ fontWeight: 'bold', fontSize: '1.1rem', marginRight: '10px' }}>Mystery Map Tracker</span>
-        
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             {createdChars.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#1e3a2f', padding: '2px 8px', borderRadius: '15px', border: '1px solid #10b981' }}>

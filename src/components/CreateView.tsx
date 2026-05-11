@@ -253,7 +253,16 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   const handleWaypointChange = (index: number, field: keyof Waypoint, value: string | number) => {
       if (!isEditing) setIsEditing(true);
-      setWaypoints(prev => { const next = [...prev]; next[index] = { ...next[index], [field]: value }; return next; });
+      setWaypoints(prev => {
+          const next = [...prev];
+          const updated: Waypoint = { ...next[index], [field]: value };
+          if (field === 'name') {
+              const match = nodes.find(n => n.name === (value as string));
+              updated.id = match ? match.id : '';
+          }
+          next[index] = updated;
+          return next;
+      });
   };
 
   const handleAddWaypoint = () => {

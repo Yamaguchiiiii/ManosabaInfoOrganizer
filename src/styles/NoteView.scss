@@ -247,8 +247,8 @@
         .misc-list {
             width: 200px; background-color: #252526; border: 1px solid #333; border-radius: 4px; display: flex; flex-direction: column;
             .misc-list-header { padding: 10px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
-            .misc-items { 
-                flex: 1; overflow-y: auto; padding: 5px; 
+            .misc-items {
+                flex: 1; overflow-y: auto; padding: 5px;
                 .misc-item {
                     padding: 8px 10px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between;
                     &:hover { background-color: #333; }
@@ -264,4 +264,10 @@
         }
     }
   }
+}
+
+// compactMode（AnimateView 内の NotesPanel）では .character-canvas-layout が存在しないため、
+// ネストなしの独立セレクターで Konva canvas の背景を透明にする
+.char-canvas-wrapper .konvajs-content {
+    background-color: transparent !important;
 }

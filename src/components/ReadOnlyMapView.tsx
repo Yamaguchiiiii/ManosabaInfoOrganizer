@@ -26,7 +26,8 @@ const MapImage = ({ src, onLoad }: { src: string, onLoad?: (width: number, heigh
 export const ReadOnlyMapView: React.FC<ReadOnlyMapViewProps> = ({ 
     floorId, fitContainer = false, children 
 }) => {
-    const { nodes, edges } = useAppStore();
+    const nodes = useAppStore(state => state.nodes);
+    const edges = useAppStore(state => state.edges);
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
     const [imageSize, setImageSize] = useState({ width: 0, height: 0 });

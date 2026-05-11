@@ -30,8 +30,7 @@ export const NotesPanel = React.memo(() => {
         <span style={{ color: '#007acc' }}>{activePreset?.name || 'Unknown'}</span>
       </div>
       
-      {/* overflow を visible にしてはみ出しを許可 */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'visible', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activePresetId ? (
             <CanvasWorkspace 
                 targetType="preset" 

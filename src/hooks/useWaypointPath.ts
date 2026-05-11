@@ -10,7 +10,12 @@ export const useWaypointPath = (
 ) => {
     // useMemoを使って計算結果をメモ化して返す (State更新はしない)
     const { highlightedPath, pathSegments } = useMemo(() => {
-        const validPoints = waypoints.filter(wp => wp.id !== "");
+        const resolvedPoints = waypoints.map(wp => {
+            if (wp.id !== "") return wp;
+            const match = nodes.find(n => n.name === wp.name);
+            return match ? { ...wp, id: match.id } : wp;
+        });
+        const validPoints = resolvedPoints.filter(wp => wp.id !== "");
         
         if (validPoints.length < 2) {
             return { highlightedPath: [], pathSegments: [] };
