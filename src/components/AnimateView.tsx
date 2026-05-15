@@ -8,7 +8,6 @@ import { NotesPanel } from './NotesPanel';
 import '../styles/AnimateView.scss';
 import { useAppStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
 import { MIN_SIDEBAR_WIDTH } from '../hooks/useSidebarResizer';
-import { useAnimationLoop } from '../hooks/useAnimationLoop';
 import { useAnimationPositions, AnimFloorId } from '../hooks/useAnimationPositions';
 
 const ICON_SIZE = 80;
@@ -32,8 +31,6 @@ export const AnimateView = () => {
   const activePresetId  = useAppStore(state => state.activePresetId);
   const nodes           = useAppStore(state => state.nodes);
 
-  useAnimationLoop();
-
   const activePreset = presets.find(p => p.id === activePresetId);
   const deadIcons = activePreset?.deadIcons || [];
 
@@ -45,7 +42,7 @@ export const AnimateView = () => {
   }, [nodes]);
 
   const charNodeRefs = useRef<Map<string, Konva.Group>>(new Map());
-  const currentVisualPositions = useRef<Record<string, { x: number, y: number }>>({});
+  const currentVisualPositions = useRef<Record<string, { x: number, y: number, floor: string }>>({});
 
   useEffect(() => {
     setSidebarWidth(MIN_SIDEBAR_WIDTH);

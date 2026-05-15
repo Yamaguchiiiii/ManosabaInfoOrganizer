@@ -1,4 +1,3 @@
-import React from 'react';
 import { Image as KonvaImage, Group, Circle, Line, Rect } from 'react-konva';
 import useImage from 'use-image';
 

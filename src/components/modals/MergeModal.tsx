@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 
 // マージ候補のデータ型
 export interface MergeCandidate {

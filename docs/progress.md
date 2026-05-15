@@ -1,9 +1,9 @@
 # 引き継ぎ資料 — 作業進捗
 
-最終更新: 2026-05-10
+最終更新: 2026-05-15
 
-セッション情報：
-claude --resume eb765f05-3903-4b31-97f2-b04aa5ec752e
+Resume this session with:
+claude --resume 1d2f3b7a-8d70-4e18-b7c3-6d138a6d0ae2
 
 ---
 
@@ -31,7 +31,7 @@ claude --resume eb765f05-3903-4b31-97f2-b04aa5ec752e
 | **Animate モード** — タイムライン付きアニメーション再生 | `AnimateView`, `AnimationTimeline`, `ReadOnlyMapView`, `CharacterSelectModal` | 実装済み |
 | **Note モード** — キャンバスノート (overview / preset / character / misc) | `NoteView`, `NotesPanel`, `CanvasWorkspace` | 実装済み |
 | **共通 UI** | `Sidebar`, `TopBar`, `SuggestionSidebar`, `PresetSelector` | 実装済み |
-| **カスタム Hook** | `useAnimationLoop`, `useAnimationPositions`, `useSidebarResizer`, `useStageZoom`, `useWaypointPath` | 実装済み |
+| **カスタム Hook** | `useAnimationPositions`, `useSidebarResizer`, `useStageZoom`, `useWaypointPath` | 実装済み（`useAnimationLoop` はセッション4で削除済み） |
 | **ユーティリティ** | `dijkstra.ts`, `animationUtils.ts`, `mapDrawUtils.ts` | 実装済み |
 | **アダプター層** | `src/services/`, `src/adapters/` | **未作成**（現時点では必要な機能なし） |
 
@@ -46,6 +46,7 @@ claude --resume eb765f05-3903-4b31-97f2-b04aa5ec752e
 | `docs/resolve_error.md` | バグ1（カクつき）・バグ2（OOM）の修正ステップ（完了済み） |
 | `docs/resolve_error2.md` | 3問題の根本原因分析と修正ステップ（完了済み） |
 | `docs/resolve_error3.md` | 4問題の根本原因分析と修正ステップ（**すべて完了**） |
+| `docs/resolve_error4.md` | 3問題の根本原因分析と修正ステップ（問題1・2完了、問題3は差し戻し） |
 | `docs/progress.md` | 本ファイル（引き継ぎ資料） |
 
 ---
@@ -108,40 +109,84 @@ claude --resume eb765f05-3903-4b31-97f2-b04aa5ec752e
 
 ---
 
-## 既知の残存 TypeScript エラー（未修正・機能影響なし）
+### 【セッション4】resolve_error4.md 分（2026-05-11 部分完了）
 
-以下のエラーはセッション開始時点から存在しており、今回の修正対象外。
+#### 問題1 & 2: 数分再生後 OOM ＋ アニメーションのカクつき（同根）
 
-| ファイル | エラー内容 |
+**根本原因3層:**
+1. `useAnimationLoop`（時刻進行）と `useAnimationPositions`（位置計算）が**別々の RAF**で動作 → 同フレーム同期が保証されず 1 フレーム遅延・ジッター
+2. `useAnimationLoop` が `useAppStore.setState({ currentTime })` を**毎秒 60 回**実行 → Zustand 全購読者への通知が毎フレーム走る → React scheduler に仕事が積み重なる
+3. `getCollisionOffsets` 等が毎フレーム多数のオブジェクトを生成 → GC 追いつかず数分で OOM
+
+**修正内容:**
+- `src/hooks/useAnimationPositions.ts` — 全面改修。`timeRef` / `maxDurationRef` / `lastTsRef` / `frameCountRef` を追加し、時刻進行ロジックを移植。`animate()` に `timestamp` 引数を追加して単一 RAF に統合。Zustand への `currentTime` 書き込みを **4 フレームに 1 回**にスロットル。ループ折り返し時は即時 Zustand 書き込みでシーク誤検知を防止
+- `src/hooks/useAnimationLoop.ts` — **削除**（ロジックを `useAnimationPositions` に統合）
+- `src/components/AnimateView.tsx` — `useAnimationLoop` の import と呼び出し行を削除
+
+#### 問題3: 近接グルーピングに「並びかけ」中間状態が出る
+
+**実装・差し戻し済み:**  
+`computeGroupKeys` 関数を追加しグループ変化フレームで LERP をスキップするスナップ処理を実装したが、ユーザーから旧実装の方が好ましいとの判断により `git checkout a084efb` で差し戻した。**現在は旧動作（LERP あり）に戻っている。**
+
+---
+
+---
+
+### 【セッション5】resolve_error5.md 分（2026-05-15 部分完了）
+
+#### 問題1: Sync 後に合流キャラの移動速度がばらつく
+- `duration = path.length * 30` → パスの経由地点数に依存して速度がまちまちになる
+- **修正:** `src/constants.ts` に `TARGET_FPS = 60` 追加。`src/store.ts` に `computeDuration()` 追加（実ピクセル距離 ÷ `MOVEMENT_SPEED_PX_PER_SEC` で統一速度を実現）。`saveCharacterAnimation` / `saveBatchCharacterAnimations` の duration 計算を差し替え
+
+#### 問題3: フロア移動時にアイコンが別フロアの階段位置にチラつく
+- `currentVisualPositions` に floor 情報がなく、LERP がフロア変化を検知できない
+- **修正:** `src/hooks/useAnimationPositions.ts` の `currentVisualPositions` 型を `{ x, y, floor }` に変更してフロア変化時は LERP をスキップして即テレポート。`src/components/AnimateView.tsx` の `currentVisualPositions` useRef 型も同様に更新
+
+#### 問題2: Chrome で長時間再生すると OOM
+- **根本原因:** `ReadOnlyMapView.tsx` が単一 `<Layer>` に MapImage・エッジ・ノード・キャラアイコン (`{children}`) をすべて置いている。キャラアイコン位置の `node.x()` 呼び出しのたびに Layer 全体（マップ PNG を含む）が再描画される
+- **修正:** `src/components/ReadOnlyMapView.tsx` — 静的 `<Layer listening={false}>` (マップ・エッジ・ノード) と動的 `<Layer>` (children のみ) に分割 ✅
+
+#### TypeScript エラー 19 件を一括解消（2026-05-15）
+
+| ファイル | 対応 |
 |---|---|
-| `src/components/MapView.tsx` | `updateCharacterMemo`・`addCharacterImage`・`removeCharacterImage`・`customImages`・`memo` が store 型に存在しない |
-| `src/components/TopBar.tsx` | `setActivePreset`・`addPreset` が store 型に存在しない、未使用変数複数 |
-| `src/components/common/MapElements.tsx` | `React` が未使用 |
-| `src/components/CreateView.tsx` | `findShortestPath`・`nodeId` が未使用 |
-| `src/components/modals/MergeModal.tsx` | `useCallback` が未使用 |
-| `src/utils/dijkstra.ts` | `FloorId` が未使用 |
+| `src/components/MapView.tsx` | 孤立ファイルのため**削除** |
+| `src/components/TopBar.tsx` | 存在しないストアアクション・未使用 state を除去 |
+| `src/components/CreateView.tsx` | 未使用 import・未使用引数 (`_nodeId`) を修正 |
+| `src/components/common/MapElements.tsx` | 未使用 `React` import を除去 |
+| `src/components/modals/MergeModal.tsx` | 未使用 `useCallback` import を除去 |
+| `src/utils/dijkstra.ts` | 未使用 `FloorId` import を除去 |
+
+**結果:** TypeScript エラー 19 → 0 件
+
+---
+
+## 残存する既知の問題
+
+現時点で TypeScript エラーは 0 件。未実装の機能要件は `docs/implement_function1.md` に設計済み。
 
 ---
 
 ## 次のセッションで最初にやること
 
-現在、修正待ちの既知問題はありません。  
-`npm run dev` と `npm run tauri dev` で以下を確認してください。
+`docs/implement_function1.md` の機能を優先順位順に実装する（Problem 2 は解消済み）。
 
 ### 動作確認チェックリスト
 
 **Animate モード:**
 - [ ] 再生ボタンを押し 30 秒以上連続再生してもアイコンがスムーズに動く
-- [ ] 10 分以上再生しても OOM が発生しない
-- [ ] 4 ペイン表示（Timeline Notes のグリッドモード）のペインサイズが安定している
+- [ ] **Chrome で 10 分以上再生しても OOM が発生しない**（最重要）
+- [ ] フロア移動時にアイコンが目的地フロアの正しい階段位置に即座に出現する（LERP ズレなし）
+- [ ] スクラバー（シークバー）をドラッグするとアイコン位置が正しく追従する
+- [ ] プリセットを切り替えると時刻が 0 にリセットされ、アイコン位置も初期化される
+- [ ] 再生速度変更（x0.25〜x8）が正常に機能する
+- [ ] 4 ペイン表示のペインサイズが安定している
 - [ ] Timeline Notes キャンバスの背景が beige（方眼紙）色で表示される
-- [ ] プリセット切り替え時にアイコン位置が正しくリセットされる
 
 **Create モード:**
 - [ ] 経由地をノード名で直接タイプしたとき、マップ上の経路が経由地を通る
 - [ ] 経由地に Sync ボタン（⏱）が表示される
+- [ ] Sync 後に合流したキャラが同じ速度で並走する
 
 **Note モード:**
 - [ ] キャラクターノートを複数キャラ連続で開いても OOM が発生しない
-
-新たなバグや問題が見つかった場合は `docs/resolve_error4.md` を作成して根本原因を分析してから実装してください。

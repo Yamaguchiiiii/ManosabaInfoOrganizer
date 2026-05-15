@@ -24,10 +24,10 @@ export const getCollisionOffsets = (
     positions: PositionWithVelocity[],
     iconSize: number
 ): Record<string, { x: number, y: number }> => {
-    
+
     const n = positions.length;
-    const BASE_THRESHOLD = iconSize * 0.45; 
-    
+    const BASE_THRESHOLD = iconSize * 0.45;
+
     const parent = Array.from({ length: n }, (_, i) => i);
     const find = (i: number): number => {
         if (parent[i] === i) return i;
@@ -60,7 +60,7 @@ export const getCollisionOffsets = (
     const offsets: Record<string, { x: number, y: number }> = {};
     positions.forEach(p => offsets[p.id] = { x: 0, y: 0 });
 
-    const stepSize = iconSize * 0.8; 
+    const stepSize = iconSize * 0.8;
 
     Object.values(groups).forEach(members => {
         if (members.length <= 1) return;
@@ -69,21 +69,21 @@ export const getCollisionOffsets = (
 
         let centerX = 0, centerY = 0;
         let sumVx = 0, sumVy = 0;
-        
+
         members.forEach(idx => {
             centerX += positions[idx].x;
             centerY += positions[idx].y;
             sumVx += positions[idx].vx;
             sumVy += positions[idx].vy;
         });
-        
+
         centerX /= members.length;
         centerY /= members.length;
 
         const count = members.length;
         let colCount = 1;
         let rowCount = 1;
-        let useRowMajorFilling = false; 
+        let useRowMajorFilling = false;
 
         const sqrt = Math.sqrt(count);
         const isSquare = Number.isInteger(sqrt) && count > 1;
@@ -91,17 +91,17 @@ export const getCollisionOffsets = (
         if (isSquare) {
             colCount = sqrt;
             rowCount = sqrt;
-            useRowMajorFilling = true; 
+            useRowMajorFilling = true;
         } else {
             const isHorizontalMove = Math.abs(sumVx) > Math.abs(sumVy);
             if (isHorizontalMove) {
                 rowCount = 2;
                 colCount = Math.ceil(count / rowCount);
-                useRowMajorFilling = false; 
+                useRowMajorFilling = false;
             } else {
                 colCount = 2;
                 rowCount = Math.ceil(count / colCount);
-                useRowMajorFilling = true; 
+                useRowMajorFilling = true;
             }
         }
 

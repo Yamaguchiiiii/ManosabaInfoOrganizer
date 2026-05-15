@@ -115,48 +115,51 @@ export const ReadOnlyMapView: React.FC<ReadOnlyMapViewProps> = ({
                     onDragEnd={draggable ? handleDragEnd : undefined} // draggableの場合のみイベントハンドラを渡す
                     style={{ cursor: draggable ? 'move' : 'default', backgroundColor: '#222' }}
                 >
-                <Layer>
-                    <MapImage 
-                        src={getMapSrc(floorId)} 
-                        onLoad={handleImageLoad}
-                    />
-
-                    <Group>
-                    {edges.filter(e => e.floor === floorId).map(edge => {
-                        const nodeA = nodes.find(n => n.id === edge.nodeA);
-                        const nodeB = nodes.find(n => n.id === edge.nodeB);
-                        if (!nodeA || !nodeB) return null;
-                        return (
-                        <Line 
-                            key={edge.id} 
-                            points={[nodeA.x, nodeA.y, nodeB.x, nodeB.y]} 
-                            stroke="#007acc" strokeWidth={4} lineCap="round" lineJoin="round" opacity={0.0} 
+                    {/* Static layer: map image + edges + nodes. listening=false prevents hit-testing on every frame. */}
+                    <Layer listening={false}>
+                        <MapImage
+                            src={getMapSrc(floorId)}
+                            onLoad={handleImageLoad}
                         />
-                        );
-                    })}
-                    </Group>
 
-                    <Group>
-                    {nodes.filter(n => n.floor === floorId).map(node => {
-                        if (node.type === 'stair') {
+                        <Group>
+                        {edges.filter(e => e.floor === floorId).map(edge => {
+                            const nodeA = nodes.find(n => n.id === edge.nodeA);
+                            const nodeB = nodes.find(n => n.id === edge.nodeB);
+                            if (!nodeA || !nodeB) return null;
                             return (
-                                <Group key={node.id}>
-                                {node.connectedFloor && (
-                                    <Text 
-                                    x={node.x - 20} y={node.y - 25} text={`${node.connectedFloor}`} fontSize={14} fill="white" stroke="black" strokeWidth={3} fillAfterStrokeEnabled align="center" 
-                                    />
-                                )}
-                                <StairNode x={node.x} y={node.y} fill="#28a745" stroke="white" opacity={0} />
-                                </Group>
+                            <Line
+                                key={edge.id}
+                                points={[nodeA.x, nodeA.y, nodeB.x, nodeB.y]}
+                                stroke="#007acc" strokeWidth={4} lineCap="round" lineJoin="round" opacity={0.0}
+                            />
                             );
-                        }
-                        return <Circle key={node.id} x={node.x} y={node.y} radius={8} fill="#007acc" stroke="white" strokeWidth={2} opacity={0.0} />;
-                    })}
-                    </Group>
+                        })}
+                        </Group>
 
-                    {children}
+                        <Group>
+                        {nodes.filter(n => n.floor === floorId).map(node => {
+                            if (node.type === 'stair') {
+                                return (
+                                    <Group key={node.id}>
+                                    {node.connectedFloor && (
+                                        <Text
+                                        x={node.x - 20} y={node.y - 25} text={`${node.connectedFloor}`} fontSize={14} fill="white" stroke="black" strokeWidth={3} fillAfterStrokeEnabled align="center"
+                                        />
+                                    )}
+                                    <StairNode x={node.x} y={node.y} fill="#28a745" stroke="white" opacity={0} />
+                                    </Group>
+                                );
+                            }
+                            return <Circle key={node.id} x={node.x} y={node.y} radius={8} fill="#007acc" stroke="white" strokeWidth={2} opacity={0.0} />;
+                        })}
+                        </Group>
+                    </Layer>
 
-                </Layer>
+                    {/* Dynamic layer: character icons only. Redraws only this layer on each animation frame. */}
+                    <Layer>
+                        {children}
+                    </Layer>
             </Stage>
             )}
     </div>

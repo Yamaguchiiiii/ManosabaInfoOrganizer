@@ -8,7 +8,6 @@ import { CharacterSelectModal } from './modals/CharacterSelectModal';
 import { SuggestionSidebar } from './common/SuggestionSidebar';
 import { useStageZoom } from '../hooks/useStageZoom';
 import { calculateNodeArrivalTime } from '../utils/animationUtils';
-import { findShortestPath } from '../utils/dijkstra';
 
 import { WaypointPanel } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
@@ -582,7 +581,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       e.target.scale({x: 1.5, y: 1.5});
   }, []);
 
-  const handleNodeMouseLeave = useCallback((e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => {
+  const handleNodeMouseLeave = useCallback((e: Konva.KonvaEventObject<MouseEvent>, _nodeId: string) => {
       setHoveredNodeId(null);
       const stage = e.target.getStage();
       if (stage) {

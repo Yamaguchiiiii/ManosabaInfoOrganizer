@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAppStore, ICON_FILES } from '../store';
 import { PresetSelector } from './common/PresetSelector';
 
@@ -10,13 +10,7 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({ 
     selectedIcons, onIconSelect 
 }) => {
-  const { 
-    presets, activePresetId, 
-    setActivePreset, addPreset, updatePresetName, deletePreset,
-  } = useAppStore();
-
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState("");
+  const { presets, activePresetId } = useAppStore();
 
   const activePreset = presets.find(p => p.id === activePresetId) || presets[0];
 
@@ -25,10 +19,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const createdChars = aliveIcons.filter(icon => activePreset.data && activePreset.data[icon]);
   const notCreatedChars = aliveIcons.filter(icon => !activePreset.data || !activePreset.data[icon]);
-
-  const handleRenameStart = () => { setEditName(activePreset.name); setIsEditing(true); };
-  const handleRenameSave = () => { if (editName.trim()) updatePresetName(activePresetId, editName); setIsEditing(false); };
-  const handleDelete = () => { if (window.confirm(`"${activePreset.name}" を削除しますか？`)) deletePreset(activePresetId); };
 
   const MiniIcon = ({ icon, isSelected }: { icon: string, isSelected: boolean }) => (
     <img 

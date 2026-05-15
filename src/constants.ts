@@ -24,6 +24,8 @@ export const WAIT_VIRTUAL_DISTANCE = 50;
  */
 export const DUPLICATES_PER_SEC = MOVEMENT_SPEED_PX_PER_SEC / WAIT_VIRTUAL_DISTANCE;
 
+export const TARGET_FPS = 60;
+
 // ▼▼▼ デフォルトのマップデータ ▼▼▼
 export const INITIAL_NODES: MapNode[] = [
   { "id": "kn0qnry8z", "x": 76.22735100419263, "y": 454.06394928405825, "floor": "1F", "type": "room", "name": "湖方面" },

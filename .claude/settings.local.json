@@ -7,7 +7,12 @@
       "PowerShell(ls \"D:\\\\Study\\\\ManoSabaInfoOrganizer\\\\src-tauri\" -Force | Where-Object { $_.Name -eq \"tauri.conf.json\" -or $_.Extension -eq \".json\" })",
       "Bash(Test-Path *)",
       "Bash(npm run *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(git checkout *)",
+      "Bash(Get-ChildItem src/components/AnimationTimeline.tsx)",
+      "Bash(Select-Object Name)",
+      "Bash(del \"src\\\\components\\\\MapView.tsx\")",
+      "Bash(Remove-Item *)"
     ]
   }
 }

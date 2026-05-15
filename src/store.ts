@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { INITIAL_NODES, INITIAL_EDGES } from './constants';
+import { INITIAL_NODES, INITIAL_EDGES, WAIT_VIRTUAL_DISTANCE, MOVEMENT_SPEED_PX_PER_SEC, TARGET_FPS } from './constants';
 
 const saveHistoryNum = 50;
 
@@ -235,6 +235,21 @@ const updateCanvasState = (
     return { notes: newNotes };
 };
 
+const computeDuration = (path: string[], nodes: MapNode[]): number => {
+    const nodesMap: Record<string, MapNode> = {};
+    nodes.forEach(n => { nodesMap[n.id] = n; });
+    let totalDist = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const nA = nodesMap[path[i]];
+        const nB = nodesMap[path[i + 1]];
+        if (!nA || !nB) continue;
+        if (nA.id === nB.id) { totalDist += WAIT_VIRTUAL_DISTANCE; continue; }
+        if ((nA.type === 'stair' && nB.type === 'stair') || nA.floor !== nB.floor) continue;
+        totalDist += Math.sqrt((nB.x - nA.x) ** 2 + (nB.y - nA.y) ** 2);
+    }
+    return Math.max(totalDist / (MOVEMENT_SPEED_PX_PER_SEC / TARGET_FPS), 60);
+};
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -310,7 +325,7 @@ export const useAppStore = create<AppState>()(
         saveCharacterAnimation: (presetId, charId, path, waypoints, startTIme = 0) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
-                const newData: CharacterTimelineData = { path: path, startTime: startTIme, duration: Math.max(path.length * 30, 60), waypoints: waypoints };
+                const newData: CharacterTimelineData = { path: path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints: waypoints };
                 return { ...p, data: { ...p.data, [charId]: newData } };
             })
         })),
@@ -325,7 +340,7 @@ export const useAppStore = create<AppState>()(
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
                 const newData = { ...p.data };
-                const timelineData: CharacterTimelineData = { path: path, startTime: startTIme, duration: Math.max(path.length * 30, 60), waypoints: waypoints };
+                const timelineData: CharacterTimelineData = { path: path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints: waypoints };
                 charIds.forEach(charId => { newData[charId] = timelineData; });
                 return { ...p, data: newData };
             })

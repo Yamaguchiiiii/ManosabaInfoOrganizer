@@ -1,4 +1,4 @@
-import { MapNode, MapEdge, FloorId } from '../store';
+import { MapNode, MapEdge } from '../store';
 
 // 2点間の距離（ピクセル）を計算
 const getDistance = (nodeA: MapNode, nodeB: MapNode) => {
