@@ -28,7 +28,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         onClick={(e) => onIconSelect(icon, e.shiftKey)}
         style={{ 
             width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover',
-            border: isSelected ? '2px solid #007acc' : '2px solid transparent',
+            border: isSelected ? '2px solid rgba(255,255,255,0.75)' : '2px solid transparent',
             opacity: isSelected ? 1 : 0.7,
             cursor: 'pointer',
             transition: 'all 0.1s',

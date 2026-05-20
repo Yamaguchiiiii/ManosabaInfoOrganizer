@@ -19,7 +19,7 @@ const MovingCharIcon = React.memo(React.forwardRef<Konva.Group, { icon: string, 
         return (
             <Group ref={ref} x={x} y={y}>
                 <KonvaImage image={image} width={ICON_SIZE} height={ICON_SIZE} offsetX={HALF_SIZE} offsetY={HALF_SIZE} cornerRadius={HALF_SIZE} />
-                <KonvaImage image={image} width={ICON_SIZE} height={ICON_SIZE} offsetX={HALF_SIZE} offsetY={HALF_SIZE} stroke="#007acc" strokeWidth={3} cornerRadius={HALF_SIZE} />
+                <KonvaImage image={image} width={ICON_SIZE} height={ICON_SIZE} offsetX={HALF_SIZE} offsetY={HALF_SIZE} stroke="rgba(255, 255, 255, 0.75)" strokeWidth={2.5} cornerRadius={HALF_SIZE} shadowColor="rgba(0, 0, 0, 0.5)" shadowBlur={6} shadowOpacity={0.6} shadowOffset={{ x: 0, y: 2 }} />
             </Group>
         );
     }

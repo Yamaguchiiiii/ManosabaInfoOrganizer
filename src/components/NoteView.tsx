@@ -10,8 +10,29 @@ const HANDWRITING_FONT = '"Yomogi", "Klee One", "Comic Sans MS", "Chalkboard SE"
 
 type ExtendedNoteObjectType = NoteObjectType | 'freehand';
 
+type FreehandSettings = {
+    color: string;
+    strokeWidth: number;
+    lineStyle: 'pen' | 'marker';
+    stabilization: number;
+};
+
+const applyChaikin = (points: number[], iterations: number): number[] => {
+    if (iterations <= 0 || points.length < 4) return points;
+    const result: number[] = [];
+    for (let i = 0; i < points.length - 2; i += 2) {
+        const x0 = points[i], y0 = points[i + 1];
+        const x1 = points[i + 2], y1 = points[i + 3];
+        result.push(0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1);
+        result.push(0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1);
+    }
+    result.unshift(points[0], points[1]);
+    result.push(points[points.length - 2], points[points.length - 1]);
+    return applyChaikin(result, iterations - 1);
+};
+
 // --- 画像コンポーネント (メモ化) ---
-const URLImage = React.memo(({ imageObj, onSelect, onChange, isDrawingMode }: any) => {
+const URLImage = React.memo(({ imageObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
     const [img] = useImage(imageObj.content || '');
 
     return (
@@ -20,6 +41,7 @@ const URLImage = React.memo(({ imageObj, onSelect, onChange, isDrawingMode }: an
             name="note-object"
             onClick={onSelect}
             onTap={onSelect}
+            onContextMenu={onContextMenu}
             image={img}
             x={imageObj.x}
             y={imageObj.y}
@@ -29,9 +51,8 @@ const URLImage = React.memo(({ imageObj, onSelect, onChange, isDrawingMode }: an
             scaleX={imageObj.scaleX}
             scaleY={imageObj.scaleY}
             draggable={!isDrawingMode}
-            onDragEnd={(e) => {
-                onChange({ x: e.target.x(), y: e.target.y() });
-            }}
+            onDragMove={onDragMove}
+            onDragEnd={onDragEnd ?? ((e: any) => { onChange({ x: e.target.x(), y: e.target.y() }); })}
             onTransformEnd={(e) => {
                 const node = e.target;
                 const scaleX = node.scaleX();
@@ -51,7 +72,7 @@ const URLImage = React.memo(({ imageObj, onSelect, onChange, isDrawingMode }: an
 });
 
 // --- テキストコンポーネント (メモ化) ---
-const EditableText = React.memo(({ textObj, onSelect, onChange, onToggleEdit, isDrawingMode }: any) => {
+const EditableText = React.memo(({ textObj, onSelect, onChange, onToggleEdit, onDragMove, onDragEnd, isDrawingMode }: any) => {
     return (
         <Text
             id={textObj.id}
@@ -64,31 +85,20 @@ const EditableText = React.memo(({ textObj, onSelect, onChange, onToggleEdit, is
             y={textObj.y}
             fontSize={textObj.fontSize || 24}
             fontStyle={textObj.fontWeight || 'normal'}
-            fontFamily={HANDWRITING_FONT} 
+            fontFamily={HANDWRITING_FONT}
             fill={textObj.fill}
             rotation={textObj.rotation}
             scaleX={textObj.scaleX}
             scaleY={textObj.scaleY}
             draggable={!isDrawingMode}
-            onDragEnd={(e) => {
-                onChange({ x: e.target.x(), y: e.target.y() });
-            }}
-            onTransformEnd={(e) => {
-                const node = e.target;
-                onChange({
-                    x: node.x(),
-                    y: node.y(),
-                    scaleX: node.scaleX(),
-                    scaleY: node.scaleY(),
-                    rotation: node.rotation(),
-                });
-            }}
+            onDragMove={onDragMove}
+            onDragEnd={onDragEnd ?? ((e: any) => { onChange({ x: e.target.x(), y: e.target.y() }); })}
         />
     );
 });
 
 // --- 図形コンポーネント (メモ化) ---
-const ShapeObject = React.memo(({ shapeObj, onSelect, onChange, onContextMenu, isDrawingMode }: any) => {
+const ShapeObject = React.memo(({ shapeObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
     const commonProps: any = {
         id: shapeObj.id,
         name: "note-object",
@@ -101,16 +111,39 @@ const ShapeObject = React.memo(({ shapeObj, onSelect, onChange, onContextMenu, i
         scaleX: shapeObj.scaleX,
         scaleY: shapeObj.scaleY,
         draggable: !isDrawingMode,
-        onDragEnd: (e: any) => onChange({ x: e.target.x(), y: e.target.y() }),
+        onDragMove: onDragMove,
+        onDragEnd: onDragEnd ?? ((e: any) => onChange({ x: e.target.x(), y: e.target.y() })),
         onTransformEnd: (e: any) => {
             const node = e.target;
-            onChange({
-                x: node.x(),
-                y: node.y(),
-                scaleX: node.scaleX(),
-                scaleY: node.scaleY(),
-                rotation: node.rotation()
-            });
+            const scaleX = node.scaleX();
+            const scaleY = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            const type = shapeObj.type as string;
+            if (type === 'rect') {
+                onChange({
+                    x: node.x(), y: node.y(),
+                    width: Math.round((shapeObj.width || 100) * scaleX),
+                    height: Math.round((shapeObj.height || 100) * scaleY),
+                    scaleX: 1, scaleY: 1,
+                    rotation: node.rotation(),
+                });
+            } else if (type === 'circle' || type === 'triangle') {
+                const scale = Math.max(scaleX, scaleY);
+                onChange({
+                    x: node.x(), y: node.y(),
+                    width: Math.round((shapeObj.width || 100) * scale),
+                    height: Math.round((shapeObj.height || 100) * scale),
+                    scaleX: 1, scaleY: 1,
+                    rotation: node.rotation(),
+                });
+            } else {
+                onChange({
+                    x: node.x(), y: node.y(),
+                    scaleX: 1, scaleY: 1,
+                    rotation: node.rotation(),
+                });
+            }
         }
     };
 
@@ -134,13 +167,13 @@ const ShapeObject = React.memo(({ shapeObj, onSelect, onChange, onContextMenu, i
     return (
         <>
             {shapeObj.type === 'rect' && (
-                <Rect {...commonProps} width={100} height={100} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} />
+                <Rect {...commonProps} width={shapeObj.width || 100} height={shapeObj.height || 100} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} strokeScaleEnabled={false} />
             )}
             {shapeObj.type === 'circle' && (
-                <Circle {...commonProps} radius={50} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} />
+                <Circle {...commonProps} radius={(shapeObj.width || 100) / 2} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} strokeScaleEnabled={false} />
             )}
             {shapeObj.type === 'triangle' && (
-                <RegularPolygon {...commonProps} sides={3} radius={50} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} />
+                <RegularPolygon {...commonProps} sides={3} radius={(shapeObj.width || 100) / 2} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} strokeScaleEnabled={false} />
             )}
             {shapeObj.type === 'line' && (
                 <Arrow {...getLineProps()} points={linePoints} pointerLength={0} pointerWidth={0} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 3} />
@@ -184,6 +217,55 @@ const getImageSizeFromUrl = (url: string, maxDimension = 500): Promise<{ width: 
     });
 };
 
+const autocropTransparent = (
+    originalBase64: string,
+    imgWidth: number,
+    imgHeight: number
+): Promise<{ base64: string; width: number; height: number }> => {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = imgWidth;
+        canvas.height = imgHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve({ base64: originalBase64, width: imgWidth, height: imgHeight }); return; }
+        const src = new Image();
+        src.onload = () => {
+            ctx.drawImage(src, 0, 0);
+            const data = ctx.getImageData(0, 0, imgWidth, imgHeight).data;
+            const ALPHA_THRESHOLD = 10;
+            let minX = imgWidth, minY = imgHeight, maxX = 0, maxY = 0;
+            for (let y = 0; y < imgHeight; y++) {
+                for (let x = 0; x < imgWidth; x++) {
+                    if (data[(y * imgWidth + x) * 4 + 3] > ALPHA_THRESHOLD) {
+                        if (x < minX) minX = x;
+                        if (y < minY) minY = y;
+                        if (x > maxX) maxX = x;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            if (maxX < minX || maxY < minY) {
+                resolve({ base64: originalBase64, width: imgWidth, height: imgHeight });
+                return;
+            }
+            const cropW = maxX - minX + 1;
+            const cropH = maxY - minY + 1;
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = cropW;
+            cropCanvas.height = cropH;
+            const cropCtx = cropCanvas.getContext('2d')!;
+            cropCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+            const maxDim = 500;
+            let w = cropW, h = cropH;
+            if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
+            else       { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
+            resolve({ base64: cropCanvas.toDataURL('image/png'), width: w, height: h });
+        };
+        src.onerror = () => resolve({ base64: originalBase64, width: imgWidth, height: imgHeight });
+        src.src = originalBase64;
+    });
+};
+
 const processFile = (file: File): Promise<{ base64: string, width: number, height: number }> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -191,17 +273,7 @@ const processFile = (file: File): Promise<{ base64: string, width: number, heigh
             const base64 = e.target?.result as string;
             const img = new Image();
             img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                const maxDimension = 500;
-                
-                if (width > height) {
-                    if (width > maxDimension) { height *= maxDimension / width; width = maxDimension; }
-                } else {
-                    if (height > maxDimension) { width *= maxDimension / height; height = maxDimension; }
-                }
-                
-                resolve({ base64, width, height });
+                autocropTransparent(base64, img.width, img.height).then(resolve);
             };
             img.onerror = reject;
             img.src = base64;
@@ -244,9 +316,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
     const addNoteObject = useAppStore(state => state.addNoteObject);
     const updateNoteObject = useAppStore(state => state.updateNoteObject);
+    const updateNoteObjects = useAppStore(state => state.updateNoteObjects);
     const removeNoteObjects = useAppStore(state => state.removeNoteObjects);
     const addNoteAsset = useAppStore(state => state.addNoteAsset);
     const removeNoteAsset = useAppStore(state => state.removeNoteAsset);
+    const reorderNoteObject = useAppStore(state => state.reorderNoteObject);
     const undoNote = useAppStore(state => state.undoNote);
     const saveNoteHistory = useAppStore(state => state.saveNoteHistory);
 
@@ -261,14 +335,32 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
     type PlacementMode = { type: ExtendedNoteObjectType, data?: any } | null;
     const [placementMode, setPlacementMode] = useState<PlacementMode>(null);
+    const [freehandSettings, setFreehandSettings] = useState<FreehandSettings>({
+        color: '#000000',
+        strokeWidth: 3,
+        lineStyle: 'pen',
+        stabilization: 2,
+    });
 
     const isDrawingMode = !!placementMode;
 
     const [selectionRect, setSelectionRect] = useState({ startX: 0, startY: 0, w: 0, h: 0, visible: false, canvasIndex: 0 });
 
     const isDrawingRef = useRef(false);
-    const drawingShapeInfoRef = useRef<any>(null); 
+    const drawingShapeInfoRef = useRef<any>(null);
     const drawingNodeRef = useRef<any>(null);
+    const batchSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const saveHistoryOnceThenSkip = () => {
+        if (!batchSaveRef.current) {
+            // バッチ先頭: 変更前の現在状態を保存
+            saveNoteHistory();
+        } else {
+            clearTimeout(batchSaveRef.current);
+        }
+        batchSaveRef.current = setTimeout(() => {
+            batchSaveRef.current = null;
+        }, 300);
+    };
     const [drawingActive, setDrawingActive] = useState(false);
 
     const [shapeContextMenu, setShapeContextMenu] = useState<{ id: string, type: ExtendedNoteObjectType, x: number, y: number, stroke: string, strokeWidth: number, fill?: string, lineStyle?: string } | null>(null);
@@ -279,6 +371,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const fileInputRef = useRef<HTMLInputElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null);
     const trRefs = useRef<(Konva.Transformer | null)[]>([null, null, null, null]);
+    const editingTextBoundsRef = useRef<{ width: number } | null>(null);
 
     const [padPos, setPadPos] = useState<{x: number, y: number} | null>(null);
     const [isDraggingPad, setIsDraggingPad] = useState(false);
@@ -365,12 +458,32 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.target !== document.body) return; 
-            if (editingTextId) return; 
+            if (e.key === 'Escape') {
+                setPlacementMode(null);
+                return;
+            }
+            if (e.target !== document.body) return;
+            if (editingTextId) return;
 
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 undoNote();
+                setSelectedIds([]);
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+                if (selectedIds.length < 2) return;
+                const newGroupId = `group_${Date.now()}`;
+                updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+                if (selectedIds.length === 0) return;
+                updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
                 setSelectedIds([]);
                 return;
             }
@@ -393,7 +506,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, displayTargetId, targetType, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote]);
+    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -402,7 +515,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 if (tr) {
                     const stage = tr.getStage();
                     if (stage) {
-                        const nodes = selectedIds.map(id => stage.findOne(`#${id}`)).filter(Boolean) as Konva.Node[];
+                        const nodes = selectedIds
+                            .map(id => stage.findOne(`#${id}`))
+                            .filter((node): node is Konva.Node => {
+                                if (!node) return false;
+                                // 複数選択時はテキストをTransformerから除外（スケール変形防止）
+                                if (selectedIds.length > 1) return node.getClassName() !== 'Text';
+                                // 単独選択時はテキストも含める（バウンディングボックス表示のため）
+                                return true;
+                            });
                         tr.nodes(nodes);
                         tr.getLayer()?.batchDraw();
                     }
@@ -438,43 +559,59 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 width, height,
                 content: base64,
                 rotation: 0, scaleX: 1, scaleY: 1,
+                keepRatio: true,
                 canvasIndex: currentCanvasIndex
             });
         }
     };
 
-    const handleStageMouseDown = async (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
-        if (e.evt.button !== 0) return; 
+    const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
+        if (e.evt.button !== 0) return;
 
         if (placementMode) {
             const stagePos = e.target.getStage()?.getPointerPosition();
             if (!stagePos) return;
-            const pos = { x: stagePos.x / scale, y: stagePos.y / scale }; 
-            
+            const pos = { x: stagePos.x / scale, y: stagePos.y / scale };
+
             if (['line', 'arrow', 'curve', 'curve_arrow', 'freehand'].includes(placementMode.type as string)) {
                 isDrawingRef.current = true;
+                const isFreehand = placementMode.type === 'freehand';
                 drawingShapeInfoRef.current = {
-                    id: `${placementMode.type}_${Date.now()}`, 
+                    id: `${placementMode.type}_${Date.now()}`,
                     type: placementMode.type,
-                    x: pos.x, y: pos.y, 
-                    points: placementMode.type === 'freehand' ? [0, 0] : [0, 0, 0, 0],
-                    stroke: '#000000', strokeWidth: 3, rotation: 0, scaleX: 1, scaleY: 1,
-                    lineStyle: placementMode.type === 'freehand' ? 'pen' : 'normal', 
+                    x: pos.x, y: pos.y,
+                    points: isFreehand ? [0, 0] : [0, 0, 0, 0],
+                    stroke: isFreehand ? freehandSettings.color : '#000000',
+                    strokeWidth: isFreehand ? freehandSettings.strokeWidth : 3,
+                    rotation: 0, scaleX: 1, scaleY: 1,
+                    lineStyle: isFreehand ? freehandSettings.lineStyle : 'normal',
                     canvasIndex: index
                 };
-                setDrawingActive(true); 
+                setDrawingActive(true);
                 return;
             }
 
+            if (['rect', 'circle', 'triangle', 'image'].includes(placementMode.type as string)) {
+                isDrawingRef.current = true;
+                drawingShapeInfoRef.current = {
+                    type: placementMode.type,
+                    x: pos.x, y: pos.y,
+                    width: 0, height: 0,
+                    fill: '#A8D5BA', stroke: '#000000', strokeWidth: 2,
+                    rotation: 0, scaleX: 1, scaleY: 1,
+                    content: placementMode.type === 'image' ? placementMode.data : undefined,
+                    canvasIndex: index,
+                    _startX: pos.x, _startY: pos.y,
+                };
+                setDrawingActive(true);
+                return;
+            }
+
+            // text のみ即時配置
             const baseId = `${placementMode.type}_${Date.now()}`;
             let newObj: NoteObject | null = null;
             if (placementMode.type === 'text') {
                 newObj = { id: baseId, type: 'text', x: pos.x, y: pos.y, text: 'Text', fontSize: 24, fontWeight: 'normal', fill: '#000000', rotation: 0, scaleX: 1, scaleY: 1 };
-            } else if (['rect', 'circle', 'triangle'].includes(placementMode.type as string)) {
-                newObj = { id: baseId, type: placementMode.type as NoteObjectType, x: pos.x, y: pos.y, fill: '#A8D5BA', stroke: '#000000', strokeWidth: 2, rotation: 0, scaleX: 1, scaleY: 1 };
-            } else if (placementMode.type === 'image') {
-                const { width, height } = await getImageSizeFromUrl(placementMode.data, 300);
-                newObj = { id: baseId, type: 'image', x: pos.x, y: pos.y, width, height, content: placementMode.data, rotation: 0, scaleX: 1, scaleY: 1 };
             }
 
             if (newObj) {
@@ -502,26 +639,49 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     };
 
     const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
-        if (isDrawingRef.current && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index && drawingNodeRef.current) {
+        if (isDrawingRef.current && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index) {
             const stagePos = e.target.getStage()?.getPointerPosition();
-            if (stagePos) {
-                const logicalPos = { x: stagePos.x / scale, y: stagePos.y / scale };
-                const dx = logicalPos.x - drawingShapeInfoRef.current.x;
-                const dy = logicalPos.y - drawingShapeInfoRef.current.y;
-                
-                if ((drawingShapeInfoRef.current.type as string) === 'freehand') {
-                    drawingShapeInfoRef.current.points?.push(dx, dy);
-                    drawingNodeRef.current.points(drawingShapeInfoRef.current.points);
+            if (!stagePos) return;
+            const logicalPos = { x: stagePos.x / scale, y: stagePos.y / scale };
+            const type = drawingShapeInfoRef.current.type as string;
+
+            if (['rect', 'circle', 'triangle', 'image'].includes(type)) {
+                const startX = drawingShapeInfoRef.current._startX as number;
+                const startY = drawingShapeInfoRef.current._startY as number;
+                const newX = Math.min(logicalPos.x, startX);
+                const newY = Math.min(logicalPos.y, startY);
+                const newW = Math.abs(logicalPos.x - startX);
+                const newH = Math.abs(logicalPos.y - startY);
+                drawingShapeInfoRef.current.x = newX;
+                drawingShapeInfoRef.current.y = newY;
+                drawingShapeInfoRef.current.width = newW;
+                drawingShapeInfoRef.current.height = newH;
+                if (drawingNodeRef.current) {
+                    drawingNodeRef.current.x(newX);
+                    drawingNodeRef.current.y(newY);
+                    drawingNodeRef.current.width(newW);
+                    drawingNodeRef.current.height(newH);
                     drawingNodeRef.current.getLayer()?.batchDraw();
-                } else {
-                    let newPoints = [0, 0, dx, dy];
-                    if (['curve', 'curve_arrow'].includes(drawingShapeInfoRef.current.type as string)) {
-                        newPoints = [0, 0, dx / 2, dy / 2 - 50, dx, dy]; 
-                    }
-                    drawingNodeRef.current.points(newPoints);
-                    drawingNodeRef.current.getLayer()?.batchDraw();
-                    drawingShapeInfoRef.current.points = newPoints;
                 }
+                return;
+            }
+
+            if (!drawingNodeRef.current) return;
+            const dx = logicalPos.x - drawingShapeInfoRef.current.x;
+            const dy = logicalPos.y - drawingShapeInfoRef.current.y;
+
+            if (type === 'freehand') {
+                drawingShapeInfoRef.current.points?.push(dx, dy);
+                drawingNodeRef.current.points(drawingShapeInfoRef.current.points);
+                drawingNodeRef.current.getLayer()?.batchDraw();
+            } else {
+                let newPoints = [0, 0, dx, dy];
+                if (['curve', 'curve_arrow'].includes(type)) {
+                    newPoints = [0, 0, dx / 2, dy / 2 - 50, dx, dy];
+                }
+                drawingNodeRef.current.points(newPoints);
+                drawingNodeRef.current.getLayer()?.batchDraw();
+                drawingShapeInfoRef.current.points = newPoints;
             }
             return;
         }
@@ -537,17 +697,70 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         }
     };
 
-    const handleStageMouseUp = (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
+    const handleStageMouseUp = async (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
         if (isDrawingRef.current && drawingShapeInfoRef.current) {
             isDrawingRef.current = false;
+            const type = drawingShapeInfoRef.current.type as string;
+
+            if (['rect', 'circle', 'triangle', 'image'].includes(type)) {
+                const dragW = drawingShapeInfoRef.current.width as number;
+                const dragH = drawingShapeInfoRef.current.height as number;
+                const isDrag = dragW >= 5 && dragH >= 5;
+                const baseId = `${type}_${Date.now()}`;
+                const startX = drawingShapeInfoRef.current._startX as number;
+                const startY = drawingShapeInfoRef.current._startY as number;
+                let newObj: NoteObject;
+
+                if (isDrag) {
+                    // Circle/RegularPolygon は x,y が中心座標のためバウンディングボックス左上から補正
+                    const isCentered = type === 'circle' || type === 'triangle';
+                    newObj = {
+                        id: baseId,
+                        type: type as NoteObjectType,
+                        x: isCentered
+                            ? (drawingShapeInfoRef.current.x as number) + dragW / 2
+                            : (drawingShapeInfoRef.current.x as number),
+                        y: isCentered
+                            ? (drawingShapeInfoRef.current.y as number) + dragH / 2
+                            : (drawingShapeInfoRef.current.y as number),
+                        width: dragW,
+                        height: dragH,
+                        fill: '#A8D5BA',
+                        stroke: '#000000',
+                        strokeWidth: 2,
+                        rotation: 0, scaleX: 1, scaleY: 1,
+                        canvasIndex: index,
+                        content: type === 'image' ? drawingShapeInfoRef.current.content as string : undefined,
+                        keepRatio: type === 'image' ? true : undefined,
+                    };
+                } else if (type === 'image') {
+                    const content = drawingShapeInfoRef.current.content as string;
+                    const { width, height } = await getImageSizeFromUrl(content, 300);
+                    newObj = { id: baseId, type: 'image', x: startX, y: startY, width, height, content, rotation: 0, scaleX: 1, scaleY: 1, keepRatio: true, canvasIndex: index };
+                } else {
+                    newObj = { id: baseId, type: type as NoteObjectType, x: startX, y: startY, fill: '#A8D5BA', stroke: '#000000', strokeWidth: 2, rotation: 0, scaleX: 1, scaleY: 1, canvasIndex: index };
+                }
+
+                drawingShapeInfoRef.current = null;
+                setDrawingActive(false);
+                addNoteObject(targetType, displayTargetId, newObj);
+                setPlacementMode(null);
+                return;
+            }
+
+            const isFreehand = type === 'freehand';
+            const finalPoints = (isFreehand && freehandSettings.stabilization > 0)
+                ? applyChaikin(drawingShapeInfoRef.current.points as number[], freehandSettings.stabilization)
+                : drawingShapeInfoRef.current.points;
             addNoteObject(targetType, displayTargetId, {
                 ...drawingShapeInfoRef.current,
-                id: `${drawingShapeInfoRef.current.type}_${Date.now()}`
+                id: `${type}_${Date.now()}`,
+                points: finalPoints
             });
             drawingShapeInfoRef.current = null;
             setDrawingActive(false);
-            
-            if ((placementMode?.type as string) !== 'freehand') {
+
+            if (type !== 'freehand') {
                 setPlacementMode(null);
             }
             return;
@@ -591,7 +804,75 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     };
 
     const selectedObject = currentCanvasObjects.find(obj => obj.id === selectedIds[0]);
+    const selectedGroupId = (() => {
+        if (selectedIds.length < 2) return null;
+        const first = currentCanvasObjects.find(o => o.id === selectedIds[0])?.groupId;
+        if (!first) return null;
+        return selectedIds.every(id => currentCanvasObjects.find(o => o.id === id)?.groupId === first) ? first : null;
+    })();
     const showTopbar = targetType === 'character' && !compactMode;
+
+    const getNodeScreenPosition = (id: string): { x: number; y: number; width: number } | null => {
+        for (const tr of trRefs.current) {
+            if (!tr) continue;
+            const stage = tr.getStage();
+            if (!stage) continue;
+            const node = stage.findOne(`#${id}`);
+            if (node) {
+                const rect = node.getClientRect();
+                const container = stage.container().getBoundingClientRect();
+                return { x: container.left + rect.x, y: container.top + rect.y, width: rect.width };
+            }
+        }
+        return null;
+    };
+
+    const renderFloatingTextToolbar = () => {
+        if (selectedIds.length !== 1 || selectedObject?.type !== 'text') return null;
+        const pos = getNodeScreenPosition(selectedIds[0]);
+        if (!pos) return null;
+        const tbTop = Math.max(10, pos.y - 50);
+        const tbLeft = Math.min(window.innerWidth - 220, pos.x);
+        return createPortal(
+            <div style={{
+                position: 'fixed',
+                top: tbTop, left: tbLeft,
+                background: 'rgba(30,30,30,0.97)',
+                border: '1px solid #555',
+                borderRadius: '8px',
+                padding: '5px 10px',
+                display: 'flex', gap: '10px', alignItems: 'center',
+                zIndex: 999999,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                fontSize: '0.85rem', color: '#ccc'
+            }}>
+                <label>Size:
+                    <input type="number" min="8" max="200"
+                        value={selectedObject.fontSize || 24}
+                        onChange={e => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontSize: +e.target.value }, true)}
+                        onBlur={() => saveNoteHistory()}
+                        style={{ width: '50px', background: '#222', border: '1px solid #555', color: 'white', borderRadius: '3px', padding: '2px 5px', marginLeft: '5px' }}
+                    />
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <input type="checkbox"
+                        checked={selectedObject.fontWeight === 'bold'}
+                        onChange={e => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontWeight: e.target.checked ? 'bold' : 'normal' }, true)}
+                        onBlur={() => saveNoteHistory()}
+                    />
+                    Bold
+                </label>
+                <input type="color"
+                    value={selectedObject.fill || '#000000'}
+                    onChange={e => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fill: e.target.value }, true)}
+                    onBlur={() => saveNoteHistory()}
+                    title="Text Color"
+                    style={{ width: '28px', height: '28px', border: 'none', cursor: 'pointer' }}
+                />
+            </div>,
+            document.body
+        );
+    };
 
     const toolBtnStyle = (isActive: boolean): React.CSSProperties => ({
         background: isActive ? 'rgba(0, 122, 204, 0.4)' : 'transparent',
@@ -662,41 +943,93 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         <button title="Curve" onClick={() => startPlacement('curve')} style={toolBtnStyle((placementMode?.type as string) === 'curve')}>~</button>
                         <button title="Curve Arrow" onClick={() => startPlacement('curve_arrow')} style={toolBtnStyle((placementMode?.type as string) === 'curve_arrow')}>↷</button>
                         <div style={{ width: '1px', height: '20px', backgroundColor: '#555', margin: '0 5px' }} />
-                        <button 
+                        <button
                             title="Delete Selected"
-                            onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }} 
+                            onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
                             disabled={selectedIds.length === 0}
                             style={{ ...toolBtnStyle(false), color: selectedIds.length === 0 ? '#555' : '#ef4444', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
                         >
                             🗑️
                         </button>
                     </div>
+                    {(placementMode?.type as string) === 'freehand' && (
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', borderTop: '1px solid #444', marginTop: '4px', paddingTop: '6px', flexWrap: 'wrap' }}>
+                            <input type="color" value={freehandSettings.color} title="Stroke Color"
+                                onChange={e => setFreehandSettings(s => ({ ...s, color: e.target.value }))}
+                                style={{ width: '28px', height: '28px', border: 'none', cursor: 'pointer', background: 'none' }} />
+                            <input type="range" min="1" max="20" value={freehandSettings.strokeWidth} title={`Width: ${freehandSettings.strokeWidth}`}
+                                onChange={e => setFreehandSettings(s => ({ ...s, strokeWidth: +e.target.value }))}
+                                style={{ width: '70px' }} />
+                            <select value={freehandSettings.lineStyle}
+                                onChange={e => setFreehandSettings(s => ({ ...s, lineStyle: e.target.value as 'pen' | 'marker' }))}
+                                style={{ background: '#333', color: '#ccc', border: '1px solid #555', borderRadius: '4px', padding: '2px 4px', fontSize: '0.8rem' }}>
+                                <option value="pen">Pen</option>
+                                <option value="marker">Marker</option>
+                            </select>
+                            <input type="range" min="0" max="5" value={freehandSettings.stabilization}
+                                title={`補正: ${freehandSettings.stabilization}`}
+                                onChange={e => setFreehandSettings(s => ({ ...s, stabilization: +e.target.value }))}
+                                style={{ width: '70px' }} />
+                            <span style={{ fontSize: '0.75rem', color: '#ccc', minWidth: '14px' }}>{freehandSettings.stabilization}</span>
+                        </div>
+                    )}
+                    {selectedIds.length === 1 && selectedObject?.type === 'image' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderTop: '1px solid #444', marginTop: '4px', paddingTop: '6px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.75rem', color: '#ccc' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedObject.keepRatio ?? true}
+                                    onChange={(e) => {
+                                        updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: e.target.checked }, true);
+                                        saveNoteHistory();
+                                    }}
+                                />
+                                縦横比固定
+                            </label>
+                        </div>
+                    )}
+                    {selectedIds.length === 1 && selectedObject && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', borderTop: '1px solid #444', marginTop: '4px', paddingTop: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#aaa', marginRight: '2px' }}>Layer:</span>
+                            {(['front', 'up', 'down', 'back'] as const).map(dir => (
+                                <button key={dir}
+                                    onClick={() => { reorderNoteObject(targetType, displayTargetId, selectedIds[0], dir); saveNoteHistory(); }}
+                                    style={{ ...toolBtnStyle(false), fontSize: '0.75rem', padding: '3px 6px' }}
+                                >
+                                    {dir === 'front' ? '最前面' : dir === 'back' ? '最背面' : dir === 'up' ? '前へ' : '後へ'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {selectedIds.length >= 2 && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', borderTop: '1px solid #444', marginTop: '4px', paddingTop: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#aaa', marginRight: '2px' }}>Group:</span>
+                            <button
+                                onClick={() => {
+                                    const newGroupId = `group_${Date.now()}`;
+                                    updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
+                                    saveNoteHistory();
+                                }}
+                                style={{ ...toolBtnStyle(false), fontSize: '0.75rem', padding: '3px 6px' }}
+                            >
+                                グループ化
+                            </button>
+                            {selectedGroupId && (
+                                <button
+                                    onClick={() => {
+                                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
+                                        setSelectedIds([]);
+                                        saveNoteHistory();
+                                    }}
+                                    style={{ ...toolBtnStyle(false), fontSize: '0.75rem', padding: '3px 6px' }}
+                                >
+                                    グループ解除
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                {(!showTopbar) && selectedIds.length === 1 && selectedObject?.type === 'text' && canvasContainerRef.current && (
-                    <div style={{ 
-                        position: 'fixed', 
-                        top: canvasContainerRef.current.getBoundingClientRect().top + 10, 
-                        left: canvasContainerRef.current.getBoundingClientRect().right - 180, 
-                        zIndex: 999999, 
-                        background: 'rgba(30,30,30,0.95)', 
-                        padding: '5px 10px', 
-                        borderRadius: '8px', 
-                        display: 'flex', 
-                        gap: '10px', 
-                        border: '1px solid #555', 
-                        color: '#ccc', 
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.4)' 
-                    }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}>Size: 
-                            <input type="number" value={selectedObject.fontSize || 24} onChange={(e) => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontSize: parseInt(e.target.value) }, true)} onBlur={() => saveNoteHistory()} min="8" max="100" style={{ width: '45px', background: '#222', border: '1px solid #555', color: 'white', borderRadius: '3px', padding: '2px 5px' }}/>
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}>
-                            <input type="checkbox" checked={selectedObject.fontWeight === 'bold'} onChange={(e) => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontWeight: e.target.checked ? 'bold' : 'normal' }, true)} onBlur={() => saveNoteHistory()} />
-                            Bold
-                        </label>
-                    </div>
-                )}
             </>
         );
 
@@ -709,6 +1042,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
             style={compactMode ? { position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' } : { width: '100%', height: '100%', gridTemplateRows: showTopbar ? '60px 1fr' : '1fr' }}
         >
             {renderPortalUI()}
+            {renderFloatingTextToolbar()}
             {compactMode && <input type="file" ref={fileInputRef} style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />}
 
             {!compactMode && (
@@ -729,8 +1063,96 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                             <button className={(placementMode?.type as string) === 'curve' ? 'active-tool' : ''} onClick={() => startPlacement('curve')}>~</button>
                             <button className={(placementMode?.type as string) === 'curve_arrow' ? 'active-tool' : ''} onClick={() => startPlacement('curve_arrow')}>↷</button>
                         </div>
-                        <button 
-                            onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }} 
+                        {(placementMode?.type as string) === 'freehand' && (
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>Pen Settings</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#ccc', minWidth: '36px' }}>Color</span>
+                                    <input type="color" value={freehandSettings.color}
+                                        onChange={e => setFreehandSettings(s => ({ ...s, color: e.target.value }))}
+                                        style={{ width: '28px', height: '24px', border: 'none', cursor: 'pointer', background: 'none' }} />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#ccc', minWidth: '36px' }}>Width</span>
+                                    <input type="range" min="1" max="20" value={freehandSettings.strokeWidth}
+                                        onChange={e => setFreehandSettings(s => ({ ...s, strokeWidth: +e.target.value }))}
+                                        style={{ flex: 1 }} />
+                                    <span style={{ fontSize: '0.8rem', color: '#ccc', minWidth: '16px' }}>{freehandSettings.strokeWidth}</span>
+                                </div>
+                                <select value={freehandSettings.lineStyle}
+                                    onChange={e => setFreehandSettings(s => ({ ...s, lineStyle: e.target.value as 'pen' | 'marker' }))}
+                                    style={{ background: '#222', color: '#ccc', border: '1px solid #555', borderRadius: '4px', padding: '3px 6px', fontSize: '0.8rem' }}>
+                                    <option value="pen">Pen</option>
+                                    <option value="marker">Marker</option>
+                                </select>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#ccc', minWidth: '36px' }}>補正</span>
+                                    <input type="range" min="0" max="9" value={freehandSettings.stabilization}
+                                        onChange={e => setFreehandSettings(s => ({ ...s, stabilization: +e.target.value }))}
+                                        style={{ flex: 1 }} />
+                                    <span style={{ fontSize: '0.8rem', color: '#ccc', minWidth: '16px' }}>{freehandSettings.stabilization}</span>
+                                </div>
+                            </div>
+                        )}
+                        {selectedIds.length === 1 && selectedObject?.type === 'image' && (
+                            <div style={{ marginTop: '10px' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.8rem', color: '#ccc' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedObject.keepRatio ?? true}
+                                        onChange={(e) => {
+                                            updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: e.target.checked }, true);
+                                            saveNoteHistory();
+                                        }}
+                                    />
+                                    アスペクト比を維持
+                                </label>
+                            </div>
+                        )}
+                        {selectedIds.length === 1 && selectedObject && (
+                            <div style={{ marginTop: '10px' }}>
+                                <div style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '5px' }}>Layer</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                                    {(['front', 'up', 'down', 'back'] as const).map(dir => (
+                                        <button key={dir}
+                                            onClick={() => { reorderNoteObject(targetType, displayTargetId, selectedIds[0], dir); saveNoteHistory(); }}
+                                            style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                        >
+                                            {dir === 'front' ? '最前面' : dir === 'back' ? '最背面' : dir === 'up' ? '前へ' : '後へ'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {selectedIds.length >= 2 && (
+                            <div style={{ marginTop: '10px' }}>
+                                <div style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '5px' }}>Group</div>
+                                <button
+                                    onClick={() => {
+                                        const newGroupId = `group_${Date.now()}`;
+                                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
+                                        saveNoteHistory();
+                                    }}
+                                    style={{ width: '100%', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                >
+                                    グループ化 (Ctrl+G)
+                                </button>
+                                {selectedGroupId && (
+                                    <button
+                                        onClick={() => {
+                                            updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
+                                            setSelectedIds([]);
+                                            saveNoteHistory();
+                                        }}
+                                        style={{ width: '100%', marginTop: '4px', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                    >
+                                        グループ解除 (Ctrl+Shift+G)
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        <button
+                            onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
                             disabled={selectedIds.length === 0}
                             style={{ marginTop: '10px', background: selectedIds.length === 0 ? '#444' : '#ef4444', color: selectedIds.length === 0 ? '#888' : 'white', fontSize: '1rem', padding: '5px' }}
                         >
@@ -761,28 +1183,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                     <div className="nav-controls">
                         {titleNode}
                     </div>
-                    {selectedIds.length === 1 && selectedObject?.type === 'text' && (
-                        <div className="property-bar">
-                            <label>Size: 
-                                <input 
-                                    type="number" 
-                                    value={selectedObject.fontSize || 24} 
-                                    onChange={(e) => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontSize: parseInt(e.target.value) }, true)}
-                                    onBlur={() => saveNoteHistory()}
-                                    min="8" max="100"
-                                />
-                            </label>
-                            <label>
-                                <input 
-                                    type="checkbox" 
-                                    checked={selectedObject.fontWeight === 'bold'}
-                                    onChange={(e) => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontWeight: e.target.checked ? 'bold' : 'normal' }, true)}
-                                    onBlur={() => saveNoteHistory()}
-                                />
-                                Bold
-                            </label>
-                        </div>
-                    )}
                 </div>
             )}
 
@@ -833,14 +1233,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         const stageWidth = Math.max(0, cellWidth - (borderWidth * 2));
                         const stageHeight = Math.max(0, cellHeight - (borderWidth * 2));
 
-                        // ▼ 修正: 4ペイン時に過剰に縮小する処理を廃止し、0.5倍に固定して均等に拡大配置する
-                        let scale = 1;
-                        if (compactMode) {
-                            const BASE_WIDTH = 1200; 
-                            const BASE_HEIGHT = 800; 
-                            scale = Math.min(stageWidth / BASE_WIDTH, stageHeight / BASE_HEIGHT);
-                        } else if (isGridMode) {
+                        // compact/非compact 共通の論理キャンバスサイズ (1200×800)
+                        // ズームやウィンドウリサイズでも論理座標系が変わらないよう scale で吸収する
+                        const CANVAS_BASE_WIDTH = 1200;
+                        const CANVAS_BASE_HEIGHT = 800;
+                        let scale: number;
+                        if (isGridMode) {
                             scale = 0.5;
+                        } else {
+                            scale = Math.min(stageWidth / CANVAS_BASE_WIDTH, stageHeight / CANVAS_BASE_HEIGHT, 1);
                         }
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
@@ -904,29 +1305,69 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                             const isSelected = selectedIds.includes(obj.id);
                                             if (obj.id === editingTextId) return null;
 
+                                            // グループドラッグ: ドラッグ中に同グループの他メンバーを追従させる
+                                            const groupDragHandlers = obj.groupId ? {
+                                                onDragMove: (e: any) => {
+                                                    const dx = e.target.x() - (obj.x ?? 0);
+                                                    const dy = e.target.y() - (obj.y ?? 0);
+                                                    const stage = trRefs.current[index]?.getStage();
+                                                    currentCanvasObjects
+                                                        .filter(o => o.groupId === obj.groupId && o.id !== obj.id)
+                                                        .forEach(member => {
+                                                            const node = stage?.findOne(`#${member.id}`);
+                                                            if (node) {
+                                                                node.x((member.x ?? 0) + dx);
+                                                                node.y((member.y ?? 0) + dy);
+                                                            }
+                                                        });
+                                                    trRefs.current[index]?.getLayer()?.batchDraw();
+                                                },
+                                                onDragEnd: (e: any) => {
+                                                    const dx = e.target.x() - (obj.x ?? 0);
+                                                    const dy = e.target.y() - (obj.y ?? 0);
+                                                    const groupObjs = currentCanvasObjects.filter(o => o.groupId === obj.groupId);
+                                                    saveHistoryOnceThenSkip();
+                                                    updateNoteObjects(targetType, displayTargetId,
+                                                        groupObjs.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy } }))
+                                                    );
+                                                },
+                                            } : {};
+
                                             const props = {
                                                 imageObj: obj, textObj: obj, shapeObj: obj,
-                                                isSelected, 
+                                                isSelected,
                                                 isDrawingMode,
+                                                ...groupDragHandlers,
                                                 onSelect: (e: any) => {
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
-                                                    
+
                                                     if (isGridMode && isGridEditMode && !isCurrent) {
                                                         setCurrentCanvasIndex(index);
                                                     }
-                                                    
+
                                                     if (placementMode) return;
                                                     if (e.evt?.shiftKey) {
                                                         setSelectedIds(prev => prev.includes(obj.id) ? prev.filter(id => id !== obj.id) : [...prev, obj.id]);
+                                                    } else if (obj.groupId) {
+                                                        setSelectedIds(currentCanvasObjects.filter(o => o.groupId === obj.groupId).map(o => o.id));
                                                     } else {
                                                         setSelectedIds([obj.id]);
                                                     }
                                                 },
-                                                onChange: (newAttrs: NoteObject) => updateNoteObject(targetType, displayTargetId, obj.id, newAttrs),
+                                                onChange: (newAttrs: NoteObject) => {
+                                                    saveHistoryOnceThenSkip();
+                                                    updateNoteObject(targetType, displayTargetId, obj.id, newAttrs, true);
+                                                },
                                                 onToggleEdit: () => {
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
                                                     if (isGridMode && isGridEditMode && !isCurrent) setCurrentCanvasIndex(index);
-                                                    
+
+                                                    const stage = trRefs.current[index]?.getStage();
+                                                    const textNode = stage?.findOne(`#${obj.id}`);
+                                                    editingTextBoundsRef.current = textNode
+                                                        ? { width: Math.max(50, textNode.width() * scale) }
+                                                        : null;
+
                                                     setEditingTextId(obj.id);
                                                     setSelectedIds([]);
                                                 },
@@ -943,6 +1384,25 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                             return <ShapeObject key={obj.id} {...props} />;
                                         })}
 
+                                        {/* 複数選択時、テキストノードの選択インジケーター（Transformerが除外するため個別描画） */}
+                                        {selectedIds.length > 1 && objs
+                                            .filter(o => o.type === 'text' && selectedIds.includes(o.id))
+                                            .map(o => (
+                                                <Rect
+                                                    key={`sel_indicator_${o.id}`}
+                                                    x={(o.x ?? 0) - 2}
+                                                    y={(o.y ?? 0) - 2}
+                                                    width={(o.width || 150) + 4}
+                                                    height={(o.fontSize || 24) * 1.5 + 4}
+                                                    stroke="#007acc"
+                                                    strokeWidth={1 / scale}
+                                                    dash={[4 / scale, 4 / scale]}
+                                                    fill="transparent"
+                                                    listening={false}
+                                                />
+                                            ))
+                                        }
+
                                         {drawingActive && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index && (
                                             (drawingShapeInfoRef.current.type as string) === 'freehand' ? (
                                                 <Line
@@ -955,7 +1415,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                                     tension={0.5}
                                                     lineCap="round"
                                                     lineJoin="round"
-                                                    listening={false} 
+                                                    listening={false}
+                                                />
+                                            ) : (['rect', 'circle', 'triangle', 'image'].includes(drawingShapeInfoRef.current.type as string)) ? (
+                                                <Rect
+                                                    ref={drawingNodeRef}
+                                                    x={drawingShapeInfoRef.current.x}
+                                                    y={drawingShapeInfoRef.current.y}
+                                                    width={drawingShapeInfoRef.current.width || 0}
+                                                    height={drawingShapeInfoRef.current.height || 0}
+                                                    fill="rgba(168, 213, 186, 0.25)"
+                                                    stroke="#007acc"
+                                                    strokeWidth={1.5}
+                                                    dash={[6, 4]}
+                                                    listening={false}
                                                 />
                                             ) : (
                                                 <Arrow
@@ -968,20 +1441,32 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                                     pointerLength={['arrow', 'curve_arrow'].includes(drawingShapeInfoRef.current.type as string) ? 10 : 0}
                                                     pointerWidth={['arrow', 'curve_arrow'].includes(drawingShapeInfoRef.current.type as string) ? 10 : 0}
                                                     tension={['curve', 'curve_arrow'].includes(drawingShapeInfoRef.current.type as string) ? 0.5 : 0}
-                                                    listening={false} 
+                                                    listening={false}
                                                 />
                                             )
                                         )}
 
-                                        {isCurrent && (
-                                            <Transformer
-                                                ref={(el) => { trRefs.current[index] = el; }}
-                                                boundBoxFunc={(oldBox, newBox) => {
-                                                    if (newBox.width < 5 || newBox.height < 5) return oldBox;
-                                                    return newBox;
-                                                }}
-                                            />
-                                        )}
+                                        {isCurrent && (() => {
+                                            const isOnlyText = selectedIds.length === 1 && selectedObject?.type === 'text';
+                                            return (
+                                                <Transformer
+                                                    ref={(el) => { trRefs.current[index] = el; }}
+                                                    boundBoxFunc={(oldBox, newBox) => {
+                                                        if (newBox.width < 5 || newBox.height < 5) return oldBox;
+                                                        return newBox;
+                                                    }}
+                                                    keepRatio={
+                                                        selectedIds.length === 1 && (
+                                                            selectedObject?.type === 'circle' ||
+                                                            selectedObject?.type === 'triangle' ||
+                                                            (selectedObject?.type === 'image' && (selectedObject?.keepRatio ?? true))
+                                                        )
+                                                    }
+                                                    enabledAnchors={isOnlyText ? [] : undefined}
+                                                    rotateEnabled={!isOnlyText}
+                                                />
+                                            );
+                                        })()}
 
                                         {selectionRect.visible && selectionRect.canvasIndex === index && (
                                             <Rect
@@ -1001,34 +1486,54 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                 {isCurrent && editingTextId && (() => {
                                     const obj = objs.find(o => o.id === editingTextId);
                                     if (!obj || obj.type !== 'text') return null;
+                                    const editWidth = editingTextBoundsRef.current?.width ?? 200;
                                     return (
                                         <textarea
+                                            key={editingTextId}
                                             value={obj.text}
-                                            onChange={(e) => updateNoteObject(targetType, displayTargetId, obj.id, { text: e.target.value }, true)}
+                                            ref={(el) => {
+                                                if (el) {
+                                                    el.style.height = 'auto';
+                                                    el.style.height = `${el.scrollHeight}px`;
+                                                }
+                                            }}
+                                            onChange={(e) => {
+                                                updateNoteObject(targetType, displayTargetId, obj.id, { text: e.target.value }, true);
+                                                const el = e.target;
+                                                el.style.height = 'auto';
+                                                el.style.height = `${el.scrollHeight}px`;
+                                            }}
                                             onBlur={() => {
                                                 saveNoteHistory();
                                                 setEditingTextId(null);
                                             }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Escape') e.currentTarget.blur();
+                                                e.stopPropagation();
+                                            }}
                                             autoFocus
                                             style={{
-                                                position: 'absolute', 
-                                                top: obj.y * scale, 
+                                                position: 'absolute',
+                                                top: obj.y * scale,
                                                 left: obj.x * scale,
-                                                fontSize: `${obj.fontSize || 24}px`, 
+                                                width: `${editWidth}px`,
+                                                height: 'auto',
+                                                minHeight: `${(obj.fontSize || 24) * 1.4 * scale}px`,
+                                                fontSize: `${(obj.fontSize || 24) * scale}px`,
                                                 fontWeight: obj.fontWeight || 'normal',
-                                                fontFamily: HANDWRITING_FONT, 
+                                                fontFamily: HANDWRITING_FONT,
                                                 color: obj.fill || 'black',
-                                                background: 'transparent', 
-                                                border: '1px dashed #007acc', 
-                                                outline: '1px dashed #007acc',
-                                                resize: 'both', 
-                                                overflow: 'hidden', 
-                                                minWidth: '50px', 
-                                                minHeight: '1.2em', 
-                                                whiteSpace: 'pre',
-                                                transform: `rotate(${obj.rotation || 0}deg) scale(${(obj.scaleX || 1) * scale}, ${(obj.scaleY || 1) * scale})`,
-                                                transformOrigin: 'top left', 
-                                                zIndex: 100 
+                                                background: 'rgba(255,255,255,0.05)',
+                                                border: '1px dashed #007acc',
+                                                outline: 'none',
+                                                resize: 'none',
+                                                overflow: 'hidden',
+                                                padding: '2px',
+                                                transform: `rotate(${obj.rotation || 0}deg)`,
+                                                transformOrigin: 'top left',
+                                                zIndex: 100,
+                                                boxSizing: 'border-box',
+                                                lineHeight: '1.4',
                                             }}
                                         />
                                     );
@@ -1168,9 +1673,40 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                         updateNoteObject(targetType, displayTargetId, shapeContextMenu.id, { fill: val }, true);
                                     }} 
                                     onBlur={() => saveNoteHistory()}
-                                    style={{ width: '100%' }} 
+                                    style={{ width: '100%' }}
                                 />
                             </>
+                        )}
+
+                        <div style={{ borderTop: '1px solid #444', marginTop: '10px', paddingTop: '10px' }}>
+                            <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: '#aaa' }}>Layer</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                                {(['front', 'up', 'down', 'back'] as const).map((dir) => (
+                                    <button
+                                        key={dir}
+                                        onClick={() => { reorderNoteObject(targetType, displayTargetId, shapeContextMenu.id, dir); setShapeContextMenu(null); }}
+                                        style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                    >
+                                        {dir === 'front' ? '最前面' : dir === 'back' ? '最背面' : dir === 'up' ? '前へ' : '後へ'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {selectedIds.length >= 2 && (
+                            <div style={{ borderTop: '1px solid #444', marginTop: '10px', paddingTop: '10px' }}>
+                                <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: '#aaa' }}>Group</div>
+                                <button
+                                    onClick={() => {
+                                        const newGroupId = `group_${Date.now()}`;
+                                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
+                                        setShapeContextMenu(null);
+                                        saveNoteHistory();
+                                    }}
+                                    style={{ width: '100%', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                >
+                                    グループ化
+                                </button>
+                            </div>
                         )}
                     </div>
                 )}
@@ -1213,6 +1749,8 @@ export const NoteView: React.FC = React.memo(() => {
     const [actualCharIndex, setActualCharIndex] = useState(0);
     const [actualMiscPageId, setActualMiscPageId] = useState<string | null>(null);
     const [actualPresetId, setActualPresetId] = useState<string | null>(null);
+    const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
+    const [renameInputValue, setRenameInputValue] = useState('');
 
     useEffect(() => {
         if (activeNoteTab !== displayTab) {
@@ -1271,16 +1809,20 @@ export const NoteView: React.FC = React.memo(() => {
         // 非同期処理開始前にマーク（ループ防止の核心）
         initializedCharsRef.current.add(selectedChar);
 
-        const defaultImgSrc = `./icon/${selectedChar}`;
+        const defaultImgSrc = `./character/${selectedChar}`;
         addNoteAsset('character', selectedChar, defaultImgSrc);
-        getImageSizeFromUrl(defaultImgSrc, 500).then(size => {
+        getImageSizeFromUrl(defaultImgSrc, 800).then(size => {
+            // キャンバス論理高さ600を基準に左下に上半身が見える位置（下半分がキャンバス外）
+            const canvasLogicalHeight = 600;
             addNoteObject('character', selectedChar, {
                 id: `default_char_${Date.now()}`,
                 type: 'image',
-                x: 50, y: 100,
+                x: 0,
+                y: canvasLogicalHeight - size.height / 2,
                 width: size.width, height: size.height,
                 content: defaultImgSrc,
                 rotation: 0, scaleX: 1, scaleY: 1,
+                keepRatio: true,
                 canvasIndex: 0
             });
         });
@@ -1348,19 +1890,35 @@ export const NoteView: React.FC = React.memo(() => {
                                         style={{ background: '#007acc', border: 'none', color: 'white', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                         title="Add New Note"
                                     >+</button>
-                                    <button 
-                                        onClick={() => {
-                                            const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
-                                            if (page) {
-                                                const newTitle = window.prompt("Rename Note:", page.title);
-                                                if (newTitle && newTitle.trim() !== "") {
-                                                    renameMiscPage(actualMiscPageId as string, newTitle.trim());
+                                    {renamingPageId === actualMiscPageId ? (
+                                        <input
+                                            autoFocus
+                                            value={renameInputValue}
+                                            onChange={e => setRenameInputValue(e.target.value)}
+                                            onBlur={() => {
+                                                const id = renamingPageId;
+                                                if (id && renameInputValue.trim()) renameMiscPage(id, renameInputValue.trim());
+                                                setRenamingPageId(null);
+                                            }}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                if (e.key === 'Escape') setRenamingPageId(null);
+                                            }}
+                                            style={{ background: '#333', color: 'white', border: '1px solid #007acc', padding: '4px 8px', borderRadius: '4px', minWidth: '120px' }}
+                                        />
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
+                                                if (page) {
+                                                    setRenamingPageId(page.id);
+                                                    setRenameInputValue(page.title);
                                                 }
-                                            }
-                                        }}
-                                        style={{ background: '#444', border: '1px solid #555', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
-                                        title="Rename Note"
-                                    >✏️</button>
+                                            }}
+                                            style={{ background: '#444', border: '1px solid #555', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+                                            title="Rename Note"
+                                        >✏️</button>
+                                    )}
                                     <button 
                                         onClick={() => {
                                             if (window.confirm("Are you sure you want to delete this note?")) {

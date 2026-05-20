@@ -144,24 +144,35 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 {ICON_FILES.map((fileName, index) => {
                     const isSelected = selectedIcons.includes(fileName);
                     const isDead = deadIcons.includes(fileName);
-                    
+                    const isDone = !!(activePreset?.data?.[fileName]);
+
                     return (
-                        <div 
-                        key={index} 
+                        <div
+                        key={index}
                         className={`icon-item ${isSelected ? 'selected' : ''}`}
                         onClick={(e) => handleIconClick(fileName, e)}
                         style={{
-                            filter: isDead ? 'grayscale(100%) brightness(40%)' : 'none',
-                            opacity: isDead && (!isSkullMode || mode === 'animate') ? 0.6 : 1, 
+                            filter: isDead ? 'grayscale(100%) brightness(40%)' : (isDone ? 'brightness(0.75)' : 'none'),
+                            opacity: isDead && (!isSkullMode || mode === 'animate') ? 0.6 : 1,
                             cursor: (isDead && !isSkullMode) ? 'not-allowed' : 'pointer',
                             transition: 'filter 0.3s ease'
                         }}
                         >
-                        <img 
-                            src={`./icon/${fileName}`} 
+                        <img
+                            src={`./icon/${fileName}`}
                             alt={fileName}
                             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
+                        {isDone && (
+                            <div style={{
+                                position: 'absolute', top: 0, right: 0,
+                                width: '14px', height: '14px',
+                                backgroundColor: '#10b981', borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '9px', color: 'white', fontWeight: 'bold',
+                                border: '1px solid #1e1e1e', zIndex: 10
+                            }}>✓</div>
+                        )}
                         {isSelected && selectedIcons.length > 1 && (
                             <div style={{ position: 'absolute', bottom: '2px', right: '2px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#007acc' }} />
                         )}

@@ -184,11 +184,11 @@
                         img { width: 100%; height: 100%; object-fit: cover; }
 
                         &:hover { opacity: 0.8; transform: scale(1.1); }
-                        &.active { 
-                            border-color: #007acc; 
-                            opacity: 1; 
+                        &.active {
+                            border-color: rgba(255, 255, 255, 0.75);
+                            opacity: 1;
                             transform: scale(1.15);
-                            box-shadow: 0 0 10px rgba(0, 122, 204, 0.5);
+                            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
                         }
                     }
                 }

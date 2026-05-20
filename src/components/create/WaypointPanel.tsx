@@ -58,37 +58,49 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
 
                     {waypoints.map((wp, index) => {
                         const segmentColor = (index < waypoints.length - 1) ? SEGMENT_COLORS[index % SEGMENT_COLORS.length] : 'transparent';
+                        const isIntermediate = index > 0 && index < waypoints.length - 1;
                         return (
                             <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                 <div style={{ width: '4px', height: '24px', borderRadius: '2px', backgroundColor: segmentColor, marginRight: '2px' }}></div>
                                 <span style={{ fontSize: '0.8rem', color: '#888', width: '20px', textAlign: 'center' }}>
                                     {index === 0 ? 'S' : (index === waypoints.length - 1 ? 'G' : index)}
                                 </span>
-                                <input 
+                                <input
                                     type="text" value={wp.name}
                                     onChange={(e) => handleWaypointChange(index, 'name', e.target.value)}
                                     onFocus={() => setSuggestionTargetIndex(index)}
                                     placeholder={index === 0 ? "Start..." : (index === waypoints.length - 1 ? "Goal..." : "Via...")}
                                     style={{ flex: 1, background: '#444', border: '1px solid #555', color: 'white', padding: '4px', borderRadius: '4px', fontSize: '0.9rem' }}
                                 />
-                                {index > 0 && index < waypoints.length - 1 && (
-                                    <input 
-                                        type="number" min="0" value={wp.stayTime}
-                                        onChange={(e) => handleWaypointChange(index, 'stayTime', parseFloat(e.target.value) || 0)}
-                                        onFocus={(e) => e.target.select()}
-                                        placeholder="sec"
-                                        style={{ width: '30px', background: '#333', border: '1px solid #555', color: '#88ff88', padding: '4px', borderRadius: '4px', fontSize: '0.8rem', textAlign: 'right' }}
-                                        title="Stay Duration (sec)"
-                                    />
-                                )}
-                                {wp.id && (
-                                    <button onClick={() => handleSyncTime(wp.id, wp.name)} title="Sync"
-                                        style={{ background: '#333', border: '1px solid #555', color: '#fbbf24', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
-                                    >⏱</button>
-                                )}
-                                {index > 0 && index < waypoints.length - 1 ? (
-                                    <button onClick={() => handleRemoveWaypoint(index)} style={{ background: '#555', border: 'none', color: '#aaa', width: '20px', height: '20px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>×</button>
-                                ) : null}
+                                {/* Fixed-width right zone so all rows have the same total width */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', width: '80px', justifyContent: 'flex-end' }}>
+                                    {isIntermediate ? (
+                                        <input
+                                            type="number" min="0" value={wp.stayTime}
+                                            onChange={(e) => handleWaypointChange(index, 'stayTime', parseFloat(e.target.value) || 0)}
+                                            onFocus={(e) => e.target.select()}
+                                            placeholder="sec"
+                                            style={{ width: '30px', background: '#333', border: '1px solid #555', color: '#88ff88', padding: '4px', borderRadius: '4px', fontSize: '0.8rem', textAlign: 'right' }}
+                                            title="Stay Duration (sec)"
+                                        />
+                                    ) : (
+                                        <div style={{ width: '30px' }} />
+                                    )}
+                                    {wp.id ? (
+                                        <button onClick={() => handleSyncTime(wp.id, wp.name)} title="Sync"
+                                            style={{ background: '#333', border: '1px solid #555', color: '#fbbf24', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
+                                        >⏱</button>
+                                    ) : (
+                                        <div style={{ width: '24px' }} />
+                                    )}
+                                    {isIntermediate ? (
+                                        <button onClick={() => handleRemoveWaypoint(index)}
+                                            style={{ background: '#555', border: 'none', color: '#aaa', width: '20px', height: '20px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
+                                        >×</button>
+                                    ) : (
+                                        <div style={{ width: '20px' }} />
+                                    )}
+                                </div>
                             </div>
                         );
                     })}

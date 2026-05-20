@@ -74,6 +74,14 @@ export const useAnimationPositions = (
         const lastVelocities: Record<string, { vx: number; vy: number }> = {};
         ICON_FILES.forEach(icon => { lastVelocities[icon] = { vx: 0, vy: 0 }; });
 
+        // --- フレーム間再利用バッファ（毎フレームのオブジェクト生成を排除）---
+        const _activePositions: ActivePosition[] = ICON_FILES.map(icon => (
+            { id: icon, x: 0, y: 0, floor: '', vx: 0, vy: 0, isFinished: false }
+        ));
+        let _activeCount = 0;
+        const _targets: Record<string, { x: number; y: number; floor: string; isFinished: boolean }> = {};
+        ICON_FILES.forEach(icon => { _targets[icon] = { x: 0, y: 0, floor: '', isFinished: false }; });
+
         let animId: number;
 
         const animate = (timestamp: number) => {
@@ -107,8 +115,10 @@ export const useAnimationPositions = (
 
             const currentTime = timeRef.current;
 
-            // 1. 全キャラの目標座標を計算
-            const activePositions: ActivePosition[] = [];
+            // 1. 全キャラの目標座標を計算（プールスロット上書き、新規オブジェクト生成なし）
+            // 非active icon の _targets.floor を '' にリセットして visible(false) を保証
+            for (let i = 0; i < ICON_FILES.length; i++) _targets[ICON_FILES[i]].floor = '';
+            _activeCount = 0;
             ICON_FILES.forEach(icon => {
                 if (deadIcons.includes(icon)) return;
                 const entry = pathCacheRef.current.get(icon);
@@ -125,18 +135,30 @@ export const useAnimationPositions = (
                     vx = lv.vx; vy = lv.vy;
                 }
 
-                activePositions.push({ id: icon, x: pos.x, y: pos.y, floor: pos.floor, vx, vy, isFinished: pos.isFinished });
+                const slot = _activePositions[_activeCount];
+                slot.id = icon;
+                slot.x = pos.x;
+                slot.y = pos.y;
+                slot.floor = pos.floor;
+                slot.vx = vx;
+                slot.vy = vy;
+                slot.isFinished = pos.isFinished;
+                _activeCount++;
             });
 
-            // 2. 衝突オフセット計算
-            const offsets = getCollisionOffsets(activePositions, ICON_SIZE);
+            // 2. 衝突オフセット計算（count を渡して余分なスロットをスキップ）
+            const offsets = getCollisionOffsets(_activePositions, ICON_SIZE, _activeCount);
 
-            // 3. 最終目標座標を合成
-            const targets: Record<string, { x: number; y: number; floor: string; isFinished: boolean }> = {};
-            activePositions.forEach(p => {
+            // 3. 最終目標座標を合成（インプレース更新、新規オブジェクト生成なし）
+            for (let i = 0; i < _activeCount; i++) {
+                const p = _activePositions[i];
                 const off = offsets[p.id];
-                targets[p.id] = { x: p.x + off.x, y: p.y + off.y, floor: p.floor, isFinished: p.isFinished };
-            });
+                const t = _targets[p.id];
+                t.x = p.x + off.x;
+                t.y = p.y + off.y;
+                t.floor = p.floor;
+                t.isFinished = p.isFinished;
+            }
 
             // 4. 全 icon × 全 floorId の Konva ノードを直接操作（React 再レンダリングを経由しない）
             ICON_FILES.forEach(icon => {
@@ -144,7 +166,7 @@ export const useAnimationPositions = (
                     const node = charNodeRefs.current.get(`${icon}:${floorId}`);
                     if (!node) return;
 
-                    const target = targets[icon];
+                    const target = _targets[icon];
                     if (!target || target.floor !== floorId) {
                         node.visible(false);
                         return;

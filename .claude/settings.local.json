@@ -12,7 +12,13 @@
       "Bash(Get-ChildItem src/components/AnimationTimeline.tsx)",
       "Bash(Select-Object Name)",
       "Bash(del \"src\\\\components\\\\MapView.tsx\")",
-      "Bash(Remove-Item *)"
+      "Bash(Remove-Item *)",
+      "Bash(dir D:\\\\Study\\\\ManoSabaInfoOrganizer\\\\docs *)",
+      "Bash(Select-String -Pattern \"^\\(\\\\+\\\\+\\\\+|---|@@|\\\\+[^+]|-[^-]\\)\")",
+      "Bash(Select-Object -First 100)",
+      "PowerShell(cd \"D:\\\\Study\\\\ManoSabaInfoOrganizer\"; git diff src/components/NoteView.tsx | Select-String -Pattern \"^\\(\\\\+\\\\+\\\\+|---|@@|\\\\+[^+]|-[^-]\\)\" | Select-Object -First 120 | ForEach-Object { $_.Line })",
+      "PowerShell(cd \"D:\\\\Study\\\\ManoSabaInfoOrganizer\"; git diff src/components/NoteView.tsx | Select-String -Pattern \"\\(getNodeScreenPosition|renderFloatingTextToolbar|property-bar|tbTop|tbLeft\\)\" | ForEach-Object { $_.Line })",
+      "Bash(git mv *)"
     ]
   }
 }

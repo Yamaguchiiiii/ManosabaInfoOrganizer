@@ -19,25 +19,35 @@ export interface PositionWithVelocity {
     vy: number;
 }
 
-// 衝突判定とオフセット計算 (変更なし)
+// --- 衝突判定用プール（毎フレームのオブジェクト生成を排除）---
+// ICON_FILES.length = 15 に対して余裕を持たせた上限
+const _MAX_POSITIONS = 16;
+const _unionParent = new Int32Array(_MAX_POSITIONS);
+const _groupMembers: number[][] = Array.from({ length: _MAX_POSITIONS }, () => []);
+const _sharedOffsets: Record<string, { x: number; y: number }> = {};
+
+// 衝突判定とオフセット計算
 export const getCollisionOffsets = (
     positions: PositionWithVelocity[],
-    iconSize: number
-): Record<string, { x: number, y: number }> => {
+    iconSize: number,
+    count?: number
+): Record<string, { x: number; y: number }> => {
 
-    const n = positions.length;
+    const n = count ?? positions.length;
     const BASE_THRESHOLD = iconSize * 0.45;
 
-    const parent = Array.from({ length: n }, (_, i) => i);
+    // _unionParent を初期化（既存配列を再利用）
+    for (let i = 0; i < n; i++) _unionParent[i] = i;
+
     const find = (i: number): number => {
-        if (parent[i] === i) return i;
-        parent[i] = find(parent[i]);
-        return parent[i];
+        if (_unionParent[i] === i) return i;
+        _unionParent[i] = find(_unionParent[i]);
+        return _unionParent[i];
     };
     const union = (i: number, j: number) => {
         const rootI = find(i);
         const rootJ = find(j);
-        if (rootI !== rootJ) parent[rootI] = rootJ;
+        if (rootI !== rootJ) _unionParent[rootI] = rootJ;
     };
 
     for (let i = 0; i < n; i++) {
@@ -50,32 +60,39 @@ export const getCollisionOffsets = (
         }
     }
 
-    const groups: Record<number, number[]> = {};
-    for (let i = 0; i < n; i++) {
-        const root = find(i);
-        if (!groups[root]) groups[root] = [];
-        groups[root].push(i);
-    }
+    // _groupMembers をクリアして再利用
+    for (let i = 0; i < n; i++) _groupMembers[i].length = 0;
+    for (let i = 0; i < n; i++) _groupMembers[find(i)].push(i);
 
-    const offsets: Record<string, { x: number, y: number }> = {};
-    positions.forEach(p => offsets[p.id] = { x: 0, y: 0 });
+    // _sharedOffsets を初期化（既存エントリを上書き、新規 id のみ生成）
+    for (let i = 0; i < n; i++) {
+        const id = positions[i].id;
+        if (_sharedOffsets[id]) {
+            _sharedOffsets[id].x = 0;
+            _sharedOffsets[id].y = 0;
+        } else {
+            _sharedOffsets[id] = { x: 0, y: 0 };
+        }
+    }
 
     const stepSize = iconSize * 0.8;
 
-    Object.values(groups).forEach(members => {
-        if (members.length <= 1) return;
+    for (let i = 0; i < n; i++) {
+        const members = _groupMembers[i];
+        if (members.length <= 1) continue;
 
         members.sort((a, b) => positions[a].id.localeCompare(positions[b].id));
 
         let centerX = 0, centerY = 0;
         let sumVx = 0, sumVy = 0;
 
-        members.forEach(idx => {
+        for (let k = 0; k < members.length; k++) {
+            const idx = members[k];
             centerX += positions[idx].x;
             centerY += positions[idx].y;
             sumVx += positions[idx].vx;
             sumVy += positions[idx].vy;
-        });
+        }
 
         centerX /= members.length;
         centerY /= members.length;
@@ -110,8 +127,9 @@ export const getCollisionOffsets = (
         const startX = -gridWidth / 2;
         const startY = -gridHeight / 2;
 
-        members.forEach((originalIndex, k) => {
-            let col, row;
+        for (let k = 0; k < members.length; k++) {
+            const originalIndex = members[k];
+            let col: number, row: number;
             if (useRowMajorFilling) {
                 col = k % colCount;
                 row = Math.floor(k / colCount);
@@ -120,19 +138,16 @@ export const getCollisionOffsets = (
                 col = Math.floor(k / rowCount);
             }
 
-            const targetRelX = startX + col * stepSize;
-            const targetRelY = startY + row * stepSize;
-            const targetAbsX = centerX + targetRelX;
-            const targetAbsY = centerY + targetRelY;
+            const targetAbsX = centerX + startX + col * stepSize;
+            const targetAbsY = centerY + startY + row * stepSize;
 
-            offsets[positions[originalIndex].id] = {
-                x: targetAbsX - positions[originalIndex].x,
-                y: targetAbsY - positions[originalIndex].y
-            };
-        });
-    });
+            // 既存オブジェクトを上書き（新規生成しない）
+            _sharedOffsets[positions[originalIndex].id].x = targetAbsX - positions[originalIndex].x;
+            _sharedOffsets[positions[originalIndex].id].y = targetAbsY - positions[originalIndex].y;
+        }
+    }
 
-    return offsets;
+    return _sharedOffsets;
 };
 
 // ----------------------------------------------------------------------------

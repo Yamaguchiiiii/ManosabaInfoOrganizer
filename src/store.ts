@@ -56,9 +56,9 @@ export type NoteObjectType = 'image' | 'text' | 'rect' | 'circle' | 'triangle' |
 
 export interface NoteObject {
     id: string; type: NoteObjectType; x: number; y: number; width?: number; height?: number;
-    rotation?: number; scaleX?: number; scaleY?: number; fill?: string; text?: string; fontSize?: number; fontWeight?: string; 
-    content?: string; stroke?: string; strokeWidth?: number; points?: number[]; lineStyle?: 'normal' | 'marker' | 'pen'; 
-    canvasIndex?: number; 
+    rotation?: number; scaleX?: number; scaleY?: number; fill?: string; text?: string; fontSize?: number; fontWeight?: string;
+    content?: string; stroke?: string; strokeWidth?: number; points?: number[]; lineStyle?: 'normal' | 'marker' | 'pen';
+    canvasIndex?: number; groupId?: string; keepRatio?: boolean;
 }
 
 export interface CanvasState {
@@ -118,6 +118,7 @@ export interface AppState {
     removeNoteObjects: (targetType: NoteTargetType, targetId: string, objIds: string[]) => void;
     addNoteAsset: (targetType: NoteTargetType, targetId: string, asset: string) => void;
     removeNoteAsset: (targetType: NoteTargetType, targetId: string, index: number) => void;
+    reorderNoteObject: (targetType: NoteTargetType, targetId: string, objId: string, direction: 'front' | 'back' | 'up' | 'down') => void;
 
     addMiscPage: (title: string) => void;
     updateMiscPage: (id: string, content: string) => void;
@@ -426,6 +427,22 @@ export const useAppStore = create<AppState>()(
             if (!get()._hasHydrated) return;
             get().saveNoteHistory();
             set((state) => updateCanvasState(state, targetType, targetId, (canvas) => ({ ...canvas, assets: canvas.assets.filter((_, i) => i !== index) })));
+        },
+        reorderNoteObject: (targetType, targetId, objId, direction) => {
+            if (!get()._hasHydrated) return;
+            get().saveNoteHistory();
+            set((state) => updateCanvasState(state, targetType, targetId, (canvas) => {
+                const objs = [...canvas.objects];
+                const idx = objs.findIndex(o => o.id === objId);
+                if (idx === -1) return canvas;
+                const [item] = objs.splice(idx, 1);
+                if (direction === 'front') objs.push(item);
+                else if (direction === 'back') objs.unshift(item);
+                else if (direction === 'up' && idx < objs.length) objs.splice(idx + 1, 0, item);
+                else if (direction === 'down' && idx > 0) objs.splice(idx - 1, 0, item);
+                else objs.splice(idx, 0, item);
+                return { ...canvas, objects: objs };
+            }));
         },
 
         addMiscPage: (title) => {
