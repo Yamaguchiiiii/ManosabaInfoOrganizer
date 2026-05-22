@@ -1795,7 +1795,7 @@ export const NoteView: React.FC = React.memo(() => {
 
     const addNoteAsset = useAppStore(state => state.addNoteAsset);
     const addNoteObject = useAppStore(state => state.addNoteObject);
-    
+
     useEffect(() => {
         if (activeNoteTab !== 'character') return;
         if (initializedCharsRef.current.has(selectedChar)) return;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
 import Konva from 'konva';
-import { useAppStore, FloorId, MapNode, Waypoint } from '../store';
+import { useAppStore, FloorId, MapNode, Waypoint, computeDuration } from '../store';
 import { MapImage } from './common/MapElements';
 import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
@@ -9,7 +9,7 @@ import { SuggestionSidebar } from './common/SuggestionSidebar';
 import { useStageZoom } from '../hooks/useStageZoom';
 import { calculateNodeArrivalTime } from '../utils/animationUtils';
 
-import { WaypointPanel } from './create/WaypointPanel';
+import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
 import { useWaypointPath } from '../hooks/useWaypointPath';
 import { MergeModal, MergeCandidate } from './modals/MergeModal';
@@ -73,6 +73,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   // ▼ 追加: 同期した地点と時間を保持し、パスが伸びても時間がズレないように追従させるためのステート
   const [syncTarget, setSyncTarget] = useState<{ waypointId: string, meetingTime: number } | null>(null);
+  const [syncConstraints, setSyncConstraints] = useState<SyncConstraint[]>([]);
 
   const [waypoints, setWaypoints] = useState<Waypoint[]>([
       { id: '', name: '', stayTime: 0 },
@@ -115,7 +116,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
       setWaypoints([{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }]);
       setStartTime(0);
       setConnectingNodeId(null);
-      setSyncTarget(null); // キャラ切り替え時に同期ターゲットもリセット
+      setSyncTarget(null);
+      setSyncConstraints([]);
   }, [primaryIcon]);
   
   const savedPathData = useMemo(() => {
@@ -178,14 +180,13 @@ export const CreateView: React.FC<CreateViewProps> = ({
     }
   }, [isEditing, savedPathData, hookPath, hookSegments, waypoints, startTime]);
 
-  // ▼ 追加: 同行等によりパス長が変わった際、指定した同期地点での到着時間がズレないように startTime を自動補正する
   useEffect(() => {
       if (syncTarget && displayPath.length > 0 && isEditing) {
-          const tempData = { 
-              path: displayPath, 
-              startTime: 0, 
-              duration: Math.max(displayPath.length * 30, 60), 
-              waypoints 
+          const tempData = {
+              path: displayPath,
+              startTime: 0,
+              duration: computeDuration(displayPath, nodes),
+              waypoints
           };
           const travelTime = calculateNodeArrivalTime(tempData, syncTarget.waypointId, nodes);
           if (travelTime !== null) {
@@ -265,12 +266,15 @@ export const CreateView: React.FC<CreateViewProps> = ({
   };
 
   const handleAddWaypoint = () => {
-      setWaypoints(prev => { 
-          const next = [...prev]; 
-          next.splice(next.length - 1, 0, { id: '', name: '', stayTime: 0 }); 
-          return next; 
+      setWaypoints(prev => {
+          const next = [...prev];
+          const goal = next[next.length - 1];
+          // 現在のGoalの地点を新しい中継地点にコピーし、Goalはクリア
+          next.splice(next.length - 1, 0, { id: goal.id, name: goal.name, stayTime: 0 });
+          next[next.length - 1] = { id: '', name: '', stayTime: 0 };
+          return next;
       });
-      setIsEditing(true); 
+      setIsEditing(true);
   };
   
   const handleRemoveWaypoint = (index: number) => {
@@ -304,18 +308,26 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const handleEditPath = () => {
       if (!savedDataRaw) return;
       const currentData = Array.isArray(savedDataRaw) ? { path: savedDataRaw, waypoints: undefined, startTime: 0 } : savedDataRaw as any;
-      
+
       if (currentData.waypoints && currentData.waypoints.length > 0) {
           setWaypoints(currentData.waypoints);
       } else if (currentData.path && currentData.path.length > 0) {
           const path = currentData.path;
-          const s = nodeMap[path[0]]; 
-          const e = nodeMap[path[path.length - 1]]; 
+          const s = nodeMap[path[0]];
+          const e = nodeMap[path[path.length - 1]];
           setWaypoints([{ id: path[0], name: s?.name || "", stayTime: 0 }, { id: path[path.length - 1], name: e?.name || "", stayTime: 0 }]);
       } else {
           setWaypoints([{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }]);
       }
 
+      // 保存済みのSync制約を復元し、先頭をアンカーとしてsyncTargetに設定する
+      const restoredConstraints: SyncConstraint[] = currentData.syncConstraints || [];
+      setSyncConstraints(restoredConstraints);
+      if (restoredConstraints.length > 0) {
+          setSyncTarget({ waypointId: restoredConstraints[0].waypointId, meetingTime: restoredConstraints[0].meetingTime });
+      } else {
+          setSyncTarget(null);
+      }
       setStartTime(currentData.startTime || 0);
       setIsEditing(true);
   };
@@ -323,13 +335,13 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const handleSyncTime = (waypointId: string, waypointName: string) => {
       if (!waypointId || !activePreset?.data) return;
       
-      const tempData = { 
-          path: displayPath, 
-          startTime: 0, 
-          duration: Math.max(displayPath.length * 30, 60), 
-          waypoints 
+      const tempData = {
+          path: displayPath,
+          startTime: 0,
+          duration: computeDuration(displayPath, nodes),
+          waypoints
       };
-      
+
       const myTime = calculateNodeArrivalTime(tempData, waypointId, nodes);
       if (myTime === null) return alert("計算不可");
       setMyCurrentTravelTime(myTime);
@@ -337,7 +349,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       const candidates: MergeCandidate[] = [];
       Object.entries(activePreset.data).forEach(([cid, data]: [string, any]) => {
           if (selectedIcons.includes(cid)) return;
-          const cData = Array.isArray(data) ? { path: data, startTime: 0, duration: data.length * 30 } : data;
+          const cData = Array.isArray(data) ? { path: data, startTime: 0, duration: computeDuration(data, nodes) } : data;
           const arrival = calculateNodeArrivalTime(cData, waypointId, nodes);
           if (arrival !== null) {
               const currentStart = cData.startTime || 0;
@@ -369,15 +381,36 @@ export const CreateView: React.FC<CreateViewProps> = ({
       
       if (!isEditing) setIsEditing(true);
 
+      const isFirstSync = syncConstraints.length === 0;
       const myAbsArrival = startTime + myCurrentTravelTime;
-      const allArrivalTimes = [myAbsArrival, ...targets.map(t => t.arrivalTime)];
-      const meetingTime = Math.max(...allArrivalTimes);
 
-      // ▼ 修正: ここで同期ターゲットを記録することで、のちにパスが伸びても時間がズレないようにする
-      setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime });
+      let meetingTime: number;
+      if (isFirstSync) {
+          // 1回目: 全員の到達時刻の最大値を合流時刻とし、自分のstartTimeも調整する
+          const allArrivalTimes = [myAbsArrival, ...targets.map(t => t.arrivalTime)];
+          meetingTime = Math.max(...allArrivalTimes);
+          setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime });
+          setStartTime(meetingTime - myCurrentTravelTime);
+      } else {
+          // 2回目以降: startTimeは1回目のアンカーで固定。自分の自然到達時刻を合流時刻とする
+          meetingTime = myAbsArrival;
+      }
 
-      const newMyStartTime = meetingTime - myCurrentTravelTime;
-      setStartTime(newMyStartTime);
+      setSyncConstraints(prev => {
+          const newConstraint: SyncConstraint = {
+              waypointId: mergeTargetWaypointId,
+              waypointName: mergeTargetWaypointName,
+              meetingTime,
+              charIds: targets.map(t => t.charId)
+          };
+          const existingIdx = prev.findIndex(c => c.waypointId === mergeTargetWaypointId);
+          if (existingIdx !== -1) {
+              const next = [...prev];
+              next[existingIdx] = newConstraint;
+              return next;
+          }
+          return [...prev, newConstraint];
+      });
 
       targets.forEach(target => {
           const newTargetStartTime = meetingTime - target.travelTime;
@@ -417,11 +450,24 @@ export const CreateView: React.FC<CreateViewProps> = ({
       }
   };
 
+  const handleRemoveSyncConstraint = (index: number) => {
+      setSyncConstraints(prev => {
+          const next = prev.filter((_, i) => i !== index);
+          // アンカーは常に先頭の制約。削除後に残っていれば先頭をsyncTargetに設定する
+          if (next.length > 0) {
+              setSyncTarget({ waypointId: next[0].waypointId, meetingTime: next[0].meetingTime });
+          } else {
+              setSyncTarget(null);
+          }
+          return next;
+      });
+  };
+
   const handleSavePath = () => {
       if (!displayPath.length || !selectedIcons.length) return;
       const validWp = waypoints.filter(wp => wp.id !== "");
-      if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime);
-      else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime);
+      if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints);
+      else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints);
       setConnectingNodeId(null); setIsEditing(false);
   };
   const handleDeletePath = () => { 
@@ -648,7 +694,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
             </Stage>
         )}
 
-        <WaypointPanel 
+        <WaypointPanel
             isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
             highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
             startTime={startTime} setStartTime={setStartTime} waypoints={waypoints}
@@ -656,6 +702,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
             handleSyncTime={handleSyncTime} handleRemoveWaypoint={handleRemoveWaypoint}
             handleAddWaypoint={handleAddWaypoint} handleSavePath={handleSavePath}
             handleEditPath={handleEditPath} handleDeletePath={handleDeletePath}
+            syncConstraints={syncConstraints}
+            onRemoveSyncConstraint={handleRemoveSyncConstraint}
         />
       </div>
 

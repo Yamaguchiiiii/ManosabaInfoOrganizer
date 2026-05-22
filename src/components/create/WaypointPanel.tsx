@@ -1,6 +1,8 @@
 import React from 'react';
-import { Waypoint } from '../../store';
+import { Waypoint, SyncConstraint } from '../../store';
 import { SEGMENT_COLORS } from '../../utils/mapDrawUtils';
+
+export type { SyncConstraint };
 
 interface WaypointPanelProps {
     isGraphEditMode: boolean;
@@ -19,13 +21,16 @@ interface WaypointPanelProps {
     handleSavePath: () => void;
     handleEditPath: () => void;
     handleDeletePath: () => void;
+    syncConstraints: SyncConstraint[];
+    onRemoveSyncConstraint: (index: number) => void;
 }
 
 export const WaypointPanel: React.FC<WaypointPanelProps> = ({
     isGraphEditMode, selectedIcons, highlightedPath, savedPathData, isEditing,
     startTime, setStartTime, waypoints, handleWaypointChange, setSuggestionTargetIndex,
     handleSyncTime, handleRemoveWaypoint, handleAddWaypoint,
-    handleSavePath, handleEditPath, handleDeletePath
+    handleSavePath, handleEditPath, handleDeletePath,
+    syncConstraints, onRemoveSyncConstraint
 }) => {
     if (isGraphEditMode) return null;
     if (selectedIcons.length === 0 && highlightedPath.length === 0) return null;
@@ -74,6 +79,13 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                 />
                                 {/* Fixed-width right zone so all rows have the same total width */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '3px', width: '80px', justifyContent: 'flex-end' }}>
+                                    {wp.id ? (
+                                        <button onClick={() => handleSyncTime(wp.id, wp.name)} title="Sync"
+                                            style={{ background: '#333', border: '1px solid #555', color: '#fbbf24', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
+                                        >⏱</button>
+                                    ) : (
+                                        <div style={{ width: '24px' }} />
+                                    )}
                                     {isIntermediate ? (
                                         <input
                                             type="number" min="0" value={wp.stayTime}
@@ -85,13 +97,6 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                         />
                                     ) : (
                                         <div style={{ width: '30px' }} />
-                                    )}
-                                    {wp.id ? (
-                                        <button onClick={() => handleSyncTime(wp.id, wp.name)} title="Sync"
-                                            style={{ background: '#333', border: '1px solid #555', color: '#fbbf24', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
-                                        >⏱</button>
-                                    ) : (
-                                        <div style={{ width: '24px' }} />
                                     )}
                                     {isIntermediate ? (
                                         <button onClick={() => handleRemoveWaypoint(index)}
@@ -105,6 +110,41 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                         );
                     })}
                     <button onClick={handleAddWaypoint} style={{ marginTop: '5px', background: 'none', border: '1px dashed #555', color: '#aaa', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>+ Add Stop</button>
+
+                    {syncConstraints.length > 0 && (
+                        <div style={{ borderTop: '1px solid #444', paddingTop: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '2px' }}>Sync Constraints:</div>
+                            {syncConstraints.map((sc, i) => {
+                                const isAnchor = i === 0;
+                                return (
+                                    <div key={i} style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                        padding: '3px 6px', borderRadius: '4px',
+                                        background: isAnchor ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.03)',
+                                        border: isAnchor ? '1px solid rgba(251,191,36,0.3)' : '1px solid transparent'
+                                    }}>
+                                        <span style={{ color: '#fbbf24', fontSize: '0.85rem' }}>⏱</span>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ color: '#ccc', fontSize: '0.78rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {sc.waypointName}
+                                            </span>
+                                            <span style={{ color: '#888', fontSize: '0.68rem' }}>
+                                                {Math.round(sc.meetingTime)}fr{sc.charIds.length > 0 && ` · ${sc.charIds.length}char`}
+                                            </span>
+                                        </div>
+                                        {isAnchor && (
+                                            <span style={{ fontSize: '0.62rem', color: '#007acc', whiteSpace: 'nowrap' }}>anchor</span>
+                                        )}
+                                        <button
+                                            onClick={() => onRemoveSyncConstraint(i)}
+                                            title="Remove sync constraint"
+                                            style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '0.8rem', lineHeight: '1', padding: '0 2px', flexShrink: 0 }}
+                                        >×</button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
             

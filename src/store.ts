@@ -43,8 +43,15 @@ export interface Waypoint {
     id: string; name: string; stayTime: number;
 }
 
+export interface SyncConstraint {
+    waypointId: string;
+    waypointName: string;
+    meetingTime: number;
+    charIds: string[];
+}
+
 export interface CharacterTimelineData {
-    path: string[]; startTime: number; duration: number; waypoints?: Waypoint[]; 
+    path: string[]; startTime: number; duration: number; waypoints?: Waypoint[]; syncConstraints?: SyncConstraint[];
 }
 
 export interface AnimationPreset {
@@ -96,9 +103,9 @@ export interface AppState {
     updatePresetName: (id: string, name: string) => void; updatePresetNote: (id: string, note: string) => void;
     deletePreset: (id: string) => void;
 
-    saveCharacterAnimation: (presetId: string, charId: string, path: string[], waypoints: Waypoint[], startTIme?: number) => void;
+    saveCharacterAnimation: (presetId: string, charId: string, path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[]) => void;
     deleteCharacterAnimation: (presetId: string, charId: string) => void;
-    saveBatchCharacterAnimations: (presentId: string, charIds: string[], path: string[], waypoints: Waypoint[], startTIme?: number) => void;
+    saveBatchCharacterAnimations: (presetId: string, charIds: string[], path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[]) => void;
     updateTimelineItem: (presetId: string, charId: string, updates: Partial<CharacterTimelineData>) => void;
     toggleDeadIcon: (icon: string) => void;
 
@@ -236,7 +243,7 @@ const updateCanvasState = (
     return { notes: newNotes };
 };
 
-const computeDuration = (path: string[], nodes: MapNode[]): number => {
+export const computeDuration = (path: string[], nodes: MapNode[]): number => {
     const nodesMap: Record<string, MapNode> = {};
     nodes.forEach(n => { nodesMap[n.id] = n; });
     let totalDist = 0;
@@ -323,10 +330,10 @@ export const useAppStore = create<AppState>()(
             return { presets: newPresets, activePresetId: newActiveId };
         }),
 
-        saveCharacterAnimation: (presetId, charId, path, waypoints, startTIme = 0) => set((state) => ({
+        saveCharacterAnimation: (presetId, charId, path, waypoints, startTIme = 0, syncConstraints) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
-                const newData: CharacterTimelineData = { path: path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints: waypoints };
+                const newData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints };
                 return { ...p, data: { ...p.data, [charId]: newData } };
             })
         })),
@@ -337,11 +344,11 @@ export const useAppStore = create<AppState>()(
                 return { ...p, data: newData };
             })
         })),
-        saveBatchCharacterAnimations: (presetId, charIds, path, waypoints, startTIme=0) => set((state) => ({
+        saveBatchCharacterAnimations: (presetId, charIds, path, waypoints, startTIme=0, syncConstraints) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
                 const newData = { ...p.data };
-                const timelineData: CharacterTimelineData = { path: path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints: waypoints };
+                const timelineData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints };
                 charIds.forEach(charId => { newData[charId] = timelineData; });
                 return { ...p, data: newData };
             })
