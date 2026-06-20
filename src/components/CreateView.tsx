@@ -25,10 +25,28 @@ const sortNodes = (a: MapNode, b: MapNode) => {
     return (a.name || '').localeCompare(b.name || '');
 };
 
+interface FollowWaypoint extends Waypoint {
+    displayLabel: string; // 「地点X（2回目）」など、同名地点の訪問回数を含む表示名
+}
+
 interface FollowTargetInfo {
     charId: string;
-    subsequentWaypoints: Waypoint[];
+    subsequentWaypoints: FollowWaypoint[];
 }
+
+// targetWaypoints（訪問順）を path 上のオカレンス順に解決し、各waypointの出現位置を返す。
+// 同一地点を複数回訪れる経路でも正しい時系列インデックスを得る（indexOf の先頭固定問題を回避）。
+const resolveWaypointPathIndices = (path: string[], wps: Waypoint[]): number[] => {
+    const indices: number[] = [];
+    let from = 0;
+    for (const wp of wps) {
+        let idx = path.indexOf(wp.id, from);
+        if (idx === -1) idx = path.indexOf(wp.id); // 順序が崩れている場合のフォールバック
+        indices.push(idx);
+        if (idx !== -1) from = idx + 1;
+    }
+    return indices;
+};
 
 interface CreateViewProps {
     onFloorChange: (floor: FloorId) => void;
@@ -440,18 +458,36 @@ export const CreateView: React.FC<CreateViewProps> = ({
       const targetWaypoints = followTarget.data.waypoints || [];
       const targetPath = followTarget.data.path || (Array.isArray(followTarget.data) ? followTarget.data : []);
       
+      // 合流地点は候補キャラの最初の訪問（到達時刻計算と整合）
       const targetPathIndex = targetPath.indexOf(mergeTargetWaypointId);
 
       if (targetPathIndex !== -1) {
-          const subsequentWaypoints = targetWaypoints.filter((wp: Waypoint) => {
-              const wpPathIndex = targetPath.indexOf(wp.id);
-              return wpPathIndex > targetPathIndex;
+          const wpIndices = resolveWaypointPathIndices(targetPath, targetWaypoints);
+
+          // 同名地点が複数回出るものだけ「（n回目）」を付与する
+          const totalCount: Record<string, number> = {};
+          targetWaypoints.forEach((wp: Waypoint) => {
+              const key = wp.name || wp.id;
+              totalCount[key] = (totalCount[key] || 0) + 1;
           });
+          const runningCount: Record<string, number> = {};
+
+          const subsequentWaypoints: FollowWaypoint[] = targetWaypoints
+              .map((wp: Waypoint, i: number) => {
+                  const key = wp.name || wp.id;
+                  runningCount[key] = (runningCount[key] || 0) + 1;
+                  const occurrence = runningCount[key];
+                  const displayLabel = totalCount[key] > 1 ? `${key}（${occurrence}回目）` : key;
+                  return { ...wp, pathIndex: wpIndices[i], displayLabel };
+              })
+              .filter(item => item.pathIndex > targetPathIndex)
+              .sort((a, b) => a.pathIndex - b.pathIndex)
+              .map(({ id, name, stayTime, displayLabel }) => ({ id, name, stayTime, displayLabel }));
 
           if (subsequentWaypoints.length > 0) {
               setFollowTargetInfo({
                   charId: followTarget.charId,
-                  subsequentWaypoints: subsequentWaypoints
+                  subsequentWaypoints
               });
           }
       }
@@ -767,7 +803,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
                       if (next.length > 0 && next[next.length - 1].id === '') {
                           next.pop();
                       }
-                      const appended = waypointsToAppend.map(wp => ({ ...wp }));
+                      // displayLabel など余分なフィールドを落として純粋な Waypoint として追加
+                      const appended = waypointsToAppend.map(wp => ({ id: wp.id, name: wp.name, stayTime: wp.stayTime }));
                       return [...next, ...appended];
                   });
                   setIsEditing(true);
@@ -839,7 +876,7 @@ const FollowConfirmModal: React.FC<{
                                 onChange={() => setSelectedIndex(i)} 
                                 style={{ marginRight: '10px' }}
                             />
-                            <span>{wp.name || wp.id} まで同行</span>
+                            <span>{wp.displayLabel} まで同行</span>
                         </label>
                     ))}
                 </div>
