@@ -128,10 +128,12 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   useEffect(() => {
       setWaypoints(prev => prev.map(wp => {
-          const matchedNode = nodes.find(n => n.name === wp.name);
+          // 名前が空のwaypointは名前が空のノードへ誤マッチさせない（Goal未設定時の誤ハイライト防止）
+          const trimmedName = wp.name ? wp.name.trim() : "";
+          const matchedNode = trimmedName ? nodes.find(n => n.name === wp.name) : undefined;
           if (matchedNode) {
               return { ...wp, id: matchedNode.id };
-          } 
+          }
           else if (wp.id) {
               const currentNode = nodeMap[wp.id];
               if (!currentNode) {
@@ -274,6 +276,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
           next[next.length - 1] = { id: '', name: '', stayTime: 0 };
           return next;
       });
+      // 追加後の新しいGoal(末尾)をターゲットにする。
+      // (Add Stop 前にGoalへフォーカスしていた場合、その index が移動した経由地を指してしまうのを防ぐ)
+      setSuggestionTargetIndex(waypoints.length);
       setIsEditing(true);
   };
   

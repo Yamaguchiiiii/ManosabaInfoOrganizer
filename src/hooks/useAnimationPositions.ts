@@ -59,11 +59,26 @@ export const useAnimationPositions = (
         let max = 0;
         const nodesMap = nodesMapRef.current;
         const data = activePreset.data as Record<string, unknown>;
+
+        // 全キャラの startTime 最小値を求め、先頭の「誰も動かない待機時間」を除去する。
+        // 全員を同じ offset でシフトするため、Sync による相対的な時間差は保たれる。
+        const charDataList: { icon: string; charData: CharacterTimelineData }[] = [];
+        let minStart = Infinity;
         ICON_FILES.forEach(icon => {
             const charData = toCharacterTimelineData(data[icon]);
             if (!charData) return;
-            pathCacheRef.current.set(icon, { charData, cached: precomputePath(charData.path, nodesMap) });
-            const end = (charData.startTime ?? 0) + (charData.duration ?? 0);
+            charDataList.push({ icon, charData });
+            const st = charData.startTime ?? 0;
+            if (st < minStart) minStart = st;
+        });
+        const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
+
+        charDataList.forEach(({ icon, charData }) => {
+            const normalized: CharacterTimelineData = offset !== 0
+                ? { ...charData, startTime: (charData.startTime ?? 0) - offset }
+                : charData;
+            pathCacheRef.current.set(icon, { charData: normalized, cached: precomputePath(normalized.path, nodesMap) });
+            const end = (normalized.startTime ?? 0) + (normalized.duration ?? 0);
             if (end > max) max = end;
         });
         maxDurationRef.current = max;

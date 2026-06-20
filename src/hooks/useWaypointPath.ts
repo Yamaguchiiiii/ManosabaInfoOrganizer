@@ -12,6 +12,8 @@ export const useWaypointPath = (
     const { highlightedPath, pathSegments } = useMemo(() => {
         const resolvedPoints = waypoints.map(wp => {
             if (wp.id !== "") return wp;
+            // 名前が空のwaypointを、名前が空のノード(階段やパス等)に誤マッチさせない
+            if (!wp.name || wp.name.trim() === "") return wp;
             const match = nodes.find(n => n.name === wp.name);
             return match ? { ...wp, id: match.id } : wp;
         });

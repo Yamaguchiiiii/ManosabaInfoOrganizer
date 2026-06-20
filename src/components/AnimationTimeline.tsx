@@ -32,11 +32,22 @@ export const AnimationTimeline: React.FC = () => {
     }, [setIsPlaying]);
 
     const maxDuration = useMemo(() => {
-        if (!activePreset || !activePreset.data) return 300; 
+        if (!activePreset || !activePreset.data) return 300;
+
+        const vals = Object.values(activePreset.data) as any[];
+
+        // useAnimationPositions と同じく startTime 最小値を offset として除去し、
+        // タイムラインの長さを正規化後のアニメーションと一致させる
+        let minStart = Infinity;
+        vals.forEach((val) => {
+            const start = (val && val.startTime) || 0;
+            if (start < minStart) minStart = start;
+        });
+        const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
 
         let max = 0;
-        Object.values(activePreset.data).forEach((val: any) => {
-            const start = val.startTime || 0;
+        vals.forEach((val) => {
+            const start = ((val && val.startTime) || 0) - offset;
             const dur = val.duration !== undefined ? val.duration : (Array.isArray(val) ? val.length * 30 : 0);
             const end = start + dur;
             if (end > max) {
