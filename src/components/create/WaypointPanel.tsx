@@ -15,7 +15,7 @@ interface WaypointPanelProps {
     waypoints: Waypoint[];
     handleWaypointChange: (index: number, field: keyof Waypoint, value: string | number) => void;
     setSuggestionTargetIndex: (index: number) => void;
-    handleSyncTime: (id: string, name: string) => void;
+    handleSyncTime: (id: string, name: string, waypointIndex?: number) => void;
     handleRemoveWaypoint: (index: number) => void;
     handleAddWaypoint: () => void;
     handleSavePath: () => void;
@@ -80,7 +80,7 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                 {/* Fixed-width right zone so all rows have the same total width */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '3px', width: '80px', justifyContent: 'flex-end' }}>
                                     {wp.id ? (
-                                        <button onClick={() => handleSyncTime(wp.id, wp.name)} title="Sync"
+                                        <button onClick={() => handleSyncTime(wp.id, wp.name, index)} title="Sync"
                                             style={{ background: '#333', border: '1px solid #555', color: '#fbbf24', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
                                         >⏱</button>
                                     ) : (

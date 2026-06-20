@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAppStore, FloorId, ICON_FILES } from '../store';
 import { useSidebarResizer } from '../hooks/useSidebarResizer';
 
@@ -24,9 +24,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   const toggleDeadIcon = useAppStore(state => state.toggleDeadIcon);
   const activeNoteTab = useAppStore(state => state.activeNoteTab);
   const setActiveNoteTab = useAppStore(state => state.setActiveNoteTab);
+  const isSkullMode = useAppStore(state => state.isSkullMode);
+  const setSkullMode = useAppStore(state => state.setSkullMode);
 
   const { startResizing } = useSidebarResizer(setSidebarWidth);
-  const [isSkullMode, setIsSkullMode] = useState(false);
 
   const activePreset = presets.find(p => p.id === activePresetId);
   const deadIcons = activePreset?.deadIcons || [];
@@ -88,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                         className={`sub-menu-item ${activeNoteTab === 'preset' ? 'active' : ''}`} 
                         onClick={(e) => { e.stopPropagation(); setActiveNoteTab('preset'); }}
                     >
-                        プリセット (Preset)
+                        事件ノート
                     </div>
                     <div 
                         className={`sub-menu-item ${activeNoteTab === 'character' ? 'active' : ''}`} 
@@ -109,9 +110,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         {mode !== 'note' && mode !== 'animate' && (
             <>
                 <div className="section-title">FLOOR</div>
-                <div className={`menu-item ${activeFloor === '2F' ? 'active' : ''}`} onClick={() => onFloorChange('2F')}>floor_2 (2F)</div>
-                <div className={`menu-item ${activeFloor === '1F' ? 'active' : ''}`} onClick={() => onFloorChange('1F')}>floor_1 (1F)</div>
-                <div className={`menu-item ${activeFloor === 'B1' ? 'active' : ''}`} onClick={() => onFloorChange('B1')}>floor_b1 (B1)</div>
+                <div className={`menu-item ${activeFloor === '2F' ? 'active' : ''}`} onClick={() => onFloorChange('2F')}>2F</div>
+                <div className={`menu-item ${activeFloor === '1F' ? 'active' : ''}`} onClick={() => onFloorChange('1F')}>1F</div>
+                <div className={`menu-item ${activeFloor === 'B1' ? 'active' : ''}`} onClick={() => onFloorChange('B1')}>B1</div>
             </>
         )}
         
@@ -121,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     <span>ICONS</span>
                     {mode === 'create' && (
                     <button
-                        onClick={() => setIsSkullMode(!isSkullMode)}
+                        onClick={() => setSkullMode(!isSkullMode)}
                         style={{
                             background: isSkullMode ? '#ef4444' : 'transparent',
                             border: '1px solid #555',

@@ -111,6 +111,7 @@ export interface AppState {
     activeNoteTab: 'overview' | 'preset' | 'character' | 'misc'; setActiveNoteTab: (tab: 'overview' | 'preset' | 'character' | 'misc') => void;
 
     isGraphEditMode: boolean; setGraphEditMode:(isEdit: boolean) => void;
+    isSkullMode: boolean; setSkullMode: (v: boolean) => void;
     nodes: MapNode[]; edges: MapEdge[]; history: HistoryState[];
     undo: () => void; saveHistory: () => void;
     addNode: (node: MapNode) => void; updateNode: (id: string, pos: { x:number, y:number }, data?: Partial<MapNode>) => void;
@@ -138,6 +139,7 @@ export interface AppState {
     updateOverview: (content: string) => void;
     
     addNoteObject: (targetType: NoteTargetType, targetId: string, obj: NoteObject) => void;
+    addNoteObjects: (targetType: NoteTargetType, targetId: string, objs: NoteObject[]) => void;
     updateNoteObject: (targetType: NoteTargetType, targetId: string, objId: string, attrs: Partial<NoteObject>, skipHistory?: boolean) => void;
     updateNoteObjects: (targetType: NoteTargetType, targetId: string, updates: {id: string, attrs: Partial<NoteObject>}[], skipHistory?: boolean) => void;
     removeNoteObject: (targetType: NoteTargetType, targetId: string, objId: string) => void;
@@ -313,10 +315,11 @@ export const useAppStore = create<AppState>()(
         activeNoteTab: 'overview', setActiveNoteTab: (tab) => set({ activeNoteTab: tab }),
 
         isGraphEditMode: false, setGraphEditMode: (isEdit) => set({ isGraphEditMode: isEdit }),
+        isSkullMode: false, setSkullMode: (v) => set({ isSkullMode: v }),
         nodes: INITIAL_NODES, edges: INITIAL_EDGES, history: [],
         sidebarWidth: 200, setSidebarWidth: (width) => set({ sidebarWidth: width }),
 
-        presets: [{ id: 'chapter1', name: 'Chapter 1', data: {}, deadIcons: [] }],
+        presets: [{ id: 'chapter1', name: 'Episode 1', data: {}, deadIcons: [] }],
         activePresetId: 'chapter1',
 
         isPlaying: false, currentTime: 0, playbackSpeed: 1.0,
@@ -428,6 +431,13 @@ export const useAppStore = create<AppState>()(
             get().saveNoteHistory();
             set((state) => updateCanvasState(state, targetType, targetId, (canvas) => ({ ...canvas, objects: [...canvas.objects, obj] })));
         },
+        addNoteObjects: (targetType, targetId, objs) => {
+            if (!get()._hasHydrated) return;
+            if (objs.length === 0) return;
+            // 複数オブジェクトを1回の履歴で一括追加（ペースト時に1回のundoでまとめて取り消せるように）
+            get().saveNoteHistory();
+            set((state) => updateCanvasState(state, targetType, targetId, (canvas) => ({ ...canvas, objects: [...canvas.objects, ...objs] })));
+        },
         updateNoteObject: (targetType, targetId, objId, attrs, skipHistory = false) => {
             if (!get()._hasHydrated) return;
             if (!skipHistory) get().saveNoteHistory();
@@ -533,7 +543,14 @@ export const useAppStore = create<AppState>()(
                 Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== '_hasHydrated' && key !== 'dialog')
             ) as AppState,
         onRehydrateStorage: () => (state) => {
-            if (state) state.setHasHydrated(true);
+            if (state) {
+                // 旧デフォルト名 'Chapter 1' を 'Episode 1' に移行する（自動生成された初期プリセットのみ対象）
+                const defaultPreset = state.presets?.find(p => p.id === 'chapter1');
+                if (defaultPreset && defaultPreset.name === 'Chapter 1') {
+                    state.presets = state.presets.map(p => p.id === 'chapter1' ? { ...p, name: 'Episode 1' } : p);
+                }
+                state.setHasHydrated(true);
+            }
         }
     }
   )

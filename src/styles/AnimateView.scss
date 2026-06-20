@@ -48,16 +48,10 @@
     height: 100%;
     background-color: #252526;
     
+    // TimelineNote(canvas) を廃止し、操作盤(AnimationTimeline)でセル全体を使う
     .timeline-section {
-      flex: 0 0 auto; 
-      border-bottom: 2px solid #333;
+      flex: 1;
       overflow: hidden;
-    }
-
-    .notes-section {
-      flex: 1; 
-      overflow: hidden;
-      padding: 0;
     }
   }
 }

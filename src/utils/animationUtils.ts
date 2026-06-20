@@ -334,47 +334,54 @@ export const calculateRawPosition = (
     return { x: lastNode.x, y: lastNode.y, floor: lastNode.floor, visible: true, vx: 0, vy: 0, isFinished: true };
 };
 
-// 到達時刻計算 (こちらは頻繁に呼ばれないので配列のままでも可だが、一応getNode使用)
+// 到達時刻計算（path 上の特定インデックス＝特定オカレンスを指定）。
+// 同一地点を複数回訪れる経路でも、どの訪問の到達時刻かを正確に得られる。
+// path のインデックスで距離を積算するため、id→node のフィルタによるインデックスずれも起きない。
+export const calculateArrivalTimeAtIndex = (
+    charData: CharacterTimelineData,
+    targetIndex: number,
+    allNodes: MapNode[]
+): number | null => {
+    const { path, startTime, duration } = charData;
+    if (!path || path.length < 1) return null;
+    if (targetIndex <= 0) return startTime;
+    if (targetIndex >= path.length) return null;
+
+    const nodesMap: Record<string, MapNode> = {};
+    allNodes.forEach(n => { nodesMap[n.id] = n; });
+
+    let totalDist = 0;
+    let distToTarget = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const nodeA = nodesMap[path[i]];
+        const nodeB = nodesMap[path[i + 1]];
+        let d = 0;
+        if (nodeA && nodeB) {
+            if (nodeA.id === nodeB.id) {
+                d = WAIT_VIRTUAL_DISTANCE;
+            } else {
+                const isStairJump = (nodeA.type === 'stair' && nodeB.type === 'stair');
+                const isFloorChange = (nodeA.floor !== nodeB.floor);
+                d = (isStairJump || isFloorChange) ? 0 : getDistance(nodeA, nodeB);
+            }
+        }
+        totalDist += d;
+        if (i < targetIndex) distToTarget += d;
+    }
+
+    if (totalDist === 0) return startTime;
+    return startTime + (duration * (distToTarget / totalDist));
+};
+
+// 到達時刻計算（node id 指定）。最初の出現（indexOf）を対象とする従来挙動。
 export const calculateNodeArrivalTime = (
     charData: CharacterTimelineData,
     targetNodeId: string,
     allNodes: MapNode[]
 ): number | null => {
-    // 既存ロジック維持 (getNodeを使っても良いがMapNode[]を受け取る前提)
-    const { path, startTime, duration } = charData;
+    const { path } = charData;
     if (!path || path.length < 1) return null;
-
     const targetIndex = path.indexOf(targetNodeId);
     if (targetIndex === -1) return null;
-
-    const pathNodes = path.map(id => allNodes.find(n => n.id === id)).filter((n): n is MapNode => !!n);
-    if (pathNodes.length < 2) return startTime;
-
-    let totalDist = 0;
-    const distances: number[] = [];
-    for (let i = 0; i < pathNodes.length - 1; i++) {
-        const nodeA = pathNodes[i];
-        const nodeB = pathNodes[i+1];
-        let d = 0;
-        if (nodeA.id === nodeB.id) {
-            d = WAIT_VIRTUAL_DISTANCE;
-        } else {
-            const isStairJump = (nodeA.type === 'stair' && nodeB.type === 'stair');
-            const isFloorChange = (nodeA.floor !== nodeB.floor);
-            d = (isStairJump || isFloorChange) ? 0 : getDistance(nodeA, nodeB);
-        }
-        distances.push(d);
-        totalDist += d;
-    }
-
-    let distToTarget = 0;
-    for (let i = 0; i < targetIndex; i++) {
-        if (i < distances.length) {
-            distToTarget += distances[i];
-        }
-    }
-
-    if (totalDist === 0) return startTime;
-    const progress = distToTarget / totalDist;
-    return startTime + (duration * progress);
+    return calculateArrivalTimeAtIndex(charData, targetIndex, allNodes);
 };

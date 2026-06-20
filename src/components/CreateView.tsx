@@ -7,7 +7,7 @@ import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
 import { SuggestionSidebar } from './common/SuggestionSidebar';
 import { useStageZoom } from '../hooks/useStageZoom';
-import { calculateNodeArrivalTime } from '../utils/animationUtils';
+import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex } from '../utils/animationUtils';
 
 import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
@@ -64,7 +64,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
     undo, saveHistory, setSidebarWidth,
     saveCharacterAnimation, saveBatchCharacterAnimations, deleteCharacterAnimation,
     activePresetId, presets,
-    showConfirm, showAlert, showDialog
+    showConfirm, showAlert, showDialog,
+    isSkullMode, setSkullMode
   } = useAppStore();
 
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
@@ -92,8 +93,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const [myCurrentTravelTime, setMyCurrentTravelTime] = useState<number>(0);
 
   // ▼ 追加: 同期した地点と時間を保持し、パスが伸びても時間がズレないように追従させるためのステート
-  const [syncTarget, setSyncTarget] = useState<{ waypointId: string, meetingTime: number } | null>(null);
+  // pathIndex は同期地点が経路上で何番目の訪問かを保持する（同一地点を複数回訪れる経路でアンカーがずれないように）
+  const [syncTarget, setSyncTarget] = useState<{ waypointId: string, meetingTime: number, pathIndex?: number } | null>(null);
   const [syncConstraints, setSyncConstraints] = useState<SyncConstraint[]>([]);
+  const [myCurrentSyncPathIndex, setMyCurrentSyncPathIndex] = useState<number>(-1);
 
   const [waypoints, setWaypoints] = useState<Waypoint[]>([
       { id: '', name: '', stayTime: 0 },
@@ -138,6 +141,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
       setConnectingNodeId(null);
       setSyncTarget(null);
       setSyncConstraints([]);
+      // 別キャラの編集で残った地点入力ターゲットをクリアする。
+      // これにより行動未設定キャラ選択後、最初の地点クリックが空きスロット先頭(=Start)へ入る。
+      setSuggestionTargetIndex(null);
   }, [primaryIcon]);
   
   const savedPathData = useMemo(() => {
@@ -210,7 +216,13 @@ export const CreateView: React.FC<CreateViewProps> = ({
               duration: computeDuration(displayPath, nodes),
               waypoints
           };
-          const travelTime = calculateNodeArrivalTime(tempData, syncTarget.waypointId, nodes);
+          // アンカーの pathIndex が現在の経路上でも同じ地点を指しているならその訪問で再計算する。
+          // 経路構造が変わって食い違う場合は従来どおり node id の最初の出現で再計算する。
+          const pi = syncTarget.pathIndex;
+          const useIndex = pi !== undefined && pi >= 0 && pi < displayPath.length && displayPath[pi] === syncTarget.waypointId;
+          const travelTime = useIndex
+              ? calculateArrivalTimeAtIndex(tempData, pi, nodes)
+              : calculateNodeArrivalTime(tempData, syncTarget.waypointId, nodes);
           if (travelTime !== null) {
               const newStartTime = syncTarget.meetingTime - travelTime;
               setStartTime(prev => {
@@ -357,9 +369,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
       setIsEditing(true);
   };
 
-  const handleSyncTime = (waypointId: string, waypointName: string) => {
+  const handleSyncTime = (waypointId: string, waypointName: string, waypointIndex?: number) => {
       if (!waypointId || !activePreset?.data) return;
-      
+
       const tempData = {
           path: displayPath,
           startTime: 0,
@@ -367,9 +379,19 @@ export const CreateView: React.FC<CreateViewProps> = ({
           waypoints
       };
 
-      const myTime = calculateNodeArrivalTime(tempData, waypointId, nodes);
+      // クリックされた待機点が経路上の「何番目の訪問」かを解決する（同一地点の複数訪問に対応）
+      let myPathIndex = -1;
+      if (waypointIndex !== undefined && waypointIndex >= 0) {
+          const wpIndices = resolveWaypointPathIndices(displayPath, waypoints);
+          myPathIndex = wpIndices[waypointIndex] ?? -1;
+      }
+
+      const myTime = (myPathIndex >= 0)
+          ? calculateArrivalTimeAtIndex(tempData, myPathIndex, nodes)
+          : calculateNodeArrivalTime(tempData, waypointId, nodes);
       if (myTime === null) { showAlert("到達時刻を計算できませんでした。"); return; }
       setMyCurrentTravelTime(myTime);
+      setMyCurrentSyncPathIndex(myPathIndex);
 
       const candidates: MergeCandidate[] = [];
       Object.entries(activePreset.data).forEach(([cid, data]: [string, any]) => {
@@ -414,7 +436,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
           // 1回目: 全員の到達時刻の最大値を合流時刻とし、自分のstartTimeも調整する
           const allArrivalTimes = [myAbsArrival, ...targets.map(t => t.arrivalTime)];
           meetingTime = Math.max(...allArrivalTimes);
-          setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime });
+          setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime, pathIndex: myCurrentSyncPathIndex >= 0 ? myCurrentSyncPathIndex : undefined });
           setStartTime(meetingTime - myCurrentTravelTime);
       } else {
           // 2回目以降: startTimeは1回目のアンカーで固定。自分の自然到達時刻を合流時刻とする
@@ -553,6 +575,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const handleMultiSelect = (icons: string[]) => { handleModalClose(); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime); setConnectingNodeId(null); };
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    // 死亡設定モード(どくろ)中にマップがクリックされたら自動解除する
+    if (isSkullMode) setSkullMode(false);
     if (e.evt.button === 2) {
         if (isGraphEditMode && connectingNodeId) {
             setConnectingNodeId(null);
@@ -580,7 +604,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
     const stage = e.target.getStage();
     const pointer = stage?.getRelativePointerPosition();
     if (pointer) addNode({ id: generateId(), x: pointer.x, y: pointer.y, floor: activeFloor, type: 'pass' });
-  }, [isGraphEditMode, suggestionTargetIndex, activeFloor, addNode, selectedIcons.length, onClearSelection, connectingNodeId]);
+  }, [isGraphEditMode, suggestionTargetIndex, activeFloor, addNode, selectedIcons.length, onClearSelection, connectingNodeId, isSkullMode, setSkullMode]);
 
   const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
       if (!isGraphEditMode || !connectingNodeId || !dynamicEdgeRef.current) return;
@@ -596,6 +620,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
   }, [isGraphEditMode, connectingNodeId, nodeMap]);
 
   const handleNodeClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => {
+      // 死亡設定モード(どくろ)中にマップ上のノードがクリックされたら自動解除する
+      if (isSkullMode) setSkullMode(false);
       if (e.evt.button === 2) {
           if (isGraphEditMode) {
               if (connectingNodeId) {
@@ -683,7 +709,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
               setWaypoints(nextWaypoints);
           }
       }
-  }, [isGraphEditMode, connectingNodeId, nodeMap, activeFloor, isEditing, suggestionTargetIndex, waypoints, onFloorChange, addEdge]);
+  }, [isGraphEditMode, connectingNodeId, nodeMap, activeFloor, isEditing, suggestionTargetIndex, waypoints, onFloorChange, addEdge, isSkullMode, setSkullMode]);
 
   const handleNodeMouseEnter = useCallback((e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => {
       setHoveredNodeId(nodeId);

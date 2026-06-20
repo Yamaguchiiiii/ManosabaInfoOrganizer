@@ -4,7 +4,6 @@ import Konva from 'konva';
 import useImage from 'use-image';
 import { ReadOnlyMapView } from './ReadOnlyMapView';
 import { AnimationTimeline } from './AnimationTimeline';
-import { NotesPanel } from './NotesPanel';
 import '../styles/AnimateView.scss';
 import { useAppStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
 import { MIN_SIDEBAR_WIDTH } from '../hooks/useSidebarResizer';
@@ -97,7 +96,6 @@ export const AnimateView = () => {
       </div>
       <div className="grid-cell control-cell-wrapper">
         <div className="timeline-section"><AnimationTimeline /></div>
-        <div className="notes-section"><NotesPanel /></div>
       </div>
     </div>
   );

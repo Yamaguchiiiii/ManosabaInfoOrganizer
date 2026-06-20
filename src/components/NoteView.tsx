@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line } from 'react-konva';
 import Konva from 'konva';
@@ -315,6 +315,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     });
 
     const addNoteObject = useAppStore(state => state.addNoteObject);
+    const addNoteObjects = useAppStore(state => state.addNoteObjects);
     const updateNoteObject = useAppStore(state => state.updateNoteObject);
     const updateNoteObjects = useAppStore(state => state.updateNoteObjects);
     const removeNoteObjects = useAppStore(state => state.removeNoteObjects);
@@ -330,6 +331,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const [hoveredCanvasIndex, setHoveredCanvasIndex] = useState<number | null>(null);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    // コピー/ペースト用クリップボード（オブジェクトの属性を保持したまま複製する）
+    const [clipboard, setClipboard] = useState<NoteObject[]>([]);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
@@ -456,6 +459,39 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         document.fonts.ready.then(() => setIsFontLoaded(true));
     }, []);
 
+    // 選択中オブジェクトをクリップボードへコピー（サイズ・色などの属性を維持）
+    const handleCopySelected = useCallback(() => {
+        if (selectedIds.length === 0) return;
+        const sel = currentCanvasObjects.filter(o => selectedIds.includes(o.id));
+        if (sel.length === 0) return;
+        setClipboard(sel.map(o => ({ ...o, points: o.points ? [...o.points] : undefined })));
+    }, [selectedIds, currentCanvasObjects]);
+
+    // クリップボードの内容を現在のキャンバスへ少しずらして貼り付ける（グループ構造も維持）
+    const handlePasteClipboard = useCallback(() => {
+        if (clipboard.length === 0) return;
+        const stamp = Date.now();
+        const groupIdMap: Record<string, string> = {};
+        const newObjs: NoteObject[] = clipboard.map((o, i) => {
+            let groupId = o.groupId;
+            if (groupId) {
+                if (!groupIdMap[groupId]) groupIdMap[groupId] = `group_${stamp}_${i}`;
+                groupId = groupIdMap[groupId];
+            }
+            return {
+                ...o,
+                id: `${o.type}_${stamp}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+                x: (o.x || 0) + 20,
+                y: (o.y || 0) + 20,
+                canvasIndex: currentCanvasIndex,
+                groupId,
+                points: o.points ? [...o.points] : undefined,
+            };
+        });
+        addNoteObjects(targetType, displayTargetId, newObjs);
+        setSelectedIds(newObjs.map(o => o.id));
+    }, [clipboard, currentCanvasIndex, addNoteObjects, targetType, displayTargetId]);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -488,6 +524,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 return;
             }
 
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+                if (selectedIds.length === 0) return;
+                e.preventDefault();
+                handleCopySelected();
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+                if (clipboard.length === 0) return;
+                e.preventDefault();
+                handlePasteClipboard();
+                return;
+            }
+
             if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
                 removeNoteObjects(targetType, displayTargetId, selectedIds);
                 setSelectedIds([]);
@@ -506,7 +556,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote]);
+    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, clipboard, handleCopySelected, handlePasteClipboard]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -943,6 +993,22 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         <button title="Curve" onClick={() => startPlacement('curve')} style={toolBtnStyle((placementMode?.type as string) === 'curve')}>~</button>
                         <button title="Curve Arrow" onClick={() => startPlacement('curve_arrow')} style={toolBtnStyle((placementMode?.type as string) === 'curve_arrow')}>↷</button>
                         <div style={{ width: '1px', height: '20px', backgroundColor: '#555', margin: '0 5px' }} />
+                        <button
+                            title="Copy (Ctrl+C)"
+                            onClick={handleCopySelected}
+                            disabled={selectedIds.length === 0}
+                            style={{ ...toolBtnStyle(false), color: selectedIds.length === 0 ? '#555' : '#ccc', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+                        >
+                            📋
+                        </button>
+                        <button
+                            title="Paste (Ctrl+V)"
+                            onClick={handlePasteClipboard}
+                            disabled={clipboard.length === 0}
+                            style={{ ...toolBtnStyle(false), color: clipboard.length === 0 ? '#555' : '#ccc', cursor: clipboard.length === 0 ? 'not-allowed' : 'pointer' }}
+                        >
+                            📥
+                        </button>
                         <button
                             title="Delete Selected"
                             onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
@@ -1851,7 +1917,7 @@ export const NoteView: React.FC = React.memo(() => {
                 {displayTab === 'preset' && actualPresetId && (
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                         <div className="preset-header" style={{ padding: '10px 20px', background: '#1e1e1e', borderBottom: '1px solid #444', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                            <div style={{ color: 'white', fontWeight: 'bold' }}>Timeline Notes</div>
+                            <div style={{ color: 'white', fontWeight: 'bold' }}>事件ノート</div>
                             <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px' }}>
                                 {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
