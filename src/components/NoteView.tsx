@@ -1742,6 +1742,7 @@ export const NoteView: React.FC = React.memo(() => {
     const addMiscPage = useAppStore(state => state.addMiscPage);
     const renameMiscPage = useAppStore(state => state.renameMiscPage);
     const deleteMiscPage = useAppStore(state => state.deleteMiscPage);
+    const showConfirm = useAppStore(state => state.showConfirm);
     
     const [displayTab, setDisplayTab] = useState(activeNoteTab);
     const [opacity, setOpacity] = useState(1);
@@ -1929,10 +1930,10 @@ export const NoteView: React.FC = React.memo(() => {
                                         >✏️</button>
                                     )}
                                     <button 
-                                        onClick={() => {
-                                            if (window.confirm("Are you sure you want to delete this note?")) {
+                                        onClick={async () => {
+                                            if (await showConfirm("このノートを削除しますか？")) {
                                                 deleteMiscPage(actualMiscPageId as string);
-                                                setActualMiscPageId(null); 
+                                                setActualMiscPageId(null);
                                             }
                                         }}
                                         style={{ background: '#ef4444', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}

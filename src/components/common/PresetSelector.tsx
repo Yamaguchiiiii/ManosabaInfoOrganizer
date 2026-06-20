@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../store';
 
 export const PresetSelector: React.FC = () => {
-  const { 
-    presets, activePresetId, 
-    setActivePresetId, addPreset, updatePresetName, deletePreset 
+  const {
+    presets, activePresetId,
+    setActivePresetId, addPreset, updatePresetName, deletePreset,
+    showConfirm
   } = useAppStore();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -24,8 +25,8 @@ export const PresetSelector: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleDelete = () => {
-    if (window.confirm(`"${activePreset.name}" を削除してもよろしいですか？`)) {
+  const handleDelete = async () => {
+    if (await showConfirm(`"${activePreset.name}" を削除してもよろしいですか？`)) {
       deletePreset(activePresetId);
     }
   };

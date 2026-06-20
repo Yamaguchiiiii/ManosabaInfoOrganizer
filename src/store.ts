@@ -86,7 +86,26 @@ export interface NoteData {
 
 interface HistoryState { nodes: MapNode[]; edges: MapEdge[]; }
 
+// --- オーバーレイダイアログ（window.alert/confirm の代替・Tauri/Web両対応） ---
+export interface DialogButton {
+    label: string;
+    value: string;
+    variant?: 'primary' | 'danger' | 'default';
+}
+export interface DialogRequest {
+    title?: string;
+    message: string;
+    buttons: DialogButton[];
+}
+
 export interface AppState {
+    // オーバーレイダイアログ
+    dialog: DialogRequest | null;
+    showDialog: (req: DialogRequest) => Promise<string>;
+    showAlert: (message: string, title?: string) => Promise<void>;
+    showConfirm: (message: string, title?: string) => Promise<boolean>;
+    closeDialog: (value: string) => void;
+
     activeFloor: FloorId; setActiveFloor: (floor: FloorId) => void;
     mode: 'create' | 'animate' | 'note'; setMode: (mode: 'create' | 'animate' | 'note') => void;
     activeNoteTab: 'overview' | 'preset' | 'character' | 'misc'; setActiveNoteTab: (tab: 'overview' | 'preset' | 'character' | 'misc') => void;
@@ -258,9 +277,37 @@ export const computeDuration = (path: string[], nodes: MapNode[]): number => {
     return Math.max(totalDist / (MOVEMENT_SPEED_PX_PER_SEC / TARGET_FPS), 60);
 };
 
+// ダイアログの Promise resolver はモジュールスコープに保持する（永続化対象外にするため）
+let dialogResolver: ((value: string) => void) | null = null;
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
+        dialog: null,
+        showDialog: (req) => new Promise<string>((resolve) => {
+            // 既存ダイアログが残っていれば空文字でクローズしてから差し替える
+            if (dialogResolver) { const prev = dialogResolver; dialogResolver = null; prev(''); }
+            dialogResolver = resolve;
+            set({ dialog: req });
+        }),
+        showAlert: (message, title) => get().showDialog({
+            message, title,
+            buttons: [{ label: 'OK', value: 'ok', variant: 'primary' }]
+        }).then(() => {}),
+        showConfirm: (message, title) => get().showDialog({
+            message, title,
+            buttons: [
+                { label: 'キャンセル', value: 'cancel' },
+                { label: 'OK', value: 'ok', variant: 'primary' }
+            ]
+        }).then(v => v === 'ok'),
+        closeDialog: (value) => {
+            const r = dialogResolver;
+            dialogResolver = null;
+            set({ dialog: null });
+            if (r) r(value);
+        },
+
         activeFloor: '1F', setActiveFloor: (floor) => set({ activeFloor: floor }),
         mode: 'create', setMode: (mode) => set({ mode }),
         activeNoteTab: 'overview', setActiveNoteTab: (tab) => set({ activeNoteTab: tab }),
@@ -481,9 +528,9 @@ export const useAppStore = create<AppState>()(
     {
         name: 'mystery-map-storage',
         storage: createJSONStorage(() => idbStorage),
-        partialize: (state) => 
+        partialize: (state) =>
             Object.fromEntries(
-                Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== '_hasHydrated')
+                Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== '_hasHydrated' && key !== 'dialog')
             ) as AppState,
         onRehydrateStorage: () => (state) => {
             if (state) state.setHasHydrated(true);

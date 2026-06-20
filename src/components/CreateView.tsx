@@ -13,6 +13,7 @@ import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
 import { useWaypointPath } from '../hooks/useWaypointPath';
 import { MergeModal, MergeCandidate } from './modals/MergeModal';
+import { setNavigationGuard } from '../services/navigationGuard';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -44,7 +45,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
     addNode, updateNode, removeNode, addEdge, removeEdge,
     undo, saveHistory, setSidebarWidth,
     saveCharacterAnimation, saveBatchCharacterAnimations, deleteCharacterAnimation,
-    activePresetId, presets
+    activePresetId, presets,
+    showConfirm, showAlert, showDialog
   } = useAppStore();
 
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
@@ -248,10 +250,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
   
   useEffect(() => { setSidebarWidth(210); }, [setSidebarWidth]);
 
-  const handleEdgeContextMenu = useCallback((e: Konva.KonvaEventObject<PointerEvent>, edgeId: string) => {
+  const handleEdgeContextMenu = useCallback(async (e: Konva.KonvaEventObject<PointerEvent>, edgeId: string) => {
       e.evt.preventDefault(); e.cancelBubble = true;
-      if (isGraphEditMode && window.confirm("この通路(エッジ)を削除しますか？")) removeEdge(edgeId);
-  }, [isGraphEditMode, removeEdge]);
+      if (isGraphEditMode && await showConfirm("この通路(エッジ)を削除しますか？")) removeEdge(edgeId);
+  }, [isGraphEditMode, removeEdge, showConfirm]);
 
   const handleWaypointChange = (index: number, field: keyof Waypoint, value: string | number) => {
       if (!isEditing) setIsEditing(true);
@@ -348,7 +350,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       };
 
       const myTime = calculateNodeArrivalTime(tempData, waypointId, nodes);
-      if (myTime === null) return alert("計算不可");
+      if (myTime === null) { showAlert("到達時刻を計算できませんでした。"); return; }
       setMyCurrentTravelTime(myTime);
 
       const candidates: MergeCandidate[] = [];
@@ -369,7 +371,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
           }
       });
 
-      if (!candidates.length) return alert(`「${waypointName}」を通る他のキャラクターが見つかりませんでした。`);
+      if (!candidates.length) { showAlert(`「${waypointName}」を通る他のキャラクターが見つかりませんでした。`); return; }
       
       setMergeCandidates(candidates);
       setMergeTargetWaypointName(waypointName);
@@ -475,13 +477,38 @@ export const CreateView: React.FC<CreateViewProps> = ({
       else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints);
       setConnectingNodeId(null); setIsEditing(false);
   };
-  const handleDeletePath = () => { 
-      if(selectedIcons.length && window.confirm("削除?")){ 
-          selectedIcons.forEach(i => deleteCharacterAnimation(activePresetId, i)); 
-          setDisplayPath([]); 
+
+  // 未保存の経路があるまま別キャラ/別モードへ遷移しようとした際のガードを登録する
+  const hasUnsavedPath = isEditing && displayPath.length > 0;
+  useEffect(() => {
+      if (!hasUnsavedPath) {
+          setNavigationGuard(null);
+          return;
+      }
+      setNavigationGuard(async () => {
+          const choice = await showDialog({
+              title: '未保存の経路があります',
+              message: 'このキャラクターの行動がまだ保存されていません。保存しますか？',
+              buttons: [
+                  { label: 'キャンセル', value: 'cancel' },
+                  { label: '保存せず移動', value: 'discard', variant: 'danger' },
+                  { label: '保存して移動', value: 'save', variant: 'primary' },
+              ]
+          });
+          if (choice === 'save') { handleSavePath(); return true; }
+          if (choice === 'discard') { return true; }
+          return false; // cancel → 遷移中止
+      });
+      return () => setNavigationGuard(null);
+  }, [hasUnsavedPath, showDialog, handleSavePath]);
+
+  const handleDeletePath = async () => {
+      if(selectedIcons.length && await showConfirm("この経路を削除しますか？")){
+          selectedIcons.forEach(i => deleteCharacterAnimation(activePresetId, i));
+          setDisplayPath([]);
           setDisplaySegments([]);
           setWaypoints([{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }]);
-      } 
+      }
   };
   
   const handleModalClose = () => { setIsCharModalOpen(false); setIsMultiSelectMode(false); };
@@ -751,7 +778,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
       <NodeEditModal isOpen={!!editingNode} initialType={editingNode?.type||'pass'} initialFloor={editingNode?.connectedFloor} initialName={editingNode?.name}
         onClose={()=>setEditingNode(null)} onSave={(t,f,n)=>{if(editingNode){saveHistory();updateNode(editingNode.id,{x:editingNode.x,y:editingNode.y},{type:t,connectedFloor:f,name:n});setEditingNode(null);}}}
-        onDelete={()=>{if(editingNode&&window.confirm("削除?")){removeNode(editingNode.id);setConnectingNodeId(null);}setEditingNode(null);}} />
+        onDelete={async ()=>{if(editingNode && await showConfirm("このノードを削除しますか？")){removeNode(editingNode.id);setConnectingNodeId(null);}setEditingNode(null);}} />
       
       <CharacterSelectModal isOpen={isCharModalOpen} isMultiSelect={isMultiSelectMode} onClose={handleModalClose}
         onSelect={handleCharSelect} onMultiSelect={handleMultiSelect} />

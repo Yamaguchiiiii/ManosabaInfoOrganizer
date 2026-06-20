@@ -5,6 +5,8 @@ import { TopBar } from './components/TopBar';
 import { CreateView } from './components/CreateView';
 import { AnimateView } from './components/AnimateView';
 import { NoteView } from './components/NoteView';
+import { DialogHost } from './components/common/DialogHost';
+import { runNavigationGuard } from './services/navigationGuard';
 import './styles/App.scss';
 import './styles/Modal.scss';
 
@@ -43,7 +45,7 @@ function App() {
         );
     }
 
-    const handleIconSelect = (icon: string, isShiftPressed: boolean) => {
+    const handleIconSelect = async (icon: string, isShiftPressed: boolean) => {
         if (isShiftPressed) {
             setSelectedIcons(prev => {
                 if (prev.includes(icon)) {
@@ -52,9 +54,13 @@ function App() {
                     return [...prev, icon];
                 }
             });
-        } else {
-            setSelectedIcons([icon]);
+            return;
         }
+        // 同じキャラの再選択は遷移扱いしない
+        if (selectedIcons.length === 1 && selectedIcons[0] === icon) return;
+        // 単一キャラへ切替: 未保存の経路があればガードで確認（中止ならキャンセル）
+        if (!(await runNavigationGuard())) return;
+        setSelectedIcons([icon]);
     };
 
     const clearSelection = () => setSelectedIcons([]);
@@ -69,8 +75,10 @@ function App() {
         }, 300)
     }
 
-    const changeModeWithTransition = (newMode: 'create' | 'animate' | 'note') => {
+    const changeModeWithTransition = async (newMode: 'create' | 'animate' | 'note') => {
         if (mode === newMode) return;
+        // 未保存の経路があればガードで確認（中止ならモード切替しない）
+        if (!(await runNavigationGuard())) return;
         handleTransition(() => {
             setMode(newMode);
             if (newMode === 'animate' || newMode === 'note'){
@@ -124,6 +132,8 @@ function App() {
                     )}
                 </div>
             </div>
+
+            <DialogHost />
         </div>
     );
 }
