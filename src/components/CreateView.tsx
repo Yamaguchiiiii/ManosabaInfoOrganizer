@@ -454,9 +454,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
       });
       setIsMergeModalOpen(false);
 
-      const followTarget = targets[0]; 
-      const targetWaypoints = followTarget.data.waypoints || [];
-      const targetPath = followTarget.data.path || (Array.isArray(followTarget.data) ? followTarget.data : []);
+      const followTarget = targets[0];
+      const targetWaypoints: Waypoint[] = followTarget.data.waypoints || [];
+      const targetPath: string[] = followTarget.data.path || (Array.isArray(followTarget.data) ? followTarget.data : []);
       
       // 合流地点は候補キャラの最初の訪問（到達時刻計算と整合）
       const targetPathIndex = targetPath.indexOf(mergeTargetWaypointId);
