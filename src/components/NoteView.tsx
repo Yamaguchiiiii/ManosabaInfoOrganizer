@@ -1795,6 +1795,7 @@ export const NoteView: React.FC = React.memo(() => {
 
     const addNoteAsset = useAppStore(state => state.addNoteAsset);
     const addNoteObject = useAppStore(state => state.addNoteObject);
+    const updateNoteObject = useAppStore(state => state.updateNoteObject);
 
     useEffect(() => {
         if (activeNoteTab !== 'character') return;
@@ -1803,6 +1804,14 @@ export const NoteView: React.FC = React.memo(() => {
         const charData = useAppStore.getState().notes.characters?.[selectedChar];
         if (charData && charData.objects.length > 0) {
             initializedCharsRef.current.add(selectedChar);
+            // 旧データ移行: ./icon/ を使っている初期キャラ画像を ./character/ に更新
+            const oldIconSrc = `./icon/${selectedChar}`;
+            const newCharSrc = `./character/${selectedChar}`;
+            charData.objects.forEach(obj => {
+                if (obj.content === oldIconSrc) {
+                    updateNoteObject('character', selectedChar, obj.id, { content: newCharSrc }, true);
+                }
+            });
             return;
         }
 
@@ -1826,7 +1835,7 @@ export const NoteView: React.FC = React.memo(() => {
                 canvasIndex: 0
             });
         });
-    }, [selectedChar, activeNoteTab, addNoteAsset, addNoteObject]);
+    }, [selectedChar, activeNoteTab, addNoteAsset, addNoteObject, updateNoteObject]);
 
     return (
         <div className="note-view-container">
