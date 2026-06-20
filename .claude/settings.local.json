@@ -18,7 +18,13 @@
       "Bash(Select-Object -First 100)",
       "PowerShell(cd \"D:\\\\Study\\\\ManoSabaInfoOrganizer\"; git diff src/components/NoteView.tsx | Select-String -Pattern \"^\\(\\\\+\\\\+\\\\+|---|@@|\\\\+[^+]|-[^-]\\)\" | Select-Object -First 120 | ForEach-Object { $_.Line })",
       "PowerShell(cd \"D:\\\\Study\\\\ManoSabaInfoOrganizer\"; git diff src/components/NoteView.tsx | Select-String -Pattern \"\\(getNodeScreenPosition|renderFloatingTextToolbar|property-bar|tbTop|tbLeft\\)\" | ForEach-Object { $_.Line })",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npm -v)",
+      "Bash(echo \"npm: $\\(npm -v 2>&1\\)\")",
+      "Bash(node_modules/.bin/tsc -v)",
+      "Bash(echo \"ts: installed \\($\\(node_modules/.bin/tsc -v 2>&1\\)\\)\")"
     ]
   }
 }
