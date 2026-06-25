@@ -390,7 +390,20 @@ export const useAppStore = create<AppState>()(
         deleteCharacterAnimation: (presetId, charId) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
-                const newData = { ...p.data }; delete newData[charId]; 
+                const newData: Record<string, any> = { ...p.data };
+                delete newData[charId];
+                // 削除したキャラを参照している他キャラの sync 表示が残らないよう、
+                // 各キャラの syncConstraints から charId を除去し、参照が無くなった制約は破棄する。
+                Object.keys(newData).forEach(cid => {
+                    const cData = newData[cid];
+                    if (!cData || Array.isArray(cData) || !Array.isArray(cData.syncConstraints)) return;
+                    const cleaned = (cData.syncConstraints as SyncConstraint[])
+                        .map(sc => ({ ...sc, charIds: sc.charIds.filter(id => id !== charId) }))
+                        .filter(sc => sc.charIds.length > 0);
+                    if (cleaned.length !== cData.syncConstraints.length) {
+                        newData[cid] = { ...cData, syncConstraints: cleaned };
+                    }
+                });
                 return { ...p, data: newData };
             })
         })),

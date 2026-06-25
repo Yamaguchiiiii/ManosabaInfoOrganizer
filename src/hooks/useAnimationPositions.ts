@@ -7,7 +7,10 @@ export const FLOOR_IDS = ['1F', '2F', 'B1'] as const;
 export type AnimFloorId = typeof FLOOR_IDS[number];
 
 const ICON_SIZE = 80;
-const LERP_FACTOR = 0.15;
+// 時間ベース追従の係数。60fps(dt≈1/60)で 1-exp(-10/60)≈0.154 となり従来の固定値 0.15 と一致。
+// フレームが落ちて間隔が伸びてもその分だけ多く追従するため、可変フレームレートでも
+// 体感の滑らかさが保たれる（Edgeブラウザ等の残カクツキ対策）。
+const LERP_RATE = 10;
 const TELEPORT_THRESHOLD = 200;
 const TARGET_FPS = 60;
 const LOOP_DELAY_FRAMES = 60;
@@ -40,7 +43,12 @@ export const useAnimationPositions = (
     const timeRef        = useRef<number>(0);
     const maxDurationRef = useRef<number>(0);
     const lastTsRef      = useRef<number | null>(null);
+    // LERP 用の実フレーム間隔を測る連続タイムスタンプ（停止/シークでリセットしない）
+    const lastFrameTsRef = useRef<number | null>(null);
     const frameCountRef  = useRef<number>(0);
+    // 自分が store.currentTime に最後に書き込んだ値。外部シーク(スライダー/リセット)だけを
+    // 検出し、自分の throttled 書き込み遅延を誤シーク扱いして巻き戻すのを防ぐために使う。
+    const lastWrittenTimeRef = useRef<number>(0);
     const activePresetId = useAppStore(state => state.activePresetId);
 
     // プリセットが変わったときだけパスキャッシュ・maxDuration を再構築し、時刻をリセット
@@ -52,6 +60,7 @@ export const useAnimationPositions = (
         timeRef.current = 0;
         lastTsRef.current = null;
         maxDurationRef.current = 0;
+        lastWrittenTimeRef.current = 0;
         useAppStore.setState({ currentTime: 0 });
 
         if (!activePreset) return;
@@ -104,9 +113,13 @@ export const useAnimationPositions = (
             const activePreset = presets.find(p => p.id === currentPresetId);
             const deadIcons: string[] = activePreset?.deadIcons ?? [];
 
-            // シーク検出: store 側が大きく変化していたら内部時刻を同期
-            if (Math.abs(timeRef.current - storeTime) > SEEK_THRESHOLD) {
+            // シーク検出: 「自分が最後に書いた値」と storeTime のズレだけを外部シークとみなす。
+            // 旧実装は timeRef と storeTime を比較していたが、currentTime を 4 フレームに 1 回しか
+            // 書かないため、低fps時に自分の書き込み遅延を誤シーク扱いして timeRef を巻き戻し、
+            // キャラが「前進→巻き戻り」を繰り返す原因になっていた。
+            if (Math.abs(storeTime - lastWrittenTimeRef.current) > SEEK_THRESHOLD) {
                 timeRef.current = storeTime;
+                lastWrittenTimeRef.current = storeTime;
                 lastTsRef.current = null;
             }
 
@@ -121,6 +134,7 @@ export const useAnimationPositions = (
                         // ループ折り返し: Zustand も即座に 0 へ合わせてシーク誤検知を防ぐ
                         timeRef.current = 0;
                         useAppStore.setState({ currentTime: 0 });
+                        lastWrittenTimeRef.current = 0;
                     }
                 }
                 lastTsRef.current = timestamp;
@@ -129,6 +143,14 @@ export const useAnimationPositions = (
             }
 
             const currentTime = timeRef.current;
+
+            // LERP用の実フレーム間隔(秒)。再生/停止に関わらず毎フレーム更新する。
+            const frameDt = lastFrameTsRef.current !== null
+                ? Math.min((timestamp - lastFrameTsRef.current) / 1000, 0.1)
+                : 1 / TARGET_FPS;
+            lastFrameTsRef.current = timestamp;
+            // 時間ベースの追従係数（フレームレート非依存）
+            const lerpFactor = 1 - Math.exp(-LERP_RATE * frameDt);
 
             // 1. 全キャラの目標座標を計算（プールスロット上書き、新規オブジェクト生成なし）
             // 非active icon の _targets.floor を '' にリセットして visible(false) を保証
@@ -176,6 +198,11 @@ export const useAnimationPositions = (
             }
 
             // 4. 全 icon × 全 floorId の Konva ノードを直接操作（React 再レンダリングを経由しない）
+            //    値が変わったノードだけ setter を呼ぶ。Konva は属性 set のたびに該当レイヤーの
+            //    再描画をスケジュールするため、同値 set を避けることで「動いていないフロア」の
+            //    レイヤー全再描画を止める。特に各 icon は常に2フロア分のノードが非表示で、
+            //    旧実装はそれらに毎フレーム visible(false) を呼んで3レイヤーを毎フレーム dirty に
+            //    していた（＝低fps・カクツキの主因）。
             ICON_FILES.forEach(icon => {
                 FLOOR_IDS.forEach(floorId => {
                     const node = charNodeRefs.current.get(`${icon}:${floorId}`);
@@ -183,7 +210,7 @@ export const useAnimationPositions = (
 
                     const target = _targets[icon];
                     if (!target || target.floor !== floorId) {
-                        node.visible(false);
+                        if (node.visible()) node.visible(false);
                         return;
                     }
 
@@ -206,15 +233,24 @@ export const useAnimationPositions = (
                             newX = target.x;
                             newY = target.y;
                         } else {
-                            newX = prev.x + diffX * LERP_FACTOR;
-                            newY = prev.y + diffY * LERP_FACTOR;
+                            newX = prev.x + diffX * lerpFactor;
+                            newY = prev.y + diffY * lerpFactor;
                         }
                     }
 
-                    node.x(newX);
-                    node.y(newY);
-                    node.visible(true);
-                    currentVisualPositions.current[icon] = { x: newX, y: newY, floor: target.floor };
+                    // 変化したものだけ set（同値 set による無駄な再描画を抑止）
+                    if (node.x() !== newX) node.x(newX);
+                    if (node.y() !== newY) node.y(newY);
+                    if (!node.visible()) node.visible(true);
+
+                    // currentVisualPositions はインプレース更新（毎フレームのオブジェクト生成を排除）
+                    if (prev) {
+                        prev.x = newX;
+                        prev.y = newY;
+                        prev.floor = target.floor;
+                    } else {
+                        currentVisualPositions.current[icon] = { x: newX, y: newY, floor: target.floor };
+                    }
                 });
             });
 
@@ -222,6 +258,7 @@ export const useAnimationPositions = (
             frameCountRef.current++;
             if (frameCountRef.current % ZUSTAND_WRITE_INTERVAL === 0) {
                 useAppStore.setState({ currentTime });
+                lastWrittenTimeRef.current = currentTime;
             }
 
             animId = requestAnimationFrame(animate);

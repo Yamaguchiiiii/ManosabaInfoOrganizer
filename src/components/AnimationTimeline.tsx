@@ -67,16 +67,19 @@ export const AnimationTimeline: React.FC = () => {
     };
 
     return (
-        <div style={{ 
-            width: '100%', 
-            backgroundColor: '#222', 
-            borderTop: '1px solid #444', 
-            display: 'flex', 
-            flexDirection: 'column' 
+        <div style={{
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#222',
+            borderTop: '1px solid #444',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center'
         }}>
-            <div style={{ 
-                display: 'flex', alignItems: 'center', gap: '15px', 
-                padding: '10px 20px', borderBottom: '1px solid #333' 
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: '15px',
+                padding: '10px 20px', borderBottom: '1px solid #333',
+                flexWrap: 'wrap'
             }}>
                 <select
                     value={activePresetId}

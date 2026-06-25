@@ -15,10 +15,33 @@ const HALF_SIZE = ICON_SIZE / 2;
 const MovingCharIcon = React.memo(React.forwardRef<Konva.Group, { icon: string, x: number, y: number }>(
     ({ icon, x, y }, ref) => {
         const [image] = useImage(`./icon/${icon}`);
+        const imgRef = useRef<Konva.Image>(null);
+
+        // パフォーマンス: 画像＋角丸クリップ＋白縁ストロークを一度だけビットマップ化(cache)する。
+        // 以降のレイヤー再描画は「ビットマップのコピー」だけになり、画像デコード/角丸クリップ/
+        // ストロークの毎フレーム再計算を避ける。CPU余力の少ない環境(Edgeブラウザ等)での残カクツキ対策。
+        useEffect(() => {
+            const node = imgRef.current;
+            if (image && node) {
+                node.cache({ pixelRatio: Math.min(window.devicePixelRatio || 1, 2) });
+                node.getLayer()?.batchDraw();
+            }
+        }, [image]);
+
         return (
+            // 画像2枚重ね＋shadowBlur(高コスト)は避け、1枚＋白縁ストロークのみ。
             <Group ref={ref} x={x} y={y}>
-                <KonvaImage image={image} width={ICON_SIZE} height={ICON_SIZE} offsetX={HALF_SIZE} offsetY={HALF_SIZE} cornerRadius={HALF_SIZE} />
-                <KonvaImage image={image} width={ICON_SIZE} height={ICON_SIZE} offsetX={HALF_SIZE} offsetY={HALF_SIZE} stroke="rgba(255, 255, 255, 0.75)" strokeWidth={2.5} cornerRadius={HALF_SIZE} shadowColor="rgba(0, 0, 0, 0.5)" shadowBlur={6} shadowOpacity={0.6} shadowOffset={{ x: 0, y: 2 }} />
+                <KonvaImage
+                    ref={imgRef}
+                    image={image}
+                    width={ICON_SIZE}
+                    height={ICON_SIZE}
+                    offsetX={HALF_SIZE}
+                    offsetY={HALF_SIZE}
+                    cornerRadius={HALF_SIZE}
+                    stroke="rgba(255, 255, 255, 0.85)"
+                    strokeWidth={2.5}
+                />
             </Group>
         );
     }

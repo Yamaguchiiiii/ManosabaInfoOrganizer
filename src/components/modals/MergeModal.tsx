@@ -7,6 +7,7 @@ export interface MergeCandidate {
     travelTime: number;  // 移動にかかる時間 (Duration * progress)
     currentStartTime: number; // 現在設定されている開始時間
     data: any; // 保存用データ
+    pathIndex?: number; // 合流に使う「相手キャラの経路上の訪問位置」(同一地点を複数回通る場合の選択結果)
 }
 
 interface MergeModalProps {
@@ -17,6 +18,20 @@ interface MergeModalProps {
     waypointName: string;
 }
 
+// 内部ID("1_sakuraba_ema.png")を読みやすい表示名("Sakuraba Ema")へ整形する
+const formatCharName = (charId: string) => {
+    const base = charId.replace(/\.[^/.]+$/, '');
+    const parts = base.split('_');
+    if (parts.length > 1 && !isNaN(Number(parts[0]))) parts.shift();
+    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+};
+
+// 合流までの所要フレームを「待つ/先着」の関係として読みやすく示す
+const relationLabel = (c: MergeCandidate) => {
+    const diff = Math.round(c.arrivalTime - c.currentStartTime);
+    return `この地点まで約 ${diff} フレームで到達`;
+};
+
 export const MergeModal: React.FC<MergeModalProps> = ({
     isOpen, onClose, onConfirm, candidates, waypointName
 }) => {
@@ -24,6 +39,9 @@ export const MergeModal: React.FC<MergeModalProps> = ({
     const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
 
     if (!isOpen) return null;
+
+    const allSelected = candidates.length > 0 && selectedIds.length === candidates.length;
+    const toggleAll = () => setSelectedIds(allSelected ? [] : candidates.map(c => c.charId));
 
     const handleSelect = (id: string, index: number, isShift: boolean) => {
         let newSelected = [...selectedIds];
@@ -66,13 +84,29 @@ export const MergeModal: React.FC<MergeModalProps> = ({
             }} onClick={e => e.stopPropagation()}>
                 
                 <div style={{ borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '5px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#007acc', border: '1px solid #007acc', borderRadius: '10px', padding: '1px 8px' }}>STEP 1 / 2</span>
+                        <span style={{ fontSize: '0.72rem', color: '#666' }}>合流 → （次に）同行 / 待受</span>
+                    </div>
                     <h3 style={{ margin: 0, color: '#e0e0e0', fontSize: '1.1rem' }}>
-                        Merge at <span style={{ color: '#fbbf24' }}>"{waypointName}"</span>
+                        <span style={{ color: '#fbbf24' }}>"{waypointName}"</span> で合流する相手を選択
                     </h3>
                     <p style={{ margin: '5px 0 0', fontSize: '0.8rem', color: '#888' }}>
-                        Select characters to synchronize arrival time. (Shift+Click for range)
+                        選んだキャラと到達時刻を揃えます。複数選択可（Shift+クリックで範囲選択）。
                     </p>
                 </div>
+
+                {candidates.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#999', marginTop: '-5px' }}>
+                        <span>合流候補 {candidates.length}人</span>
+                        <button
+                            onClick={toggleAll}
+                            style={{ background: 'none', border: '1px solid #555', color: '#ccc', borderRadius: '4px', padding: '3px 10px', cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                            {allSelected ? 'すべて解除' : 'すべて選択'}
+                        </button>
+                    </div>
+                )}
 
                 <div style={{ 
                     maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px',
@@ -101,9 +135,9 @@ export const MergeModal: React.FC<MergeModalProps> = ({
                                         style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)' }} 
                                     />
                                     <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{c.charId}</div>
-                                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                                            Arr: {Math.round(c.arrivalTime)} (Start: {c.currentStartTime})
+                                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{formatCharName(c.charId)}</div>
+                                        <div style={{ fontSize: '0.72rem', opacity: 0.8 }}>
+                                            {relationLabel(c)}
                                         </div>
                                     </div>
                                 </div>
@@ -117,20 +151,20 @@ export const MergeModal: React.FC<MergeModalProps> = ({
                         onClick={onClose}
                         style={{ padding: '8px 16px', background: 'none', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer' }}
                     >
-                        Cancel
+                        キャンセル
                     </button>
-                    <button 
+                    <button
                         onClick={() => onConfirm(selectedIds)}
                         disabled={selectedIds.length === 0}
-                        style={{ 
-                            padding: '8px 16px', 
-                            background: selectedIds.length > 0 ? '#007acc' : '#444', 
-                            border: 'none', color: 'white', borderRadius: '4px', 
+                        style={{
+                            padding: '8px 16px',
+                            background: selectedIds.length > 0 ? '#007acc' : '#444',
+                            border: 'none', color: 'white', borderRadius: '4px',
                             cursor: selectedIds.length > 0 ? 'pointer' : 'not-allowed',
                             fontWeight: 'bold'
                         }}
                     >
-                        Sync {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
+                        合流する {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
                     </button>
                 </div>
             </div>

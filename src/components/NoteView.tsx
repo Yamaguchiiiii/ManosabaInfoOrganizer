@@ -374,6 +374,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const fileInputRef = useRef<HTMLInputElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null);
     const trRefs = useRef<(Konva.Transformer | null)[]>([null, null, null, null]);
+    // 4ペインそれぞれの DOM 要素。ペインをまたぐドラッグ移動(#4)のヒットテストに使う
+    const paneRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
     const editingTextBoundsRef = useRef<{ width: number } | null>(null);
 
     const [padPos, setPadPos] = useState<{x: number, y: number} | null>(null);
@@ -492,6 +494,58 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         setSelectedIds(newObjs.map(o => o.id));
     }, [clipboard, currentCanvasIndex, addNoteObjects, targetType, displayTargetId]);
 
+    // 選択中オブジェクトを切り取り（クリップボードへ退避してから削除する。属性は維持）
+    const handleCutSelected = useCallback(() => {
+        if (selectedIds.length === 0) return;
+        const sel = currentCanvasObjects.filter(o => selectedIds.includes(o.id));
+        if (sel.length === 0) return;
+        setClipboard(sel.map(o => ({ ...o, points: o.points ? [...o.points] : undefined })));
+        removeNoteObjects(targetType, displayTargetId, selectedIds);
+        setSelectedIds([]);
+    }, [selectedIds, currentCanvasObjects, removeNoteObjects, targetType, displayTargetId]);
+
+    // オブジェクトのドラッグ確定処理（#4: 4ペインをまたぐ移動に対応）。
+    // グリッド編集中に別ペイン上でドロップされたら、対象（グループなら全メンバー）を
+    // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
+    const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, scale: number) => {
+        const evt: MouseEvent | undefined = e?.evt;
+        const localX = e.target.x();
+        const localY = e.target.y();
+        // dx,dy だけ全体を平行移動する（グループは全メンバー、単体は自身）。
+        // extra に canvasIndex を含めると移動先ペインへ付け替えられる。
+        const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
+            saveHistoryOnceThenSkip();
+            if (obj.groupId) {
+                const groupObjs = currentCanvasObjects.filter(o => o.groupId === obj.groupId);
+                updateNoteObjects(targetType, displayTargetId,
+                    groupObjs.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy, ...extra } })));
+            } else {
+                updateNoteObject(targetType, displayTargetId, obj.id, { x: (obj.x ?? 0) + dx, y: (obj.y ?? 0) + dy, ...extra }, true);
+            }
+        };
+
+        if (isGridMode && isGridEditMode && evt) {
+            const borderWidth = compactMode ? 0 : 2;
+            const targetPane = paneRefs.current.findIndex(div => {
+                if (!div) return false;
+                const r = div.getBoundingClientRect();
+                return evt.clientX >= r.left && evt.clientX <= r.right && evt.clientY >= r.top && evt.clientY <= r.bottom;
+            });
+
+            if (targetPane !== -1 && targetPane !== sourceIndex) {
+                const r = paneRefs.current[targetPane]!.getBoundingClientRect();
+                const newX = (evt.clientX - r.left - borderWidth) / scale;
+                const newY = (evt.clientY - r.top - borderWidth) / scale;
+                applyMove(newX - (obj.x ?? 0), newY - (obj.y ?? 0), { canvasIndex: targetPane });
+                setSelectedIds([]);
+                return;
+            }
+        }
+
+        // 同一ペイン内: 通常の移動として確定
+        applyMove(localX - (obj.x ?? 0), localY - (obj.y ?? 0));
+    }, [isGridMode, isGridEditMode, compactMode, currentCanvasObjects, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -531,6 +585,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 return;
             }
 
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
+                if (selectedIds.length === 0) return;
+                e.preventDefault();
+                handleCutSelected();
+                return;
+            }
+
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
                 if (clipboard.length === 0) return;
                 e.preventDefault();
@@ -556,7 +617,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, clipboard, handleCopySelected, handlePasteClipboard]);
+    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, clipboard, handleCopySelected, handlePasteClipboard, handleCutSelected]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -1002,6 +1063,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                             📋
                         </button>
                         <button
+                            title="Cut (Ctrl+X)"
+                            onClick={handleCutSelected}
+                            disabled={selectedIds.length === 0}
+                            style={{ ...toolBtnStyle(false), color: selectedIds.length === 0 ? '#555' : '#ccc', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+                        >
+                            ✂️
+                        </button>
+                        <button
                             title="Paste (Ctrl+V)"
                             onClick={handlePasteClipboard}
                             disabled={clipboard.length === 0}
@@ -1313,8 +1382,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
                         return (
-                            <div 
+                            <div
                                 key={index}
+                                ref={(el) => { paneRefs.current[index] = el; }}
                                 onMouseEnter={() => { if (isGridMode) setHoveredCanvasIndex(index); }}
                                 onMouseLeave={() => { if (isGridMode) setHoveredCanvasIndex(null); }}
                                 style={{
@@ -1330,10 +1400,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     backgroundSize: `${24 * scale}px ${24 * scale}px`
                                 }}
                                 onClick={(e) => {
-                                    if (isGridMode && !isGridEditMode && !isCurrent) {
+                                    // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
+                                    // 呼び出し元(現在)ペインも対象に含め、戻れない不具合を解消する。
+                                    if (isGridMode && !isGridEditMode) {
                                         setCurrentCanvasIndex(index);
                                         setSelectedIds([]);
-                                        setIsGridMode(false); 
+                                        setIsGridMode(false);
                                         e.stopPropagation();
                                     }
                                 }}
@@ -1388,15 +1460,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                                         });
                                                     trRefs.current[index]?.getLayer()?.batchDraw();
                                                 },
-                                                onDragEnd: (e: any) => {
-                                                    const dx = e.target.x() - (obj.x ?? 0);
-                                                    const dy = e.target.y() - (obj.y ?? 0);
-                                                    const groupObjs = currentCanvasObjects.filter(o => o.groupId === obj.groupId);
-                                                    saveHistoryOnceThenSkip();
-                                                    updateNoteObjects(targetType, displayTargetId,
-                                                        groupObjs.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy } }))
-                                                    );
-                                                },
                                             } : {};
 
                                             const props = {
@@ -1404,6 +1467,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                                 isSelected,
                                                 isDrawingMode,
                                                 ...groupDragHandlers,
+                                                // ドラッグ確定はグループ/単体ともに統一ハンドラへ（#4 ペイン跨ぎ移動対応）
+                                                onDragEnd: (e: any) => handleObjectDragEnd(e, obj, index, scale),
                                                 onSelect: (e: any) => {
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
 

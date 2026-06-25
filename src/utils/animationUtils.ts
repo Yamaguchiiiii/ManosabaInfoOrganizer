@@ -385,3 +385,49 @@ export const calculateNodeArrivalTime = (
     if (targetIndex === -1) return null;
     return calculateArrivalTimeAtIndex(charData, targetIndex, allNodes);
 };
+
+// 指定ノードへの「全オカレンス（訪問）」の到達時刻を返す。
+// 同一地点を複数回訪れる経路で、どの訪問に合流するかを選べるようにするための関数。
+// arrival は startTime を含む絶対時刻（プリセット全体の時間軸）。
+export const getNodeArrivalOccurrences = (
+    charData: CharacterTimelineData,
+    targetNodeId: string,
+    allNodes: MapNode[]
+): { pathIndex: number; arrival: number }[] => {
+    const { path, startTime, duration } = charData;
+    if (!path || path.length === 0) return [];
+
+    const nodesMap: Record<string, MapNode> = {};
+    allNodes.forEach(n => { nodesMap[n.id] = n; });
+
+    // セグメント距離と総距離を 1 回だけ計算（calculateArrivalTimeAtIndex と同じ距離定義）
+    const segDist: number[] = [];
+    let totalDist = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const a = nodesMap[path[i]];
+        const b = nodesMap[path[i + 1]];
+        let d = 0;
+        if (a && b) {
+            if (a.id === b.id) {
+                d = WAIT_VIRTUAL_DISTANCE;
+            } else {
+                const isStairJump = (a.type === 'stair' && b.type === 'stair');
+                const isFloorChange = (a.floor !== b.floor);
+                d = (isStairJump || isFloorChange) ? 0 : getDistance(a, b);
+            }
+        }
+        segDist.push(d);
+        totalDist += d;
+    }
+
+    const result: { pathIndex: number; arrival: number }[] = [];
+    let cum = 0; // path[i] までの累積距離
+    for (let i = 0; i < path.length; i++) {
+        if (path[i] === targetNodeId) {
+            const arrival = (totalDist === 0) ? startTime : startTime + duration * (cum / totalDist);
+            result.push({ pathIndex: i, arrival });
+        }
+        if (i < segDist.length) cum += segDist[i];
+    }
+    return result;
+};

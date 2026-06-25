@@ -7,7 +7,7 @@ import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
 import { SuggestionSidebar } from './common/SuggestionSidebar';
 import { useStageZoom } from '../hooks/useStageZoom';
-import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex } from '../utils/animationUtils';
+import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeArrivalOccurrences } from '../utils/animationUtils';
 
 import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
@@ -386,29 +386,47 @@ export const CreateView: React.FC<CreateViewProps> = ({
           myPathIndex = wpIndices[waypointIndex] ?? -1;
       }
 
-      const myTime = (myPathIndex >= 0)
+      let myTime = (myPathIndex >= 0)
           ? calculateArrivalTimeAtIndex(tempData, myPathIndex, nodes)
           : calculateNodeArrivalTime(tempData, waypointId, nodes);
+      // Goal未設定などで経路が無い場合（StartだけにB等の地点を入れてsyncした場合）は、
+      // その地点に静止して相手を待ち受けるキャラとして扱う。移動はしないので相対移動時間は 0
+      // （絶対到達時刻は startTime + 0 = startTime ＝現在のDelayになる）。
+      if (myTime === null && displayPath.length < 2) {
+          myTime = 0;
+          myPathIndex = 0;
+      }
       if (myTime === null) { showAlert("到達時刻を計算できませんでした。"); return; }
       setMyCurrentTravelTime(myTime);
       setMyCurrentSyncPathIndex(myPathIndex);
+
+      // 自分の自然な絶対到達時刻。相手キャラのどの訪問(オカレンス)に合流するかの基準にする。
+      const myAbsArrival = startTime + myTime;
 
       const candidates: MergeCandidate[] = [];
       Object.entries(activePreset.data).forEach(([cid, data]: [string, any]) => {
           if (selectedIcons.includes(cid)) return;
           const cData = Array.isArray(data) ? { path: data, startTime: 0, duration: computeDuration(data, nodes) } : data;
-          const arrival = calculateNodeArrivalTime(cData, waypointId, nodes);
-          if (arrival !== null) {
-              const currentStart = cData.startTime || 0;
-              const travelTime = arrival - currentStart;
-              candidates.push({ 
-                  charId: cid, 
-                  arrivalTime: arrival, 
-                  currentStartTime: currentStart,
-                  travelTime: travelTime,
-                  data: cData 
-              });
+          // 相手キャラがこの地点を通る「全ての訪問」を取得し、自分の到達時刻に最も近い訪問を合流点に選ぶ。
+          // 従来は indexOf(最初の訪問)固定だったため、同一地点を複数回通る複雑Syncで時刻がずれていた。
+          // 最も近い訪問を選ぶことで、相手の他の予定（別Sync等）を壊しにくくなる。
+          const occurrences = getNodeArrivalOccurrences(cData, waypointId, nodes);
+          if (occurrences.length === 0) return;
+          let best = occurrences[0];
+          for (let k = 1; k < occurrences.length; k++) {
+              if (Math.abs(occurrences[k].arrival - myAbsArrival) < Math.abs(best.arrival - myAbsArrival)) {
+                  best = occurrences[k];
+              }
           }
+          const currentStart = cData.startTime || 0;
+          candidates.push({
+              charId: cid,
+              arrivalTime: best.arrival,
+              currentStartTime: currentStart,
+              travelTime: best.arrival - currentStart,
+              data: cData,
+              pathIndex: best.pathIndex,
+          });
       });
 
       if (!candidates.length) { showAlert(`「${waypointName}」を通る他のキャラクターが見つかりませんでした。`); return; }
@@ -480,8 +498,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
       const targetWaypoints: Waypoint[] = followTarget.data.waypoints || [];
       const targetPath: string[] = followTarget.data.path || (Array.isArray(followTarget.data) ? followTarget.data : []);
       
-      // 合流地点は候補キャラの最初の訪問（到達時刻計算と整合）
-      const targetPathIndex = targetPath.indexOf(mergeTargetWaypointId);
+      // 合流地点は handleSyncTime で選んだ訪問（オカレンス）に揃える。
+      // これにより「同行できる以降の経由地」も正しい訪問以降だけが対象になる。
+      const targetPathIndex = followTarget.pathIndex ?? targetPath.indexOf(mergeTargetWaypointId);
 
       if (targetPathIndex !== -1) {
           const wpIndices = resolveWaypointPathIndices(targetPath, targetWaypoints);
@@ -822,15 +841,25 @@ export const CreateView: React.FC<CreateViewProps> = ({
       <FollowConfirmModal 
           info={followTargetInfo}
           onClose={() => setFollowTargetInfo(null)}
-          onConfirm={(waypointsToAppend) => {
+          onConfirm={(waypointsToAppend, delaySec) => {
               if (waypointsToAppend.length > 0) {
                   setWaypoints(prev => {
                       const next = [...prev];
                       if (next.length > 0 && next[next.length - 1].id === '') {
                           next.pop();
                       }
-                      // displayLabel など余分なフィールドを落として純粋な Waypoint として追加
-                      const appended = waypointsToAppend.map(wp => ({ id: wp.id, name: wp.name, stayTime: wp.stayTime }));
+                      // 少し後をついていく(delay): 合流地点(現在の末尾)に滞在時間を加え、
+                      // 相手より delaySec 秒遅れて追従を開始させる
+                      if (delaySec > 0 && next.length > 0) {
+                          const mergeIdx = next.length - 1;
+                          next[mergeIdx] = { ...next[mergeIdx], stayTime: (next[mergeIdx].stayTime || 0) + delaySec };
+                      }
+                      const mergeId = next.length > 0 ? next[next.length - 1].id : '';
+                      // displayLabel など余分なフィールドを落として純粋な Waypoint として追加。
+                      // 合流地点と重複する先頭の追従地点は除外する（Goalと同じ地点の二重追加を防止）
+                      const appended = waypointsToAppend
+                          .map(wp => ({ id: wp.id, name: wp.name, stayTime: wp.stayTime }))
+                          .filter((wp, i) => !(i === 0 && wp.id === mergeId));
                       return [...next, ...appended];
                   });
                   setIsEditing(true);
@@ -861,13 +890,16 @@ const formatCharName = (charId: string) => {
 const FollowConfirmModal: React.FC<{
     info: FollowTargetInfo | null;
     onClose: () => void;
-    onConfirm: (waypointsToAppend: Waypoint[]) => void;
+    onConfirm: (waypointsToAppend: Waypoint[], delaySec: number) => void;
 }> = ({ info, onClose, onConfirm }) => {
     if (!info) return null;
     const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+    // 少し後をついていく際の遅延（秒）。0なら相手と同じタイミングで同行する。
+    const [delaySec, setDelaySec] = useState<number>(0);
 
     useEffect(() => {
         setSelectedIndex(-1);
+        setDelaySec(0);
     }, [info]);
 
     return (
@@ -906,19 +938,31 @@ const FollowConfirmModal: React.FC<{
                         </label>
                     ))}
                 </div>
-                
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 15px 0', opacity: selectedIndex === -1 ? 0.4 : 1 }}>
+                    <span style={{ fontSize: '0.9rem' }}>少し後をついていく（遅延）:</span>
+                    <input
+                        type="number" min="0" step="1" value={delaySec}
+                        disabled={selectedIndex === -1}
+                        onChange={(e) => setDelaySec(Math.max(0, parseFloat(e.target.value) || 0))}
+                        onFocus={(e) => e.target.select()}
+                        style={{ width: '60px', background: '#222', border: '1px solid #444', color: 'white', padding: '4px', borderRadius: '4px', textAlign: 'right' }}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#888' }}>秒</span>
+                </div>
+
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button onClick={onClose} style={{ background: '#444', border: '1px solid #555', color: 'white', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
                         キャンセル
                     </button>
-                    <button 
+                    <button
                         onClick={() => {
                             if (selectedIndex === -1) {
-                                onConfirm([]);
+                                onConfirm([], 0);
                             } else {
-                                onConfirm(info.subsequentWaypoints.slice(0, selectedIndex + 1));
+                                onConfirm(info.subsequentWaypoints.slice(0, selectedIndex + 1), delaySec);
                             }
-                        }} 
+                        }}
                         style={{ background: '#007acc', border: 'none', color: 'white', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
                     >
                         決定

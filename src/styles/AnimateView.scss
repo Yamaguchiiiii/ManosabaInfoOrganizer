@@ -41,17 +41,22 @@
     }
   }
 
-  // 右下のセル（操作盤 + メモ）
+  // 右下のセル（操作盤）
   .control-cell-wrapper {
     display: flex;
     flex-direction: column;
     height: 100%;
     background-color: #252526;
-    
+    // .grid-cell から継承される点線(背景画像)を打ち消す。
+    // これを消さないと操作盤の余白部分に点線だけが見えてしまう。
+    background-image: none;
+
     // TimelineNote(canvas) を廃止し、操作盤(AnimationTimeline)でセル全体を使う
     .timeline-section {
       flex: 1;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
   }
 }
