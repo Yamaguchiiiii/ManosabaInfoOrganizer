@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line } from 'react-konva';
+import { Stage, Layer, Group, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
 import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } from '../store';
@@ -34,6 +34,12 @@ const applyChaikin = (points: number[], iterations: number): number[] => {
 // キャラクターノートにデフォルト配置される立ち絵。全キャラぶんを事件ノート等の
 // 画像パレット/ギャラリーから配置できるようにするための一覧。
 const CHARACTER_PORTRAITS = ICON_FILES.map(icon => `./character/${icon}`);
+
+// compact(Animate)で Canvas 右側に常設する画像パレットの固定幅(px)
+const COMPACT_PALETTE_W = 60;
+// 論理キャンバスの基準サイズ(3:2)。オブジェクト未配置時のフォールバック表示に使う。
+const CANVAS_BASE_W = 1200;
+const CANVAS_BASE_H = 800;
 
 // --- 画像コンポーネント (メモ化) ---
 const URLImage = React.memo(({ imageObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
@@ -382,6 +388,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const trRefs = useRef<(Konva.Transformer | null)[]>([null, null, null, null]);
     // 4ペインそれぞれの DOM 要素。ペインをまたぐドラッグ移動(#4)のヒットテストに使う
     const paneRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
+    // compact(Animate): 事件ノートの実コンテンツ(オブジェクト群)を計測してズームフィットするための
+    // Group ref と、適用する変換(scale/offset)。
+    const fitGroupRefs = useRef<(Konva.Group | null)[]>([null, null, null, null]);
+    const [contentFit, setContentFit] = useState<{ scale: number, x: number, y: number } | null>(null);
     const editingTextBoundsRef = useRef<{ width: number } | null>(null);
 
     const [padPos, setPadPos] = useState<{x: number, y: number} | null>(null);
@@ -441,6 +451,34 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
     const currentCanvasObjects = useMemo(() => objects.filter(o => (o.canvasIndex || 0) === currentCanvasIndex), [objects, currentCanvasIndex]);
     const objectsLength = objects.length;
+
+    // compact(Animate): 現在ペインのオブジェクト群(実コンテンツ)の論理バウンディングボックスを計測し、
+    // Canvas領域へアスペクト比を維持してズームフィットする変換(scale/offset)を求める。
+    // オブジェクトが無い場合は基準1200×800をフィット。
+    useLayoutEffect(() => {
+        if (!compactMode || isGridMode) return;
+        const availW = Math.max(0, canvasSize.width - COMPACT_PALETTE_W);
+        const availH = canvasSize.height;
+        if (availW <= 10 || availH <= 10) return;
+        const baseFit = Math.min(availW / CANVAS_BASE_W, availH / CANVAS_BASE_H);
+        const group = fitGroupRefs.current[currentCanvasIndex];
+        const layer = group?.getLayer();
+        if (!group || !layer || currentCanvasObjects.length === 0) {
+            setContentFit({ scale: baseFit, x: 0, y: 0 });
+            return;
+        }
+        // レイヤー(=論理座標系)基準のバウンディングボックス。レイヤーの現在変換には依存しない。
+        const box = group.getClientRect({ relativeTo: layer });
+        if (!box || box.width <= 1 || box.height <= 1) {
+            setContentFit({ scale: baseFit, x: 0, y: 0 });
+            return;
+        }
+        const pad = 28;
+        const fs = Math.max(0.05, Math.min((availW - pad * 2) / box.width, (availH - pad * 2) / box.height));
+        const x = (availW - box.width * fs) / 2 - box.x * fs;
+        const y = (availH - box.height * fs) / 2 - box.y * fs;
+        setContentFit({ scale: fs, x, y });
+    }, [currentCanvasObjects, currentCanvasIndex, compactMode, isGridMode, canvasSize.width, canvasSize.height]);
 
     useEffect(() => {
         const container = canvasContainerRef.current;
@@ -708,13 +746,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         }
     };
 
-    const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
+    const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>, index: number, _scale: number) => {
         if (e.evt.button !== 0) return;
 
         if (placementMode) {
-            const stagePos = e.target.getStage()?.getPointerPosition();
-            if (!stagePos) return;
-            const pos = { x: stagePos.x / scale, y: stagePos.y / scale };
+            // レイヤーのローカル(=論理)座標。Layerのscale/offset(compactのズームフィット)を自動で吸収する。
+            const layer = e.target.getStage()?.getLayers()[0];
+            const pos = layer?.getRelativePointerPosition();
+            if (!pos) return;
 
             if (['line', 'arrow', 'curve', 'curve_arrow', 'freehand'].includes(placementMode.type as string)) {
                 isDrawingRef.current = true;
@@ -785,9 +824,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
             setShapeContextMenu(null);
             setAssetContextMenu(null);
 
-            const pos = e.target.getStage()?.getPointerPosition();
-            if (pos) {
-                setSelectionRect({ startX: pos.x, startY: pos.y, w: 0, h: 0, visible: true, canvasIndex: index });
+            const layer = e.target.getStage()?.getLayers()[0];
+            const lp = layer?.getRelativePointerPosition();
+            if (lp) {
+                setSelectionRect({ startX: lp.x, startY: lp.y, w: 0, h: 0, visible: true, canvasIndex: index });
             }
         } else {
             setShapeContextMenu(null);
@@ -795,11 +835,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         }
     };
 
-    const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
+    const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>, index: number, _scale: number) => {
         if (isDrawingRef.current && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index) {
-            const stagePos = e.target.getStage()?.getPointerPosition();
-            if (!stagePos) return;
-            const logicalPos = { x: stagePos.x / scale, y: stagePos.y / scale };
+            const layer = e.target.getStage()?.getLayers()[0];
+            const logicalPos = layer?.getRelativePointerPosition();
+            if (!logicalPos) return;
             const type = drawingShapeInfoRef.current.type as string;
 
             if (['rect', 'circle', 'triangle'].includes(type)) {
@@ -844,17 +884,18 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         }
 
         if (!selectionRect.visible || selectionRect.canvasIndex !== index) return;
-        const pos = e.target.getStage()?.getPointerPosition();
-        if (pos) {
+        const layer = e.target.getStage()?.getLayers()[0];
+        const lp = layer?.getRelativePointerPosition();
+        if (lp) {
             setSelectionRect(prev => ({
                 ...prev,
-                w: pos.x - prev.startX,
-                h: pos.y - prev.startY
+                w: lp.x - prev.startX,
+                h: lp.y - prev.startY
             }));
         }
     };
 
-    const handleStageMouseUp = async (e: Konva.KonvaEventObject<MouseEvent>, index: number, scale: number) => {
+    const handleStageMouseUp = async (e: Konva.KonvaEventObject<MouseEvent>, index: number, _scale: number) => {
         if (isDrawingRef.current && drawingShapeInfoRef.current) {
             isDrawingRef.current = false;
             const type = drawingShapeInfoRef.current.type as string;
@@ -926,11 +967,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         if (!selectionRect.visible || selectionRect.canvasIndex !== index) return;
         setSelectionRect(prev => ({ ...prev, visible: false }));
 
+        // selectionRect は論理座標で保持しているため、ここでの /scale 変換は不要。
         const box = {
-            x: Math.min(selectionRect.startX, selectionRect.startX + selectionRect.w) / scale,
-            y: Math.min(selectionRect.startY, selectionRect.startY + selectionRect.h) / scale,
-            width: Math.abs(selectionRect.w) / scale,
-            height: Math.abs(selectionRect.h) / scale
+            x: Math.min(selectionRect.startX, selectionRect.startX + selectionRect.w),
+            y: Math.min(selectionRect.startY, selectionRect.startY + selectionRect.h),
+            width: Math.abs(selectionRect.w),
+            height: Math.abs(selectionRect.h)
         };
 
         if (box.width === 0 || box.height === 0) return;
@@ -1470,14 +1512,19 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // レターボックスで中央配置する。これにより Animate と 事件ノート で
                         // 「描画/可視領域(=1200×800)」が完全一致し、端に置いたオブジェクトも双方で見える。
                         // 周囲の暗色マージン(セルとの差分)が活用したい余白領域。
-                        const canvasW = CANVAS_BASE_WIDTH * scale;
-                        const canvasH = CANVAS_BASE_HEIGHT * scale;
-                        // compact(Animate)では Canvas を左寄せにし、右側の余白に画像パレットを常設する。
-                        const paletteWidth = compactMode ? Math.max(0, stageWidth - canvasW) : 0;
+                        // compact(Animate)は右に固定幅の画像パレットを置き、残りをCanvas領域として
+                        // 事件ノートの実コンテンツへズームフィット表示する（contentFit）。
                         // 非compact(Noteページ)はコンテナいっぱいに描画して最大化（余白なし）。
-                        // compact(Animate)は論理1200×800を3:2でフィット（右に画像パレット用の余白）。
-                        const stageRenderW = compactMode ? canvasW : stageWidth;
-                        const stageRenderH = compactMode ? canvasH : stageHeight;
+                        const paletteWidth = (compactMode && !isGridMode) ? COMPACT_PALETTE_W : 0;
+                        const canvasAreaW = Math.max(0, stageWidth - paletteWidth);
+                        const stageRenderW = compactMode ? canvasAreaW : stageWidth;
+                        const stageRenderH = stageHeight;
+                        // レイヤーに適用する変換。compactの単一表示のみ contentFit(ズームフィット)、
+                        // 4ペイン/非compactは従来のフィット(各セルにフィット)。
+                        const useContentFit = compactMode && !isGridMode;
+                        const effScale = useContentFit ? (contentFit?.scale ?? scale) : scale;
+                        const layerX = useContentFit ? (contentFit?.x ?? 0) : 0;
+                        const layerY = useContentFit ? (contentFit?.y ?? 0) : 0;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1552,7 +1599,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                         } : {})
                                     }}
                                 >
-                                    <Layer scaleX={scale} scaleY={scale}>
+                                    <Layer scaleX={effScale} scaleY={effScale} x={layerX} y={layerY}>
+                                        {/* 実コンテンツ計測用Group(変換なし)。compactのズームフィットのbbox基準にする。 */}
+                                        <Group ref={(el) => { fitGroupRefs.current[index] = el; }}>
                                         {isFontLoaded && objs.map((obj) => {
                                             const isSelected = selectedIds.includes(obj.id);
                                             if (obj.id === editingTextId) return null;
@@ -1610,7 +1659,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                                     const stage = trRefs.current[index]?.getStage();
                                                     const textNode = stage?.findOne(`#${obj.id}`);
                                                     editingTextBoundsRef.current = textNode
-                                                        ? { width: Math.max(50, textNode.width() * scale) }
+                                                        ? { width: Math.max(50, textNode.width() * effScale) }
                                                         : null;
 
                                                     setEditingTextId(obj.id);
@@ -1628,6 +1677,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                             if (obj.type === 'text') return <EditableText key={obj.id} {...props} />;
                                             return <ShapeObject key={obj.id} {...props} />;
                                         })}
+                                        </Group>
 
                                         {/* 複数選択時、テキストノードの選択インジケーター（Transformerが除外するため個別描画） */}
                                         {selectedIds.length > 1 && objs
@@ -1640,8 +1690,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                                     width={(o.width || 150) + 4}
                                                     height={(o.fontSize || 24) * 1.5 + 4}
                                                     stroke="#007acc"
-                                                    strokeWidth={1 / scale}
-                                                    dash={[4 / scale, 4 / scale]}
+                                                    strokeWidth={1 / effScale}
+                                                    dash={[4 / effScale, 4 / effScale]}
                                                     fill="transparent"
                                                     listening={false}
                                                 />
@@ -1715,13 +1765,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
                                         {selectionRect.visible && selectionRect.canvasIndex === index && (
                                             <Rect
-                                                x={Math.min(selectionRect.startX, selectionRect.startX + selectionRect.w) / scale}
-                                                y={Math.min(selectionRect.startY, selectionRect.startY + selectionRect.h) / scale}
-                                                width={Math.abs(selectionRect.w) / scale}
-                                                height={Math.abs(selectionRect.h) / scale}
+                                                x={Math.min(selectionRect.startX, selectionRect.startX + selectionRect.w)}
+                                                y={Math.min(selectionRect.startY, selectionRect.startY + selectionRect.h)}
+                                                width={Math.abs(selectionRect.w)}
+                                                height={Math.abs(selectionRect.h)}
                                                 fill="rgba(0, 122, 204, 0.2)"
                                                 stroke="#007acc"
-                                                strokeWidth={1 / scale}
+                                                strokeWidth={1 / effScale}
                                                 listening={false}
                                             />
                                         )}
@@ -1796,12 +1846,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                             autoFocus
                                             style={{
                                                 position: 'absolute',
-                                                top: obj.y * scale,
-                                                left: obj.x * scale,
+                                                top: layerY + obj.y * effScale,
+                                                left: layerX + obj.x * effScale,
                                                 width: `${editWidth}px`,
                                                 height: 'auto',
-                                                minHeight: `${(obj.fontSize || 24) * 1.4 * scale}px`,
-                                                fontSize: `${(obj.fontSize || 24) * scale}px`,
+                                                minHeight: `${(obj.fontSize || 24) * 1.4 * effScale}px`,
+                                                fontSize: `${(obj.fontSize || 24) * effScale}px`,
                                                 fontWeight: obj.fontWeight || 'normal',
                                                 fontFamily: HANDWRITING_FONT,
                                                 color: obj.fill || 'black',
