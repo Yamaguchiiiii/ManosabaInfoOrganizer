@@ -1493,11 +1493,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
                                     // 紙面(キャンバス本体)はStageへ移し、ここ(セル)は暗色の余白に。
-                                    // compact(Animate)はCanvasを左寄せ、それ以外は中央配置。
+                                    // compactの単一表示のみCanvasを左寄せ(右に画像パレット)。4ペイン/通常は中央配置。
                                     backgroundColor: '#1e1e1e',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: compactMode ? 'flex-start' : 'center'
+                                    justifyContent: (compactMode && !isGridMode) ? 'flex-start' : 'center'
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1720,8 +1720,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     </Layer>
                                 </Stage>
 
-                                {/* compact(Animate): 左寄せCanvasの右側余白に画像パレットを常設。クリックで配置モード→キャンバスをクリックで配置 */}
-                                {compactMode && paletteWidth > 40 && (
+                                {/* compact(Animate)の単一表示のみ: 左寄せCanvasの右余白に画像パレットを常設。
+                                    4ペイン表示ではパレットを出さない(Canvasのみ4分割)。 */}
+                                {compactMode && !isGridMode && paletteWidth > 40 && (
                                     <div style={{
                                         position: 'absolute', right: 0, top: 0, bottom: 0,
                                         width: `${paletteWidth}px`,
