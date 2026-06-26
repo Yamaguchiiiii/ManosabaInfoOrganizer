@@ -1,16 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import Konva from 'konva';
-import { useAppStore, ICON_FILES, MapNode, CharacterTimelineData } from '../store';
+import { useAppStore, usePlaybackStore, ICON_FILES, MapNode, CharacterTimelineData } from '../store';
 import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity } from '../utils/animationUtils';
 
 export const FLOOR_IDS = ['1F', '2F', 'B1'] as const;
 export type AnimFloorId = typeof FLOOR_IDS[number];
 
 const ICON_SIZE = 80;
-// 時間ベース追従の係数。60fps(dt≈1/60)で 1-exp(-10/60)≈0.154 となり従来の固定値 0.15 と一致。
-// フレームが落ちて間隔が伸びてもその分だけ多く追従するため、可変フレームレートでも
-// 体感の滑らかさが保たれる（Edgeブラウザ等の残カクツキ対策）。
-const LERP_RATE = 10;
+const LERP_FACTOR = 0.15;
 const TELEPORT_THRESHOLD = 200;
 const TARGET_FPS = 60;
 const LOOP_DELAY_FRAMES = 60;
@@ -43,8 +40,6 @@ export const useAnimationPositions = (
     const timeRef        = useRef<number>(0);
     const maxDurationRef = useRef<number>(0);
     const lastTsRef      = useRef<number | null>(null);
-    // LERP 用の実フレーム間隔を測る連続タイムスタンプ（停止/シークでリセットしない）
-    const lastFrameTsRef = useRef<number | null>(null);
     const frameCountRef  = useRef<number>(0);
     // 自分が store.currentTime に最後に書き込んだ値。外部シーク(スライダー/リセット)だけを
     // 検出し、自分の throttled 書き込み遅延を誤シーク扱いして巻き戻すのを防ぐために使う。
@@ -61,7 +56,7 @@ export const useAnimationPositions = (
         lastTsRef.current = null;
         maxDurationRef.current = 0;
         lastWrittenTimeRef.current = 0;
-        useAppStore.setState({ currentTime: 0 });
+        usePlaybackStore.setState({ currentTime: 0 });
 
         if (!activePreset) return;
 
@@ -109,7 +104,8 @@ export const useAnimationPositions = (
         let animId: number;
 
         const animate = (timestamp: number) => {
-            const { isPlaying, playbackSpeed, currentTime: storeTime, presets, activePresetId: currentPresetId } = useAppStore.getState();
+            const { presets, activePresetId: currentPresetId } = useAppStore.getState();
+            const { isPlaying, playbackSpeed, currentTime: storeTime } = usePlaybackStore.getState();
             const activePreset = presets.find(p => p.id === currentPresetId);
             const deadIcons: string[] = activePreset?.deadIcons ?? [];
 
@@ -133,7 +129,7 @@ export const useAnimationPositions = (
                     if (max > 0 && timeRef.current > max + LOOP_DELAY_FRAMES) {
                         // ループ折り返し: Zustand も即座に 0 へ合わせてシーク誤検知を防ぐ
                         timeRef.current = 0;
-                        useAppStore.setState({ currentTime: 0 });
+                        usePlaybackStore.setState({ currentTime: 0 });
                         lastWrittenTimeRef.current = 0;
                     }
                 }
@@ -143,14 +139,6 @@ export const useAnimationPositions = (
             }
 
             const currentTime = timeRef.current;
-
-            // LERP用の実フレーム間隔(秒)。再生/停止に関わらず毎フレーム更新する。
-            const frameDt = lastFrameTsRef.current !== null
-                ? Math.min((timestamp - lastFrameTsRef.current) / 1000, 0.1)
-                : 1 / TARGET_FPS;
-            lastFrameTsRef.current = timestamp;
-            // 時間ベースの追従係数（フレームレート非依存）
-            const lerpFactor = 1 - Math.exp(-LERP_RATE * frameDt);
 
             // 1. 全キャラの目標座標を計算（プールスロット上書き、新規オブジェクト生成なし）
             // 非active icon の _targets.floor を '' にリセットして visible(false) を保証
@@ -233,8 +221,8 @@ export const useAnimationPositions = (
                             newX = target.x;
                             newY = target.y;
                         } else {
-                            newX = prev.x + diffX * lerpFactor;
-                            newY = prev.y + diffY * lerpFactor;
+                            newX = prev.x + diffX * LERP_FACTOR;
+                            newY = prev.y + diffY * LERP_FACTOR;
                         }
                     }
 
@@ -257,7 +245,7 @@ export const useAnimationPositions = (
             // Zustand への currentTime 書き込みを 4 フレームに 1 回に絞る（タイムライン UI 更新用）
             frameCountRef.current++;
             if (frameCountRef.current % ZUSTAND_WRITE_INTERVAL === 0) {
-                useAppStore.setState({ currentTime });
+                usePlaybackStore.setState({ currentTime });
                 lastWrittenTimeRef.current = currentTime;
             }
 

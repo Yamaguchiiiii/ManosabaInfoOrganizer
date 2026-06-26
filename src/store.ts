@@ -129,9 +129,6 @@ export interface AppState {
     updateTimelineItem: (presetId: string, charId: string, updates: Partial<CharacterTimelineData>) => void;
     toggleDeadIcon: (icon: string) => void;
 
-    isPlaying: boolean; currentTime: number; playbackSpeed: number;
-    setPlaybackSpeed: (speed: number) => void; setIsPlaying: (isPlaying: boolean) => void; setCurrentTime: (time: number) => void; 
-
     notes: NoteData;
     noteHistory: NoteData[];
     saveNoteHistory: () => void;
@@ -172,6 +169,9 @@ const openDB = (): Promise<IDBDatabase> => {
     });
 };
 
+// persist の IndexedDB 書き込みをまとめる debounce 間隔(ms)
+const PERSIST_DEBOUNCE_MS = 500;
+
 const idbStorage: StateStorage = {
     getItem: async (name: string): Promise<string | null> => {
         try {
@@ -194,16 +194,59 @@ const idbStorage: StateStorage = {
             return null;
         } catch (e) { return null; }
     },
-    setItem: async (name: string, value: string): Promise<void> => {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.put(value, name);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    },
+    // ノートのドラッグ/変形・履歴保存など高頻度の setState ごとに、巨大な state を
+    // 毎回 IndexedDB へ書くとカクつく。書き込みをまとめる:
+    //  ・直列化結果が前回と同一なら書かない（noteHistory 等 partialize 除外のみの変更を無視）
+    //  ・異なる場合も PERSIST_DEBOUNCE_MS 待って最後の値を1回だけ書く（連続編集を集約）
+    setItem: (() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let lastValue: string | null = null;
+        let pendingName: string | null = null;
+        let pendingValue: string | null = null;
+
+        const writeNow = async (): Promise<void> => {
+            timer = null;
+            if (pendingName === null || pendingValue === null) return;
+            const name = pendingName;
+            const value = pendingValue;
+            pendingName = null;
+            pendingValue = null;
+            try {
+                const db = await openDB();
+                await new Promise<void>((resolve, reject) => {
+                    const transaction = db.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.put(value, name);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            } catch {
+                lastValue = null; // 失敗時は次回同じ値でも再試行できるようにする
+            }
+        };
+
+        const flush = () => {
+            if (timer) { clearTimeout(timer); timer = null; }
+            void writeNow();
+        };
+
+        // タブ非表示/離脱時に未書き込みをベストエフォートで保存する
+        if (typeof window !== 'undefined') {
+            window.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') flush();
+            });
+            window.addEventListener('pagehide', flush);
+        }
+
+        return async (name: string, value: string): Promise<void> => {
+            if (value === lastValue) return; // 内容が同じなら書かない
+            lastValue = value;
+            pendingName = name;
+            pendingValue = value;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => { void writeNow(); }, PERSIST_DEBOUNCE_MS);
+        };
+    })(),
     removeItem: async (name: string): Promise<void> => {
         const db = await openDB();
         return new Promise((resolve, reject) => {
@@ -322,8 +365,6 @@ export const useAppStore = create<AppState>()(
         presets: [{ id: 'chapter1', name: 'Episode 1', data: {}, deadIcons: [] }],
         activePresetId: 'chapter1',
 
-        isPlaying: false, currentTime: 0, playbackSpeed: 1.0,
-
         notes: {
             overview: '',
             overviewCanvas: { objects: [], assets: [] },
@@ -432,10 +473,6 @@ export const useAppStore = create<AppState>()(
                 return { ...p, deadIcons: newDead };
             })
         })),
-
-        setIsPlaying: (isPlaying) => set({ isPlaying }),
-        setCurrentTime: (currentTime) => set({ currentTime }),
-        setPlaybackSpeed: (speed) => set({ playbackSpeed: speed}),
 
         updateOverview: (content) => set((state) => ({ notes: { ...state.notes, overview: content } })),
 
@@ -568,3 +605,26 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+// --- 再生(playback)の一時状態は永続化しない別ストアに分離する ---
+// currentTime は再生中に毎フレーム更新されるため、これを persist 付きの useAppStore に
+// 置くと「巨大な state を IndexedDB へ毎フレーム書き込む」ことになり、フレーム落ち・GC圧の
+// 主因になっていた（Performance 上 setItem/put が 100%）。永続化不要な currentTime /
+// isPlaying / playbackSpeed をこの軽量ストアへ移し、再生が IndexedDB に一切触れないようにする。
+interface PlaybackState {
+    isPlaying: boolean;
+    currentTime: number;
+    playbackSpeed: number;
+    setIsPlaying: (isPlaying: boolean) => void;
+    setCurrentTime: (time: number) => void;
+    setPlaybackSpeed: (speed: number) => void;
+}
+
+export const usePlaybackStore = create<PlaybackState>((set) => ({
+    isPlaying: false,
+    currentTime: 0,
+    playbackSpeed: 1.0,
+    setIsPlaying: (isPlaying) => set({ isPlaying }),
+    setCurrentTime: (currentTime) => set({ currentTime }),
+    setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
+}));

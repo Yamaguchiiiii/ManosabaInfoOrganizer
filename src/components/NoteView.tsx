@@ -525,7 +525,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         };
 
         if (isGridMode && isGridEditMode && evt) {
-            const borderWidth = compactMode ? 0 : 2;
             const targetPane = paneRefs.current.findIndex(div => {
                 if (!div) return false;
                 const r = div.getBoundingClientRect();
@@ -533,10 +532,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
             });
 
             if (targetPane !== -1 && targetPane !== sourceIndex) {
-                const r = paneRefs.current[targetPane]!.getBoundingClientRect();
-                const newX = (evt.clientX - r.left - borderWidth) / scale;
-                const newY = (evt.clientY - r.top - borderWidth) / scale;
-                applyMove(newX - (obj.x ?? 0), newY - (obj.y ?? 0), { canvasIndex: targetPane });
+                // ドロップ時にマウス位置へ原点を合わせると「掴んだ位置」のズレぶん飛んでしまう。
+                // 代わりに、ドラッグ後のオブジェクト原点(localX)を保ったまま、
+                // 元ペインと移動先ペインの画面上のオフセット差ぶんだけ論理座標を平行移動する。
+                // これで「見えている位置のまま」移動先キャンバスへ付け替わる。
+                const srcRect = paneRefs.current[sourceIndex]?.getBoundingClientRect();
+                const tgtRect = paneRefs.current[targetPane]!.getBoundingClientRect();
+                const offX = srcRect ? (srcRect.left - tgtRect.left) / scale : 0;
+                const offY = srcRect ? (srcRect.top - tgtRect.top) / scale : 0;
+                applyMove((localX - (obj.x ?? 0)) + offX, (localY - (obj.y ?? 0)) + offY, { canvasIndex: targetPane });
                 setSelectedIds([]);
                 return;
             }

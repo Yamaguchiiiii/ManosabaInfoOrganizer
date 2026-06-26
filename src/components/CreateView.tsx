@@ -841,18 +841,12 @@ export const CreateView: React.FC<CreateViewProps> = ({
       <FollowConfirmModal 
           info={followTargetInfo}
           onClose={() => setFollowTargetInfo(null)}
-          onConfirm={(waypointsToAppend, delaySec) => {
+          onConfirm={(waypointsToAppend) => {
               if (waypointsToAppend.length > 0) {
                   setWaypoints(prev => {
                       const next = [...prev];
                       if (next.length > 0 && next[next.length - 1].id === '') {
                           next.pop();
-                      }
-                      // 少し後をついていく(delay): 合流地点(現在の末尾)に滞在時間を加え、
-                      // 相手より delaySec 秒遅れて追従を開始させる
-                      if (delaySec > 0 && next.length > 0) {
-                          const mergeIdx = next.length - 1;
-                          next[mergeIdx] = { ...next[mergeIdx], stayTime: (next[mergeIdx].stayTime || 0) + delaySec };
                       }
                       const mergeId = next.length > 0 ? next[next.length - 1].id : '';
                       // displayLabel など余分なフィールドを落として純粋な Waypoint として追加。
@@ -890,16 +884,13 @@ const formatCharName = (charId: string) => {
 const FollowConfirmModal: React.FC<{
     info: FollowTargetInfo | null;
     onClose: () => void;
-    onConfirm: (waypointsToAppend: Waypoint[], delaySec: number) => void;
+    onConfirm: (waypointsToAppend: Waypoint[]) => void;
 }> = ({ info, onClose, onConfirm }) => {
     if (!info) return null;
     const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-    // 少し後をついていく際の遅延（秒）。0なら相手と同じタイミングで同行する。
-    const [delaySec, setDelaySec] = useState<number>(0);
 
     useEffect(() => {
         setSelectedIndex(-1);
-        setDelaySec(0);
     }, [info]);
 
     return (
@@ -939,18 +930,6 @@ const FollowConfirmModal: React.FC<{
                     ))}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 15px 0', opacity: selectedIndex === -1 ? 0.4 : 1 }}>
-                    <span style={{ fontSize: '0.9rem' }}>少し後をついていく（遅延）:</span>
-                    <input
-                        type="number" min="0" step="1" value={delaySec}
-                        disabled={selectedIndex === -1}
-                        onChange={(e) => setDelaySec(Math.max(0, parseFloat(e.target.value) || 0))}
-                        onFocus={(e) => e.target.select()}
-                        style={{ width: '60px', background: '#222', border: '1px solid #444', color: 'white', padding: '4px', borderRadius: '4px', textAlign: 'right' }}
-                    />
-                    <span style={{ fontSize: '0.8rem', color: '#888' }}>秒</span>
-                </div>
-
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button onClick={onClose} style={{ background: '#444', border: '1px solid #555', color: 'white', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
                         キャンセル
@@ -958,9 +937,9 @@ const FollowConfirmModal: React.FC<{
                     <button
                         onClick={() => {
                             if (selectedIndex === -1) {
-                                onConfirm([], 0);
+                                onConfirm([]);
                             } else {
-                                onConfirm(info.subsequentWaypoints.slice(0, selectedIndex + 1), delaySec);
+                                onConfirm(info.subsequentWaypoints.slice(0, selectedIndex + 1));
                             }
                         }}
                         style={{ background: '#007acc', border: 'none', color: 'white', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}

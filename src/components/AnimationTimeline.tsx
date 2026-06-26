@@ -1,20 +1,21 @@
 import React, { useMemo, useEffect } from 'react';
-import { useAppStore } from '../store';
+import { useAppStore, usePlaybackStore } from '../store';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
 export const AnimationTimeline: React.FC = () => {
     // ▼ 修正: 再生中のシークバー更新頻度を「1秒(30フレーム)ごと」に制限
-    const displayTime = useAppStore(state => {
+    // 再生の一時状態は永続化しない usePlaybackStore から取得する
+    const displayTime = usePlaybackStore(state => {
         if (!state.isPlaying) return state.currentTime; // 停止・ドラッグ中はリアルタイム
         return Math.floor(state.currentTime / 30) * 30; // 再生中は再レンダリングをブロック
     });
 
-    const setCurrentTime = useAppStore(state => state.setCurrentTime);
-    const isPlaying = useAppStore(state => state.isPlaying);
-    const setIsPlaying = useAppStore(state => state.setIsPlaying);
-    const playbackSpeed = useAppStore(state => state.playbackSpeed);
-    const setPlaybackSpeed = useAppStore(state => state.setPlaybackSpeed);
+    const setCurrentTime = usePlaybackStore(state => state.setCurrentTime);
+    const isPlaying = usePlaybackStore(state => state.isPlaying);
+    const setIsPlaying = usePlaybackStore(state => state.setIsPlaying);
+    const playbackSpeed = usePlaybackStore(state => state.playbackSpeed);
+    const setPlaybackSpeed = usePlaybackStore(state => state.setPlaybackSpeed);
     const presets = useAppStore(state => state.presets);
     const activePresetId = useAppStore(state => state.activePresetId);
     const setActivePresetId = useAppStore(state => state.setActivePresetId);
