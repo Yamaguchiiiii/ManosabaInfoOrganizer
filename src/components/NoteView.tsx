@@ -550,6 +550,21 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         applyMove(localX - (obj.x ?? 0), localY - (obj.y ?? 0));
     }, [isGridMode, isGridEditMode, compactMode, currentCanvasObjects, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
 
+    // カラーピッカー/スライダーなど「連続入力」のコミットを間引く（先頭で即時1回＋末尾で最終値）。
+    // これをしないと、ドラッグ中に毎フレーム updateNoteObject→キャンバス全再描画が走り、
+    // 極めて重く・OOM になっていた（永続化側は store の debounce で別途対策済み）。
+    const propCommitRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; last: (() => void) | null }>({ timer: null, last: null });
+    const commitThrottled = useCallback((fn: () => void) => {
+        const r = propCommitRef.current;
+        r.last = fn;
+        if (r.timer) return;
+        const run = () => {
+            if (r.last) { const f = r.last; r.last = null; r.timer = setTimeout(run, 100); f(); }
+            else { r.timer = null; }
+        };
+        run();
+    }, []);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -706,7 +721,22 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 return;
             }
 
-            if (['rect', 'circle', 'triangle', 'image'].includes(placementMode.type as string)) {
+            // 画像はドラッグによるサイズ指定を行わず、クリック位置へアスペクト比を維持して即配置する
+            if (placementMode.type === 'image') {
+                const content = placementMode.data as string;
+                const px = pos.x, py = pos.y;
+                getImageSizeFromUrl(content, 300).then(({ width, height }) => {
+                    addNoteObject(targetType, displayTargetId, {
+                        id: `image_${Date.now()}`, type: 'image',
+                        x: px, y: py, width, height, content,
+                        rotation: 0, scaleX: 1, scaleY: 1, keepRatio: true, canvasIndex: index,
+                    });
+                });
+                setPlacementMode(null);
+                return;
+            }
+
+            if (['rect', 'circle', 'triangle'].includes(placementMode.type as string)) {
                 isDrawingRef.current = true;
                 drawingShapeInfoRef.current = {
                     type: placementMode.type,
@@ -714,7 +744,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                     width: 0, height: 0,
                     fill: '#A8D5BA', stroke: '#000000', strokeWidth: 2,
                     rotation: 0, scaleX: 1, scaleY: 1,
-                    content: placementMode.type === 'image' ? placementMode.data : undefined,
                     canvasIndex: index,
                     _startX: pos.x, _startY: pos.y,
                 };
@@ -760,7 +789,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
             const logicalPos = { x: stagePos.x / scale, y: stagePos.y / scale };
             const type = drawingShapeInfoRef.current.type as string;
 
-            if (['rect', 'circle', 'triangle', 'image'].includes(type)) {
+            if (['rect', 'circle', 'triangle'].includes(type)) {
                 const startX = drawingShapeInfoRef.current._startX as number;
                 const startY = drawingShapeInfoRef.current._startY as number;
                 const newX = Math.min(logicalPos.x, startX);
@@ -1395,8 +1424,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     width: '100%', height: '100%',
                                     position: 'relative',
                                     boxSizing: 'border-box',
-                                    border: isGridMode ? (isHovered || isCurrent ? '2px solid #007acc' : '2px solid #444') : (compactMode ? 'none' : 'none'),
-                                    boxShadow: isGridMode && isHovered ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
+                                    // 編集モード中はホバー効果(青枠の浮き上がり)を出さない。ペイン選択時のみホバーを示す。
+                                    border: isGridMode ? (((isHovered && !isGridEditMode) || isCurrent) ? '2px solid #007acc' : '2px solid #444') : (compactMode ? 'none' : 'none'),
+                                    boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
                                     backgroundColor: '#ECD2B3',
@@ -1760,12 +1790,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         <div style={{ marginBottom: '5px', fontSize: '0.85rem' }}>Line Color</div>
                         <input 
                             type="color" 
-                            value={shapeContextMenu.stroke} 
+                            value={shapeContextMenu.stroke}
                             onChange={(e) => {
                                 const val = e.target.value;
-                                setShapeContextMenu(prev => prev ? {...prev, stroke: val} : null);
-                                updateNoteObject(targetType, displayTargetId, shapeContextMenu.id, { stroke: val }, true);
-                            }} 
+                                const id = shapeContextMenu.id;
+                                commitThrottled(() => {
+                                    setShapeContextMenu(prev => prev ? {...prev, stroke: val} : null);
+                                    updateNoteObject(targetType, displayTargetId, id, { stroke: val }, true);
+                                });
+                            }}
                             onBlur={() => saveNoteHistory()}
                             style={{ width: '100%', marginBottom: '10px' }} 
                         />
@@ -1773,13 +1806,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         <div style={{ marginBottom: '5px', fontSize: '0.85rem' }}>Line Width: {shapeContextMenu.strokeWidth}</div>
                         <input 
                             type="range" min="0" max="20"
-                            value={shapeContextMenu.strokeWidth} 
+                            value={shapeContextMenu.strokeWidth}
                             onChange={(e) => {
                                 const val = parseInt(e.target.value);
-                                setShapeContextMenu(prev => prev ? {...prev, strokeWidth: val} : null);
-                                updateNoteObject(targetType, displayTargetId, shapeContextMenu.id, { strokeWidth: val }, true);
-                            }} 
-                            onMouseUp={() => saveNoteHistory()} 
+                                const id = shapeContextMenu.id;
+                                commitThrottled(() => {
+                                    setShapeContextMenu(prev => prev ? {...prev, strokeWidth: val} : null);
+                                    updateNoteObject(targetType, displayTargetId, id, { strokeWidth: val }, true);
+                                });
+                            }}
+                            onMouseUp={() => saveNoteHistory()}
                             onTouchEnd={() => saveNoteHistory()} 
                             style={{ width: '100%', marginBottom: '10px' }} 
                         />
@@ -1801,12 +1837,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                 </div>
                                 <input 
                                     type="color" 
-                                    value={shapeContextMenu.fill === 'transparent' ? '#ffffff' : (shapeContextMenu.fill || '#A8D5BA')} 
+                                    value={shapeContextMenu.fill === 'transparent' ? '#ffffff' : (shapeContextMenu.fill || '#A8D5BA')}
                                     onChange={(e) => {
                                         const val = e.target.value;
-                                        setShapeContextMenu(prev => prev ? {...prev, fill: val} : null);
-                                        updateNoteObject(targetType, displayTargetId, shapeContextMenu.id, { fill: val }, true);
-                                    }} 
+                                        const id = shapeContextMenu.id;
+                                        commitThrottled(() => {
+                                            setShapeContextMenu(prev => prev ? {...prev, fill: val} : null);
+                                            updateNoteObject(targetType, displayTargetId, id, { fill: val }, true);
+                                        });
+                                    }}
                                     onBlur={() => saveNoteHistory()}
                                     style={{ width: '100%' }}
                                 />

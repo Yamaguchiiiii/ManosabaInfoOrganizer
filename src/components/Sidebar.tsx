@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                         className={`sub-menu-item ${activeNoteTab === 'overview' ? 'active' : ''}`} 
                         onClick={(e) => { e.stopPropagation(); setActiveNoteTab('overview'); }}
                     >
-                        統括 (Overview)
+                        全体ノート
                     </div>
                     <div 
                         className={`sub-menu-item ${activeNoteTab === 'preset' ? 'active' : ''}`} 
@@ -95,13 +95,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                         className={`sub-menu-item ${activeNoteTab === 'character' ? 'active' : ''}`} 
                         onClick={(e) => { e.stopPropagation(); setActiveNoteTab('character'); }}
                     >
-                        キャラクター (Characters)
+                        キャラクターノート
                     </div>
                     <div 
                         className={`sub-menu-item ${activeNoteTab === 'misc' ? 'active' : ''}`} 
                         onClick={(e) => { e.stopPropagation(); setActiveNoteTab('misc'); }}
                     >
-                        雑多 (Misc)
+                        メモ
                     </div>
                 </div>
             )}

@@ -50,6 +50,7 @@
 
     .preset-header {
         display: flex; align-items: center; gap: 20px; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;
+        user-select: none; -webkit-user-select: none;
         select { background-color: #333; color: #fff; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; }
     }
     .preset-editor { flex: 1; display: flex; flex-direction: column; }
@@ -72,6 +73,9 @@
             display: flex;
             flex-direction: column;
             padding: 10px;
+            // ツールバー上でのドラッグによるテキスト選択を無効化
+            user-select: none;
+            -webkit-user-select: none;
             overflow-y: auto;
 
             h3 { font-size: 0.9rem; color: #aaa; margin: 10px 0 5px; border-bottom: 1px solid #333; }
@@ -147,6 +151,8 @@
             display: flex;
             align-items: center;
             padding: 0 20px;
+            user-select: none;
+            -webkit-user-select: none;
             gap: 20px;
             overflow-x: auto; 
 

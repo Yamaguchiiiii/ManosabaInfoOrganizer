@@ -177,6 +177,11 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                         >
                             {selectedIcons.length > 1 ? `Save to ${selectedIcons.length}` : "Save Path"}
                         </button>
+                        <button onClick={handleDeletePath}
+                            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                        >
+                            Delete
+                        </button>
                     </div>
                 </>
             )}
