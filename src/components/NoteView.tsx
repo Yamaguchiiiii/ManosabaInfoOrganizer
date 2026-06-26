@@ -31,6 +31,10 @@ const applyChaikin = (points: number[], iterations: number): number[] => {
     return applyChaikin(result, iterations - 1);
 };
 
+// キャラクターノートにデフォルト配置される立ち絵。全キャラぶんを事件ノート等の
+// 画像パレット/ギャラリーから配置できるようにするための一覧。
+const CHARACTER_PORTRAITS = ICON_FILES.map(icon => `./character/${icon}`);
+
 // --- 画像コンポーネント (メモ化) ---
 const URLImage = React.memo(({ imageObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
     const [img] = useImage(imageObj.content || '');
@@ -329,6 +333,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const [isGridMode, setIsGridMode] = useState(false);
     const [isGridEditMode, setIsGridEditMode] = useState(false);
     const [hoveredCanvasIndex, setHoveredCanvasIndex] = useState<number | null>(null);
+    // Animate(compact)の画像ギャラリー floating window の表示状態
+    const [showImageGallery, setShowImageGallery] = useState(false);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     // コピー/ペースト用クリップボード（オブジェクトの属性を保持したまま複製する）
@@ -425,6 +431,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
     const objects = targetData?.objects || [];
     const assets = targetData?.assets || [];
+
+    // 画像パレット/ギャラリーに出す画像。事件ノート(preset)では全キャラの立ち絵を常時利用可能にする。
+    const portraitPalette = targetType === 'preset' ? CHARACTER_PORTRAITS : [];
+    const availableImages = useMemo(
+        () => [...(targetType === 'preset' ? CHARACTER_PORTRAITS : []), ...assets],
+        [targetType, assets]
+    );
 
     const currentCanvasObjects = useMemo(() => objects.filter(o => (o.canvasIndex || 0) === currentCanvasIndex), [objects, currentCanvasIndex]);
     const objectsLength = objects.length;
@@ -1075,7 +1088,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                     </div>
 
                     <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                        <button title="Image" onClick={() => fileInputRef.current?.click()} style={toolBtnStyle(false)}>🖼️</button>
+                        <button title="Image (アップロード)" onClick={() => fileInputRef.current?.click()} style={toolBtnStyle(false)}>🖼️</button>
+                        <button title="登録画像から配置" onClick={() => setShowImageGallery(v => !v)} style={toolBtnStyle(showImageGallery)}>🎴</button>
                         <button title="Text" onClick={() => startPlacement('text')} style={toolBtnStyle((placementMode?.type as string) === 'text')}>T</button>
                         <button title="Freehand (Pencil)" onClick={() => startPlacement('freehand')} style={toolBtnStyle((placementMode?.type as string) === 'freehand')}>✏️</button>
                         <div style={{ width: '1px', height: '20px', backgroundColor: '#555', margin: '0 5px' }} />
@@ -1197,6 +1211,37 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         </div>
                     )}
                 </div>
+
+                {showImageGallery && (
+                    // 登録画像ギャラリー。アニメ(マップ)が最大限見えるよう小さく、ノートセル側(右下)に配置。
+                    <div style={{
+                        position: 'fixed', right: '12px', bottom: '16px',
+                        width: '210px', maxHeight: '45vh',
+                        display: 'flex', flexDirection: 'column',
+                        background: 'rgba(28,28,28,0.96)', border: '1px solid #555',
+                        borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                        zIndex: 1000000, padding: '8px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#ccc' }}>画像を選んで配置</span>
+                            <button onClick={() => setShowImageGallery(false)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
+                        </div>
+                        <div style={{ overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                            {availableImages.length === 0 ? (
+                                <div style={{ gridColumn: '1 / -1', color: '#666', fontSize: '0.75rem', textAlign: 'center', padding: '10px' }}>画像がありません</div>
+                            ) : availableImages.map((src, idx) => (
+                                <div
+                                    key={idx}
+                                    title="クリックして配置 → キャンバスをクリック"
+                                    onClick={() => { startPlacement('image', src); setShowImageGallery(false); }}
+                                    style={{ cursor: 'pointer', aspectRatio: '1 / 1', background: '#222', border: '1px solid #444', borderRadius: '6px', overflow: 'hidden' }}
+                                >
+                                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
             </>
         );
@@ -1327,11 +1372,21 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                             Delete Selected
                         </button>
                     </div>
-                    <h3>Images</h3> 
+                    <h3>Images</h3>
                     <div className="char-thumbnails">
+                        {/* 事件ノートでは全キャラの立ち絵を常時パレット表示（クリックで配置） */}
+                        {portraitPalette.map((src, idx) => (
+                            <div
+                                key={`portrait-${idx}`}
+                                className={`thumb ${placementMode?.data === src ? 'active' : ''}`}
+                                onClick={() => startPlacement('image', src)}
+                            >
+                                <img src={src} alt={`portrait-${idx}`} />
+                            </div>
+                        ))}
                         {assets.map((asset, idx) => (
-                            <div 
-                                key={idx} 
+                            <div
+                                key={idx}
                                 className={`thumb ${placementMode?.data === asset ? 'active' : ''}`}
                                 onClick={() => startPlacement('image', asset)}
                                 onContextMenu={(e) => {
