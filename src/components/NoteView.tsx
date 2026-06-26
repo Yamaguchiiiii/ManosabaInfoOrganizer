@@ -1474,6 +1474,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         const canvasH = CANVAS_BASE_HEIGHT * scale;
                         // compact(Animate)では Canvas を左寄せにし、右側の余白に画像パレットを常設する。
                         const paletteWidth = compactMode ? Math.max(0, stageWidth - canvasW) : 0;
+                        // 非compact(Noteページ)はコンテナいっぱいに描画して最大化（余白なし）。
+                        // compact(Animate)は論理1200×800を3:2でフィット（右に画像パレット用の余白）。
+                        const stageRenderW = compactMode ? canvasW : stageWidth;
+                        const stageRenderH = compactMode ? canvasH : stageHeight;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1492,9 +1496,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
-                                    // 紙面(キャンバス本体)はStageへ移し、ここ(セル)は暗色の余白に。
-                                    // compactの単一表示のみCanvasを左寄せ(右に画像パレット)。4ペイン/通常は中央配置。
-                                    backgroundColor: '#1e1e1e',
+                                    // 非compact(Noteページ)は紙面(方眼)でセルを満たし最大化（余白なし）。
+                                    // compact(Animate)は暗色マージン＋左寄せ(右に画像パレット)/中央配置。
+                                    backgroundColor: compactMode ? '#1e1e1e' : '#ECD2B3',
+                                    backgroundImage: compactMode ? 'none' : `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
+                                    backgroundSize: `${24 * scale}px ${24 * scale}px`,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: (compactMode && !isGridMode) ? 'flex-start' : 'center'
@@ -1515,7 +1521,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                 </div>
 
                                 <Stage
-                                    width={canvasW} height={canvasH}
+                                    width={stageRenderW} height={stageRenderH}
                                     listening={!isGridMode || isGridEditMode}
                                     onMouseDown={(e) => {
                                         if (isGridMode && !isGridEditMode && !isCurrent) return;
@@ -1538,10 +1544,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     onContextMenu={(e) => e.evt.preventDefault()}
                                     style={{
                                         cursor: placementMode && isCurrent ? 'crosshair' : (isGridMode && !isGridEditMode ? 'pointer' : 'default'),
-                                        // 紙面(方眼)はキャンバス本体(Stage=1200×800)にのみ表示する
-                                        backgroundColor: '#ECD2B3',
-                                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
-                                        backgroundSize: `${24 * scale}px ${24 * scale}px`
+                                        // compactは紙面(方眼)をStage(=1200×800)にのみ表示。非compactは紙面をセル(pane)側に出すので透明。
+                                        ...(compactMode ? {
+                                            backgroundColor: '#ECD2B3',
+                                            backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
+                                            backgroundSize: `${24 * scale}px ${24 * scale}px`
+                                        } : {})
                                     }}
                                 >
                                     <Layer scaleX={scale} scaleY={scale}>

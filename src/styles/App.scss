@@ -26,11 +26,16 @@ $max-sidebar-width: 250px;
   // クリックで選択可能テキスト上に出る点滅キャレット(|)を抑止する。
   // 実際の文字入力欄(下で auto に戻す)以外では出さない。
   caret-color: transparent;
+  // ドラッグによる（編集不可）テキスト選択(青ハイライト)も無効化する。
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-// 文字入力時のみキャレットを表示する
+// 文字入力欄だけはキャレット表示・テキスト選択を許可する
 input, textarea, [contenteditable="true"], [contenteditable=""] {
   caret-color: auto;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 body {
