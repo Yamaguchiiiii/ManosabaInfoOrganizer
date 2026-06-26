@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Line, Image as KonvaImage, Group } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
@@ -60,10 +61,13 @@ export const AnimateView = () => {
   const timelineDragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
   useEffect(() => {
-    if (!timelinePos && mapCellRef.current) {
+    if (timelinePos) return;
+    if (mapCellRef.current) {
       const r = mapCellRef.current.getBoundingClientRect();
-      setTimelinePos({ x: r.right - 4, y: r.top + 4 });
+      if (r.width > 0) { setTimelinePos({ x: r.right - 4, y: r.top + 4 }); return; }
     }
+    // 計測できない場合も必ず表示する（後でドラッグ移動可）
+    setTimelinePos({ x: Math.round(window.innerWidth * 0.32), y: 64 });
   }, [timelinePos]);
 
   const handleTimelineDragStart = (e: React.MouseEvent) => {
@@ -141,11 +145,12 @@ export const AnimateView = () => {
         <div className="notes-section"><NotesPanel /></div>
       </div>
 
-      {/* 再生操作盤: フローティングウィンドウ（ドラッグ移動可・既定はMap1の右上隅） */}
-      {timelinePos && (
+      {/* 再生操作盤: フローティングウィンドウ（ドラッグ移動可・既定はMap1の右上隅）。
+          .workspace の opacity サブツリー外へ portal して確実に表示する。 */}
+      {timelinePos && createPortal(
         <div
           style={{
-            position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 600,
+            position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
             width: '480px', maxWidth: '92vw',
             background: '#222', border: '1px solid #444', borderRadius: '8px',
             boxShadow: '0 6px 24px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column',
@@ -159,7 +164,8 @@ export const AnimateView = () => {
             <div style={{ width: '34px', height: '4px', borderRadius: '2px', background: '#666' }} />
           </div>
           <AnimationTimeline />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
