@@ -50,13 +50,7 @@
     // .grid-cell から継承される点線(背景画像)を打ち消す。
     background-image: none;
 
-    // 上下分割: 上=操作盤(自然な高さ) / 下=事件ノートCanvas(残り全部)
-    .timeline-section {
-      flex: 0 0 auto;
-      border-bottom: 2px solid #333;
-      overflow: hidden;
-    }
-
+    // 操作盤はフローティング化したため、このセルは事件ノートCanvasがセル全体を使う
     .notes-section {
       flex: 1;
       overflow: hidden;

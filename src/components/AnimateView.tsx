@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Line, Image as KonvaImage, Group } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
@@ -53,6 +53,39 @@ export const AnimateView = () => {
   const charNodeRefs = useRef<Map<string, Konva.Group>>(new Map());
   const currentVisualPositions = useRef<Record<string, { x: number, y: number, floor: string }>>({});
 
+  // 再生操作盤をフローティングウィンドウ化する。デフォルト位置は Map1(左上ペイン)の右上隅。
+  const mapCellRef = useRef<HTMLDivElement>(null);
+  const [timelinePos, setTimelinePos] = useState<{ x: number, y: number } | null>(null);
+  const [isDraggingTimeline, setIsDraggingTimeline] = useState(false);
+  const timelineDragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+
+  useEffect(() => {
+    if (!timelinePos && mapCellRef.current) {
+      const r = mapCellRef.current.getBoundingClientRect();
+      setTimelinePos({ x: r.right - 4, y: r.top + 4 });
+    }
+  }, [timelinePos]);
+
+  const handleTimelineDragStart = (e: React.MouseEvent) => {
+    if (!timelinePos) return;
+    setIsDraggingTimeline(true);
+    timelineDragStartRef.current = { x: e.clientX, y: e.clientY, posX: timelinePos.x, posY: timelinePos.y };
+  };
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingTimeline) return;
+      const dx = e.clientX - timelineDragStartRef.current.x;
+      const dy = e.clientY - timelineDragStartRef.current.y;
+      setTimelinePos({ x: timelineDragStartRef.current.posX + dx, y: timelineDragStartRef.current.posY + dy });
+    };
+    const onUp = () => setIsDraggingTimeline(false);
+    if (isDraggingTimeline) {
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [isDraggingTimeline]);
+
   useEffect(() => {
     setSidebarWidth(MIN_SIDEBAR_WIDTH);
   }, [setSidebarWidth]);
@@ -73,7 +106,7 @@ export const AnimateView = () => {
 
   return (
     <div className="animate-view-container">
-      <div className="grid-cell">
+      <div className="grid-cell" ref={mapCellRef}>
         <div className="cell-label">Map 1 (2F)</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
             <ReadOnlyMapView floorId="2F" fitContainer={true}>
@@ -105,9 +138,29 @@ export const AnimateView = () => {
         </div>
       </div>
       <div className="grid-cell control-cell-wrapper">
-        <div className="timeline-section"><AnimationTimeline /></div>
         <div className="notes-section"><NotesPanel /></div>
       </div>
+
+      {/* 再生操作盤: フローティングウィンドウ（ドラッグ移動可・既定はMap1の右上隅） */}
+      {timelinePos && (
+        <div
+          style={{
+            position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 600,
+            width: '480px', maxWidth: '92vw',
+            background: '#222', border: '1px solid #444', borderRadius: '8px',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            onMouseDown={handleTimelineDragStart}
+            style={{ cursor: isDraggingTimeline ? 'grabbing' : 'grab', padding: '3px', display: 'flex', justifyContent: 'center', background: '#2a2a2a', borderBottom: '1px solid #333' }}
+          >
+            <div style={{ width: '34px', height: '4px', borderRadius: '2px', background: '#666' }} />
+          </div>
+          <AnimationTimeline />
+        </div>
+      )}
     </div>
   );
 };

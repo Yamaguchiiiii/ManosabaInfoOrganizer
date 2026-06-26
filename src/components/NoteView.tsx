@@ -1472,6 +1472,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // 周囲の暗色マージン(セルとの差分)が活用したい余白領域。
                         const canvasW = CANVAS_BASE_WIDTH * scale;
                         const canvasH = CANVAS_BASE_HEIGHT * scale;
+                        // compact(Animate)では Canvas を左寄せにし、右側の余白に画像パレットを常設する。
+                        const paletteWidth = compactMode ? Math.max(0, stageWidth - canvasW) : 0;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1490,11 +1492,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
-                                    // 紙面(キャンバス本体)はStageへ移し、ここ(セル)は暗色の余白にして中央配置する
+                                    // 紙面(キャンバス本体)はStageへ移し、ここ(セル)は暗色の余白に。
+                                    // compact(Animate)はCanvasを左寄せ、それ以外は中央配置。
                                     backgroundColor: '#1e1e1e',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center'
+                                    justifyContent: compactMode ? 'flex-start' : 'center'
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1716,6 +1719,34 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                         )}
                                     </Layer>
                                 </Stage>
+
+                                {/* compact(Animate): 左寄せCanvasの右側余白に画像パレットを常設。クリックで配置モード→キャンバスをクリックで配置 */}
+                                {compactMode && paletteWidth > 40 && (
+                                    <div style={{
+                                        position: 'absolute', right: 0, top: 0, bottom: 0,
+                                        width: `${paletteWidth}px`,
+                                        overflowY: 'auto', padding: '6px',
+                                        display: 'flex', flexWrap: 'wrap', gap: '5px',
+                                        alignContent: 'flex-start', justifyContent: 'center',
+                                        background: '#1a1a1a', borderLeft: '1px solid #333'
+                                    }}>
+                                        {availableImages.map((src, i) => (
+                                            <div
+                                                key={i}
+                                                title="クリックして配置 → キャンバスをクリック"
+                                                onClick={() => startPlacement('image', src)}
+                                                style={{
+                                                    cursor: 'pointer', width: '46px', height: '46px',
+                                                    background: '#222',
+                                                    border: placementMode?.data === src ? '2px solid #007acc' : '1px solid #444',
+                                                    borderRadius: '5px', overflow: 'hidden', flexShrink: 0
+                                                }}
+                                            >
+                                                <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
 
                                 {isCurrent && editingTextId && (() => {
                                     const obj = objs.find(o => o.id === editingTextId);
