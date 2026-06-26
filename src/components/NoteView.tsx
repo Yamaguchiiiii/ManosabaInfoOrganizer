@@ -1405,16 +1405,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // ズームやウィンドウリサイズでも論理座標系が変わらないよう scale で吸収する
                         const CANVAS_BASE_WIDTH = 1200;
                         const CANVAS_BASE_HEIGHT = 800;
-                        let scale: number;
-                        if (isGridMode) {
-                            scale = 0.5;
-                        } else {
-                            // 上限(1)を撤去し、常にコンテナいっぱいにフィットさせる。
-                            // これによりブラウザの Ctrl+/− ズームでコンテナのCSSピクセル実寸が変わっても、
-                            // キャンバスはコンテナ(=物理サイズ一定)を埋め続けるため、見かけサイズが一定になる。
-                            // （旧: min(...,1) だと低ズーム=1:1で余白、ズームインで縮小、と非対称に変化していた）
-                            scale = Math.min(stageWidth / CANVAS_BASE_WIDTH, stageHeight / CANVAS_BASE_HEIGHT);
-                        }
+                        // 単一表示・4ペイン表示とも「ステージ(=セル)いっぱいにフィット」で統一する。
+                        // stageWidth/stageHeight は単一表示ならコンテナ、グリッドなら各セルの実寸。
+                        // コンテナ/セルは width/height 100% ＝物理サイズ一定なので、ブラウザの Ctrl+/− ズームで
+                        // 内部のCSSピクセルが変わってもキャンバスは埋め続け、見かけ(物理)サイズが一定になる。
+                        // （旧: 単一は min(...,1) の上限で非対称縮小、グリッドは固定0.5でズーム非対応だった）
+                        const scale = Math.min(stageWidth / CANVAS_BASE_WIDTH, stageHeight / CANVAS_BASE_HEIGHT);
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
