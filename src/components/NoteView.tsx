@@ -1409,7 +1409,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         if (isGridMode) {
                             scale = 0.5;
                         } else {
-                            scale = Math.min(stageWidth / CANVAS_BASE_WIDTH, stageHeight / CANVAS_BASE_HEIGHT, 1);
+                            // 上限(1)を撤去し、常にコンテナいっぱいにフィットさせる。
+                            // これによりブラウザの Ctrl+/− ズームでコンテナのCSSピクセル実寸が変わっても、
+                            // キャンバスはコンテナ(=物理サイズ一定)を埋め続けるため、見かけサイズが一定になる。
+                            // （旧: min(...,1) だと低ズーム=1:1で余白、ズームインで縮小、と非対称に変化していた）
+                            scale = Math.min(stageWidth / CANVAS_BASE_WIDTH, stageHeight / CANVAS_BASE_HEIGHT);
                         }
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);

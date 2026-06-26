@@ -26,7 +26,7 @@ export const NotesPanel = React.memo(() => {
           flexShrink: 0,
           zIndex: 20
       }}>
-        <span>TIMELINE NOTES (Canvas)</span>
+        <span>事件ノート</span>
         <span style={{ color: '#007acc' }}>{activePreset?.name || 'Unknown'}</span>
       </div>
       

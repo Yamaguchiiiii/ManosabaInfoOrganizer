@@ -70,12 +70,10 @@ export const AnimationTimeline: React.FC = () => {
     return (
         <div style={{
             width: '100%',
-            height: '100%',
             backgroundColor: '#222',
             borderTop: '1px solid #444',
             display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center'
+            flexDirection: 'column'
         }}>
             <div style={{
                 display: 'flex', alignItems: 'center', gap: '15px',
