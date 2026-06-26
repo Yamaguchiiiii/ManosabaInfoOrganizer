@@ -54,20 +54,33 @@ export const AnimateView = () => {
   const charNodeRefs = useRef<Map<string, Konva.Group>>(new Map());
   const currentVisualPositions = useRef<Record<string, { x: number, y: number, floor: string }>>({});
 
-  // 再生操作盤をフローティングウィンドウ化する。デフォルト位置は Map1(左上ペイン)の右上隅。
-  const mapCellRef = useRef<HTMLDivElement>(null);
+  // 再生操作盤をフローティングウィンドウ化する。デフォルト位置は Map3 B1(左下ペイン)の左下隅。
+  const mapCellRef = useRef<HTMLDivElement>(null);     // Map3 B1 セル
+  const toolbarRef = useRef<HTMLDivElement>(null);     // 操作盤本体(高さ計測用)
+  const placedRef = useRef(false);
   const [timelinePos, setTimelinePos] = useState<{ x: number, y: number } | null>(null);
   const [isDraggingTimeline, setIsDraggingTimeline] = useState(false);
   const timelineDragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
+  // Map3 セルの左下隅に操作盤の左下を合わせる。実高さを測るため、仮配置→計測→補正の2段階。
   useEffect(() => {
-    if (timelinePos) return;
-    if (mapCellRef.current) {
-      const r = mapCellRef.current.getBoundingClientRect();
-      if (r.width > 0) { setTimelinePos({ x: r.right - 4, y: r.top + 4 }); return; }
+    if (placedRef.current) return;
+    const cell = mapCellRef.current;
+    if (cell) {
+      const r = cell.getBoundingClientRect();
+      if (r.width > 0) {
+        if (!timelinePos) {
+          setTimelinePos({ x: r.left + 4, y: r.bottom - 80 }); // 仮(描画して高さ計測)
+        } else if (toolbarRef.current) {
+          const h = toolbarRef.current.offsetHeight;
+          placedRef.current = true;
+          setTimelinePos({ x: r.left + 4, y: Math.round(r.bottom - h - 4) }); // 下端を揃える
+        }
+        return;
+      }
     }
     // 計測できない場合も必ず表示する（後でドラッグ移動可）
-    setTimelinePos({ x: Math.round(window.innerWidth * 0.32), y: 64 });
+    if (!timelinePos) setTimelinePos({ x: 12, y: Math.round(window.innerHeight * 0.6) });
   }, [timelinePos]);
 
   const handleTimelineDragStart = (e: React.MouseEvent) => {
@@ -110,7 +123,7 @@ export const AnimateView = () => {
 
   return (
     <div className="animate-view-container">
-      <div className="grid-cell" ref={mapCellRef}>
+      <div className="grid-cell">
         <div className="cell-label">Map 1 (2F)</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
             <ReadOnlyMapView floorId="2F" fitContainer={true}>
@@ -126,7 +139,7 @@ export const AnimateView = () => {
             </ReadOnlyMapView>
         </div>
       </div>
-      <div className="grid-cell" style={{ position: 'relative' }}>
+      <div className="grid-cell" style={{ position: 'relative' }} ref={mapCellRef}>
         <div className="cell-label">Map 3 (B1)</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
             <ReadOnlyMapView floorId="B1" fitContainer={true}>
@@ -149,6 +162,7 @@ export const AnimateView = () => {
           .workspace の opacity サブツリー外へ portal して確実に表示する。 */}
       {timelinePos && createPortal(
         <div
+          ref={toolbarRef}
           style={{
             position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
             width: '480px', maxWidth: '92vw',
