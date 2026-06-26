@@ -475,8 +475,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         }
         const pad = 28;
         const fs = Math.max(0.05, Math.min((availW - pad * 2) / box.width, (availH - pad * 2) / box.height));
-        const x = (availW - box.width * fs) / 2 - box.x * fs;
-        const y = (availH - box.height * fs) / 2 - box.y * fs;
+        // 中央寄せ。ただし原点(0,0)より外(負領域=事件ノートの左端/上端より外)は表示しない。
+        // 可視左上が0以上になるよう offset を 0 以下にクランプ（content が原点付近なら左上寄せになる）。
+        // これで範囲外が映らず、そこへドラッグして出すこともできなくなる。
+        const x = Math.min(0, (availW - box.width * fs) / 2 - box.x * fs);
+        const y = Math.min(0, (availH - box.height * fs) / 2 - box.y * fs);
         setContentFit({ scale: fs, x, y });
     }, [currentCanvasObjects, currentCanvasIndex, compactMode, isGridMode, canvasSize.width, canvasSize.height]);
 
@@ -560,8 +563,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
     const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, scale: number) => {
         const evt: MouseEvent | undefined = e?.evt;
-        const localX = e.target.x();
-        const localY = e.target.y();
+        // 事件ノートの範囲(原点0,0)外へ出さない。確定位置を x>=0, y>=0 にクランプする。
+        const localX = Math.max(0, e.target.x());
+        const localY = Math.max(0, e.target.y());
         // dx,dy だけ全体を平行移動する（グループは全メンバー、単体は自身）。
         // extra に canvasIndex を含めると移動先ペインへ付け替えられる。
         const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
