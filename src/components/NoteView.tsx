@@ -1727,24 +1727,32 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                         width: `${paletteWidth}px`,
                                         overflowY: 'auto', padding: '6px',
                                         display: 'flex', flexWrap: 'wrap', gap: '5px',
-                                        alignContent: 'flex-start', justifyContent: 'center',
+                                        alignContent: 'flex-start', justifyContent: 'flex-start',
                                         background: '#1a1a1a', borderLeft: '1px solid #333'
                                     }}>
-                                        {availableImages.map((src, i) => (
-                                            <div
-                                                key={i}
-                                                title="クリックして配置 → キャンバスをクリック"
-                                                onClick={() => startPlacement('image', src)}
-                                                style={{
-                                                    cursor: 'pointer', width: '46px', height: '46px',
-                                                    background: '#222',
-                                                    border: placementMode?.data === src ? '2px solid #007acc' : '1px solid #444',
-                                                    borderRadius: '5px', overflow: 'hidden', flexShrink: 0
-                                                }}
-                                            >
-                                                <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                            </div>
-                                        ))}
+                                        {availableImages.map((src, i) => {
+                                            // 先頭は立ち絵(削除不可)。それ以降が登録画像(assets)で右クリック削除可。
+                                            const assetIdx = i - portraitPalette.length;
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    title={assetIdx >= 0 ? "クリックで配置 / 右クリックで削除" : "クリックして配置 → キャンバスをクリック"}
+                                                    onClick={() => startPlacement('image', src)}
+                                                    onContextMenu={assetIdx >= 0 ? (e) => {
+                                                        e.preventDefault();
+                                                        setAssetContextMenu({ index: assetIdx, x: e.clientX, y: e.clientY });
+                                                    } : undefined}
+                                                    style={{
+                                                        cursor: 'pointer', width: '46px', height: '46px',
+                                                        background: '#222',
+                                                        border: placementMode?.data === src ? '2px solid #007acc' : '1px solid #444',
+                                                        borderRadius: '5px', overflow: 'hidden', flexShrink: 0
+                                                    }}
+                                                >
+                                                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 
@@ -1988,8 +1996,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 {assetContextMenu && (
                     <div 
                         style={{ 
-                            position: 'fixed', top: assetContextMenu.y, left: assetContextMenu.x, 
-                            background: '#1e1e1e', border: '1px solid #444', borderRadius: '4px', zIndex: 1000 
+                            position: 'fixed', top: assetContextMenu.y, left: assetContextMenu.x,
+                            background: '#1e1e1e', border: '1px solid #444', borderRadius: '4px', zIndex: 1000002
                         }}
                     >
                         <div 
