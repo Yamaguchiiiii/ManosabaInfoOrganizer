@@ -1466,6 +1466,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // 内部のCSSピクセルが変わってもキャンバスは埋め続け、見かけ(物理)サイズが一定になる。
                         // （旧: 単一は min(...,1) の上限で非対称縮小、グリッドは固定0.5でズーム非対応だった）
                         const scale = Math.min(stageWidth / CANVAS_BASE_WIDTH, stageHeight / CANVAS_BASE_HEIGHT);
+                        // ステージ(=描画キャンバス)は論理1200×800の比率を厳守し、セルに対して
+                        // レターボックスで中央配置する。これにより Animate と 事件ノート で
+                        // 「描画/可視領域(=1200×800)」が完全一致し、端に置いたオブジェクトも双方で見える。
+                        // 周囲の暗色マージン(セルとの差分)が活用したい余白領域。
+                        const canvasW = CANVAS_BASE_WIDTH * scale;
+                        const canvasH = CANVAS_BASE_HEIGHT * scale;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1484,9 +1490,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
-                                    backgroundColor: '#ECD2B3',
-                                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
-                                    backgroundSize: `${24 * scale}px ${24 * scale}px`
+                                    // 紙面(キャンバス本体)はStageへ移し、ここ(セル)は暗色の余白にして中央配置する
+                                    backgroundColor: '#1e1e1e',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1503,8 +1511,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     Canvas {index + 1}
                                 </div>
 
-                                <Stage 
-                                    width={stageWidth} height={stageHeight}
+                                <Stage
+                                    width={canvasW} height={canvasH}
                                     listening={!isGridMode || isGridEditMode}
                                     onMouseDown={(e) => {
                                         if (isGridMode && !isGridEditMode && !isCurrent) return;
@@ -1525,7 +1533,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                         handleStageMouseUp(e, index, scale);
                                     }}
                                     onContextMenu={(e) => e.evt.preventDefault()}
-                                    style={{ cursor: placementMode && isCurrent ? 'crosshair' : (isGridMode && !isGridEditMode ? 'pointer' : 'default') }}
+                                    style={{
+                                        cursor: placementMode && isCurrent ? 'crosshair' : (isGridMode && !isGridEditMode ? 'pointer' : 'default'),
+                                        // 紙面(方眼)はキャンバス本体(Stage=1200×800)にのみ表示する
+                                        backgroundColor: '#ECD2B3',
+                                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
+                                        backgroundSize: `${24 * scale}px ${24 * scale}px`
+                                    }}
                                 >
                                     <Layer scaleX={scale} scaleY={scale}>
                                         {isFontLoaded && objs.map((obj) => {
