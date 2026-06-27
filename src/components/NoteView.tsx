@@ -1485,17 +1485,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // レターボックスで中央配置する。これにより Animate と 事件ノート で
                         // 「描画/可視領域(=1200×800)」が完全一致し、端に置いたオブジェクトも双方で見える。
                         // 周囲の暗色マージン(セルとの差分)が活用したい余白領域。
-                        // compact(Animate)は右に固定幅の画像パレットを置き、残りのCanvas領域に
-                        // 事件ノートの「基準範囲(1200×800)」をアスペクト比維持でフィットさせる。
-                        // Stage自体を基準範囲のフィット実寸にするので、範囲外はクリック/配置できない。
-                        // 非compact(Noteページ)はコンテナいっぱいに描画して最大化（余白なし）。
+                        // Note/Animate を統一: 事件ノートの「基準範囲(1200×800, 3:2)」を Canvas領域へ
+                        // アスペクト比維持でフィットさせる。Stage自体を基準範囲のフィット実寸にするので、
+                        // 範囲外はクリック/配置できず、ウィンドウリサイズでも一様な拡大縮小（=レイアウト安定）になる。
+                        // compact(Animate)は右に固定幅の画像パレットぶんの余白を確保する。
                         const paletteWidth = (compactMode && !isGridMode) ? COMPACT_PALETTE_W : 0;
                         const canvasAreaW = Math.max(0, stageWidth - paletteWidth);
                         const canvasAreaH = stageHeight;
-                        const rangeFitScale = compactMode ? Math.min(canvasAreaW / CANVAS_BASE_W, canvasAreaH / CANVAS_BASE_H) : scale;
-                        const effScale = compactMode ? rangeFitScale : scale;
-                        const stageRenderW = compactMode ? CANVAS_BASE_W * rangeFitScale : stageWidth;
-                        const stageRenderH = compactMode ? CANVAS_BASE_H * rangeFitScale : stageHeight;
+                        const rangeFitScale = Math.min(canvasAreaW / CANVAS_BASE_W, canvasAreaH / CANVAS_BASE_H);
+                        const effScale = rangeFitScale;
+                        const stageRenderW = CANVAS_BASE_W * rangeFitScale;
+                        const stageRenderH = CANVAS_BASE_H * rangeFitScale;
                         // pane内でのStage中央寄せオフセット（テキスト編集オーバーレイの座標計算に使う）
                         const stageOffsetX = (canvasAreaW - stageRenderW) / 2;
                         const stageOffsetY = (canvasAreaH - stageRenderH) / 2;
@@ -1517,15 +1517,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
-                                    // 非compact(Noteページ)は紙面(方眼)でセルを満たし最大化（余白なし）。
-                                    // compact(Animate)は暗色マージン＋基準範囲を中央配置（右に画像パレットぶんの余白）。
-                                    backgroundColor: compactMode ? '#1e1e1e' : '#ECD2B3',
-                                    backgroundImage: compactMode ? 'none' : `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
-                                    backgroundSize: `${24 * scale}px ${24 * scale}px`,
+                                    // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示し中央配置。
+                                    backgroundColor: '#1e1e1e',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    // 画像パレットぶん右に余白を空け、Stageをその左側領域に中央寄せする
+                                    // (compactのみ)画像パレットぶん右に余白を空け、Stageをその左側領域に中央寄せする
                                     paddingRight: paletteWidth ? `${paletteWidth}px` : 0
                                 }}
                                 onClick={(e) => {
@@ -1567,12 +1564,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     onContextMenu={(e) => e.evt.preventDefault()}
                                     style={{
                                         cursor: placementMode && isCurrent ? 'crosshair' : (isGridMode && !isGridEditMode ? 'pointer' : 'default'),
-                                        // compactは紙面(方眼)をStage(=基準範囲1200×800)にのみ表示。非compactは紙面をセル(pane)側に出すので透明。
-                                        ...(compactMode ? {
-                                            backgroundColor: '#ECD2B3',
-                                            backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
-                                            backgroundSize: `${24 * effScale}px ${24 * effScale}px`
-                                        } : {})
+                                        // 紙面(方眼)はStage(=基準範囲1200×800)に表示。周囲のセルは暗色マージン。
+                                        backgroundColor: '#ECD2B3',
+                                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
+                                        backgroundSize: `${24 * effScale}px ${24 * effScale}px`
                                     }}
                                 >
                                     <Layer scaleX={effScale} scaleY={effScale}>
