@@ -35,9 +35,9 @@ const applyChaikin = (points: number[], iterations: number): number[] => {
 // 画像パレット/ギャラリーから配置できるようにするための一覧。
 const CHARACTER_PORTRAITS = ICON_FILES.map(icon => `./character/${icon}`);
 
-// compact(Animate)で Canvas 左右に置くツールバー/画像パレットの最小幅(px)。
-// 実際の幅は 3:2フィットで生じる左右の余白に合わせてレスポンシブに広がる。
-const COMPACT_SIDE_MIN = 52;
+// compact(Animate)で Canvas 左に置くツールバーの最小幅(px)。テキストボタンが収まる幅を確保。
+// 実際の幅は 3:2フィットで生じる左の余白に合わせてレスポンシブに広がる。
+const COMPACT_SIDE_MIN = 88;
 // 論理キャンバスの基準サイズ(3:2)。オブジェクト未配置時のフォールバック表示に使う。
 const CANVAS_BASE_W = 1200;
 const CANVAS_BASE_H = 800;
@@ -1017,6 +1017,23 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         fontFamily: 'monospace'
     });
 
+    // Noteページの Tools 同様、テキスト付きの横長ボタン（compactの左ツールバー用）
+    const toolTextBtnStyle = (isActive: boolean, disabled = false): React.CSSProperties => ({
+        background: isActive ? 'rgba(0, 122, 204, 0.2)' : '#333',
+        border: isActive ? '1px solid #007acc' : '1px solid #555',
+        color: disabled ? '#666' : (isActive ? '#66b3ff' : '#ccc'),
+        boxShadow: isActive ? '0 0 8px rgba(0, 122, 204, 0.5)' : 'none',
+        fontSize: '0.8rem',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        padding: '5px 6px',
+        borderRadius: '4px',
+        transition: 'all 0.2s',
+        width: '100%',
+        boxSizing: 'border-box',
+        textAlign: 'center',
+        whiteSpace: 'nowrap'
+    });
+
     const renderPortalUI = () => {
         if (!compactMode) return null;
 
@@ -1034,51 +1051,51 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         padding: '5px 4px'
                     }}
                 >
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button title="Image (アップロード)" onClick={() => fileInputRef.current?.click()} style={toolBtnStyle(false)}>🖼️</button>
-                        <button title="登録画像から配置" onClick={() => setShowImageGallery(v => !v)} style={toolBtnStyle(showImageGallery)}>🎴</button>
-                        <button title="Text" onClick={() => startPlacement('text')} style={toolBtnStyle((placementMode?.type as string) === 'text')}>T</button>
-                        <button title="Freehand (Pencil)" onClick={() => startPlacement('freehand')} style={toolBtnStyle((placementMode?.type as string) === 'freehand')}>✏️</button>
-                        <div style={{ width: '1px', height: '20px', backgroundColor: '#555', margin: '0 5px' }} />
-                        <button title="Circle" onClick={() => startPlacement('circle')} style={toolBtnStyle((placementMode?.type as string) === 'circle')}>○</button>
-                        <button title="Triangle" onClick={() => startPlacement('triangle')} style={toolBtnStyle((placementMode?.type as string) === 'triangle')}>△</button>
-                        <button title="Rect" onClick={() => startPlacement('rect')} style={toolBtnStyle((placementMode?.type as string) === 'rect')}>■</button>
-                        <button title="Line" onClick={() => startPlacement('line')} style={toolBtnStyle((placementMode?.type as string) === 'line')}>─</button>
-                        <button title="Arrow" onClick={() => startPlacement('arrow')} style={toolBtnStyle((placementMode?.type as string) === 'arrow')}>→</button>
-                        <button title="Curve" onClick={() => startPlacement('curve')} style={toolBtnStyle((placementMode?.type as string) === 'curve')}>~</button>
-                        <button title="Curve Arrow" onClick={() => startPlacement('curve_arrow')} style={toolBtnStyle((placementMode?.type as string) === 'curve_arrow')}>↷</button>
-                        <div style={{ width: '1px', height: '20px', backgroundColor: '#555', margin: '0 5px' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'stretch' }}>
+                        <button title="画像をアップロードして配置" onClick={() => fileInputRef.current?.click()} style={toolTextBtnStyle(false)}>画像</button>
+                        <button title="登録画像から配置" onClick={() => setShowImageGallery(v => !v)} style={toolTextBtnStyle(showImageGallery)}>画像一覧</button>
+                        <button title="テキスト" onClick={() => startPlacement('text')} style={toolTextBtnStyle((placementMode?.type as string) === 'text')}>テキスト</button>
+                        <button title="フリーハンド" onClick={() => startPlacement('freehand')} style={toolTextBtnStyle((placementMode?.type as string) === 'freehand')}>ペン</button>
+                        <div style={{ height: '1px', backgroundColor: '#555', margin: '2px 0' }} />
+                        <button title="円" onClick={() => startPlacement('circle')} style={toolTextBtnStyle((placementMode?.type as string) === 'circle')}>○ 円</button>
+                        <button title="三角" onClick={() => startPlacement('triangle')} style={toolTextBtnStyle((placementMode?.type as string) === 'triangle')}>△ 三角</button>
+                        <button title="四角" onClick={() => startPlacement('rect')} style={toolTextBtnStyle((placementMode?.type as string) === 'rect')}>□ 四角</button>
+                        <button title="直線" onClick={() => startPlacement('line')} style={toolTextBtnStyle((placementMode?.type as string) === 'line')}>─ 直線</button>
+                        <button title="矢印" onClick={() => startPlacement('arrow')} style={toolTextBtnStyle((placementMode?.type as string) === 'arrow')}>→ 矢印</button>
+                        <button title="曲線" onClick={() => startPlacement('curve')} style={toolTextBtnStyle((placementMode?.type as string) === 'curve')}>～ 曲線</button>
+                        <button title="曲線矢印" onClick={() => startPlacement('curve_arrow')} style={toolTextBtnStyle((placementMode?.type as string) === 'curve_arrow')}>↷ 曲線矢印</button>
+                        <div style={{ height: '1px', backgroundColor: '#555', margin: '2px 0' }} />
                         <button
-                            title="Copy (Ctrl+C)"
+                            title="コピー (Ctrl+C)"
                             onClick={handleCopySelected}
                             disabled={selectedIds.length === 0}
-                            style={{ ...toolBtnStyle(false), color: selectedIds.length === 0 ? '#555' : '#ccc', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+                            style={toolTextBtnStyle(false, selectedIds.length === 0)}
                         >
-                            📋
+                            コピー
                         </button>
                         <button
-                            title="Cut (Ctrl+X)"
+                            title="切り取り (Ctrl+X)"
                             onClick={handleCutSelected}
                             disabled={selectedIds.length === 0}
-                            style={{ ...toolBtnStyle(false), color: selectedIds.length === 0 ? '#555' : '#ccc', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+                            style={toolTextBtnStyle(false, selectedIds.length === 0)}
                         >
-                            ✂️
+                            切り取り
                         </button>
                         <button
-                            title="Paste (Ctrl+V)"
+                            title="貼り付け (Ctrl+V)"
                             onClick={handlePasteClipboard}
                             disabled={clipboard.length === 0}
-                            style={{ ...toolBtnStyle(false), color: clipboard.length === 0 ? '#555' : '#ccc', cursor: clipboard.length === 0 ? 'not-allowed' : 'pointer' }}
+                            style={toolTextBtnStyle(false, clipboard.length === 0)}
                         >
-                            📥
+                            貼り付け
                         </button>
                         <button
-                            title="Delete Selected"
+                            title="削除"
                             onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
                             disabled={selectedIds.length === 0}
-                            style={{ ...toolBtnStyle(false), color: selectedIds.length === 0 ? '#555' : '#ef4444', cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+                            style={{ ...toolTextBtnStyle(false, selectedIds.length === 0), color: selectedIds.length === 0 ? '#666' : '#ef4444' }}
                         >
-                            🗑️
+                            削除
                         </button>
                     </div>
                     {(placementMode?.type as string) === 'freehand' && (
@@ -1419,19 +1436,34 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // Note/Animate を統一: 事件ノートの「基準範囲(1200×800, 3:2)」を Canvas領域へ
                         // アスペクト比維持でフィットさせる。Stage自体を基準範囲のフィット実寸にするので、
                         // 範囲外はクリック/配置できず、ウィンドウリサイズでも一様な拡大縮小（=レイアウト安定）になる。
-                        // compact(Animate)は左右にツールバー/画像パレットを置く分の最小幅を確保し、
-                        // 3:2フィットで生じる左右の余白(sideW)をそれらで埋める（=空白を作らない／レスポンシブ）。
                         const isSidePanels = compactMode && !isGridMode;
-                        const reserve = isSidePanels ? 2 * COMPACT_SIDE_MIN : 0;
-                        const canvasAreaW = Math.max(0, stageWidth - reserve);
-                        const canvasAreaH = stageHeight;
-                        const rangeFitScale = Math.min(canvasAreaW / CANVAS_BASE_W, canvasAreaH / CANVAS_BASE_H);
-                        const effScale = rangeFitScale;
-                        const stageRenderW = CANVAS_BASE_W * rangeFitScale;
-                        const stageRenderH = CANVAS_BASE_H * rangeFitScale;
-                        // Stageは pane(セル) 中央に置き、左右の余白を sideW としてツールバー(左)/パレット(右)で埋める。
-                        const sideW = isSidePanels ? Math.max(0, (stageWidth - stageRenderW) / 2) : 0;
-                        const stageOffsetX = (stageWidth - stageRenderW) / 2;
+                        let effScale: number;
+                        let stageRenderW: number;
+                        let stageRenderH: number;
+                        let toolbarW = 0;        // compact: 左にドックするツールバー幅（=Canvasの左余白を全部埋める）
+                        if (isSidePanels) {
+                            // Canvasは高さ優先でフィットし、横の余白を全部ツールバーが埋める（空白を作らない）。
+                            // 横幅が足りない(縦長セル)場合は幅優先にフォールバックし、最小ツールバー幅を確保。
+                            const heightFit = stageHeight / CANVAS_BASE_H;
+                            const canvasWAtHeightFit = CANVAS_BASE_W * heightFit;
+                            if (canvasWAtHeightFit <= stageWidth - COMPACT_SIDE_MIN) {
+                                effScale = heightFit;
+                                stageRenderW = canvasWAtHeightFit;
+                                stageRenderH = stageHeight;
+                            } else {
+                                const widthFit = Math.max(0, (stageWidth - COMPACT_SIDE_MIN)) / CANVAS_BASE_W;
+                                effScale = widthFit;
+                                stageRenderW = CANVAS_BASE_W * widthFit;
+                                stageRenderH = CANVAS_BASE_H * widthFit;
+                            }
+                            toolbarW = Math.max(COMPACT_SIDE_MIN, stageWidth - stageRenderW);
+                        } else {
+                            effScale = Math.min(stageWidth / CANVAS_BASE_W, stageHeight / CANVAS_BASE_H);
+                            stageRenderW = CANVAS_BASE_W * effScale;
+                            stageRenderH = CANVAS_BASE_H * effScale;
+                        }
+                        // compact: Stageはツールバーの右隣に左寄せ配置（Y中央）。非compactはセル中央。
+                        const stageOffsetX = isSidePanels ? toolbarW : (stageWidth - stageRenderW) / 2;
                         const stageOffsetY = (stageHeight - stageRenderH) / 2;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
@@ -1451,12 +1483,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
-                                    // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示し中央配置。
-                                    // compactは左右の余白をツールバー/パレットで埋めるので Stage は中央のまま。
+                                    // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示。
+                                    // compactは左の余白(toolbarW)をツールバーで全部埋め、Stageはその右隣に左寄せ＋Y中央。
                                     backgroundColor: '#1e1e1e',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center'
+                                    justifyContent: isSidePanels ? 'flex-start' : 'center',
+                                    paddingLeft: isSidePanels ? `${toolbarW}px` : 0
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1679,53 +1712,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     </Layer>
                                 </Stage>
 
-                                {/* compact(Animate): 左の余白にCanvas操作ツールバーをドック（幅はレスポンシブ=sideW）。
-                                    3:2フィットで生じる左右の余白をツールバー(左)/画像パレット(右)で埋める。 */}
-                                {isSidePanels && sideW > 4 && (
+                                {/* compact(Animate): 左の余白にCanvas操作ツールバーをドック。
+                                    幅(toolbarW)は3:2フィットで生じる左余白を全部埋めるレスポンシブ値。 */}
+                                {isSidePanels && toolbarW > 4 && (
                                     <div style={{
                                         position: 'absolute', left: 0, top: 0, bottom: 0,
-                                        width: `${sideW}px`,
+                                        width: `${toolbarW}px`,
                                         overflowY: 'auto',
                                         background: '#1a1a1a', borderRight: '1px solid #333',
                                         display: 'flex', flexDirection: 'column'
                                     }}>
                                         {renderPortalUI()}
-                                    </div>
-                                )}
-
-                                {/* compact(Animate): 右の余白に画像パレットをドック（幅はレスポンシブ=sideW） */}
-                                {isSidePanels && sideW > 4 && (
-                                    <div style={{
-                                        position: 'absolute', right: 0, top: 0, bottom: 0,
-                                        width: `${sideW}px`,
-                                        overflowY: 'auto', padding: '6px',
-                                        display: 'flex', flexWrap: 'wrap', gap: '5px',
-                                        alignContent: 'flex-start', justifyContent: 'center',
-                                        background: '#1a1a1a', borderLeft: '1px solid #333'
-                                    }}>
-                                        {availableImages.map((src, i) => {
-                                            // 先頭は立ち絵(削除不可)。それ以降が登録画像(assets)で右クリック削除可。
-                                            const assetIdx = i - portraitPalette.length;
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    title={assetIdx >= 0 ? "クリックで配置 / 右クリックで削除" : "クリックして配置 → キャンバスをクリック"}
-                                                    onClick={() => startPlacement('image', src)}
-                                                    onContextMenu={assetIdx >= 0 ? (e) => {
-                                                        e.preventDefault();
-                                                        setAssetContextMenu({ index: assetIdx, x: e.clientX, y: e.clientY });
-                                                    } : undefined}
-                                                    style={{
-                                                        cursor: 'pointer', width: '46px', height: '46px',
-                                                        background: '#222',
-                                                        border: placementMode?.data === src ? '2px solid #007acc' : '1px solid #444',
-                                                        borderRadius: '5px', overflow: 'hidden', flexShrink: 0
-                                                    }}
-                                                >
-                                                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                                </div>
-                                            );
-                                        })}
                                     </div>
                                 )}
 
