@@ -35,8 +35,9 @@ const applyChaikin = (points: number[], iterations: number): number[] => {
 // 画像パレット/ギャラリーから配置できるようにするための一覧。
 const CHARACTER_PORTRAITS = ICON_FILES.map(icon => `./character/${icon}`);
 
-// compact(Animate)で Canvas 右側に常設する画像パレットの固定幅(px)
-const COMPACT_PALETTE_W = 60;
+// compact(Animate)で Canvas 左右に置くツールバー/画像パレットの最小幅(px)。
+// 実際の幅は 3:2フィットで生じる左右の余白に合わせてレスポンシブに広がる。
+const COMPACT_SIDE_MIN = 52;
 // 論理キャンバスの基準サイズ(3:2)。オブジェクト未配置時のフォールバック表示に使う。
 const CANVAS_BASE_W = 1200;
 const CANVAS_BASE_H = 800;
@@ -1021,19 +1022,19 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
         return (
             <>
-                {/* Canvas操作ツールバー: フローティングをやめ、Animateセル上部にドック表示（Noteページ同様） */}
+                {/* Canvas操作ツールバー: Animateセルの左余白にドック（縦並び・幅はレスポンシブ） */}
                 <div
                     style={{
-                        flexShrink: 0,
+                        width: '100%',
+                        boxSizing: 'border-box',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '4px',
-                        backgroundColor: '#1e1e1e',
-                        borderBottom: '1px solid #333',
-                        padding: '5px 8px'
+                        backgroundColor: 'transparent',
+                        padding: '5px 4px'
                     }}
                 >
-                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <button title="Image (アップロード)" onClick={() => fileInputRef.current?.click()} style={toolBtnStyle(false)}>🖼️</button>
                         <button title="登録画像から配置" onClick={() => setShowImageGallery(v => !v)} style={toolBtnStyle(showImageGallery)}>🎴</button>
                         <button title="Text" onClick={() => startPlacement('text')} style={toolBtnStyle((placementMode?.type as string) === 'text')}>T</button>
@@ -1199,7 +1200,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
             className={compactMode ? "" : "character-canvas-layout"} 
             style={compactMode ? { position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' } : { width: '100%', height: '100%', gridTemplateRows: showTopbar ? '60px 1fr' : '1fr' }}
         >
-            {renderPortalUI()}
+            {/* compact のCanvas操作ツールバーは pane の左余白にドックする（下の pane 内で renderPortalUI を描画） */}
             {renderFloatingTextToolbar()}
             {compactMode && <input type="file" ref={fileInputRef} style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />}
 
@@ -1418,17 +1419,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // Note/Animate を統一: 事件ノートの「基準範囲(1200×800, 3:2)」を Canvas領域へ
                         // アスペクト比維持でフィットさせる。Stage自体を基準範囲のフィット実寸にするので、
                         // 範囲外はクリック/配置できず、ウィンドウリサイズでも一様な拡大縮小（=レイアウト安定）になる。
-                        // compact(Animate)は右に固定幅の画像パレットぶんの余白を確保する。
-                        const paletteWidth = (compactMode && !isGridMode) ? COMPACT_PALETTE_W : 0;
-                        const canvasAreaW = Math.max(0, stageWidth - paletteWidth);
+                        // compact(Animate)は左右にツールバー/画像パレットを置く分の最小幅を確保し、
+                        // 3:2フィットで生じる左右の余白(sideW)をそれらで埋める（=空白を作らない／レスポンシブ）。
+                        const isSidePanels = compactMode && !isGridMode;
+                        const reserve = isSidePanels ? 2 * COMPACT_SIDE_MIN : 0;
+                        const canvasAreaW = Math.max(0, stageWidth - reserve);
                         const canvasAreaH = stageHeight;
                         const rangeFitScale = Math.min(canvasAreaW / CANVAS_BASE_W, canvasAreaH / CANVAS_BASE_H);
                         const effScale = rangeFitScale;
                         const stageRenderW = CANVAS_BASE_W * rangeFitScale;
                         const stageRenderH = CANVAS_BASE_H * rangeFitScale;
-                        // pane内でのStage中央寄せオフセット（テキスト編集オーバーレイの座標計算に使う）
-                        const stageOffsetX = (canvasAreaW - stageRenderW) / 2;
-                        const stageOffsetY = (canvasAreaH - stageRenderH) / 2;
+                        // Stageは pane(セル) 中央に置き、左右の余白を sideW としてツールバー(左)/パレット(右)で埋める。
+                        const sideW = isSidePanels ? Math.max(0, (stageWidth - stageRenderW) / 2) : 0;
+                        const stageOffsetX = (stageWidth - stageRenderW) / 2;
+                        const stageOffsetY = (stageHeight - stageRenderH) / 2;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1448,12 +1452,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
                                     // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示し中央配置。
+                                    // compactは左右の余白をツールバー/パレットで埋めるので Stage は中央のまま。
                                     backgroundColor: '#1e1e1e',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    // (compactのみ)画像パレットぶん右に余白を空け、Stageをその左側領域に中央寄せする
-                                    paddingRight: paletteWidth ? `${paletteWidth}px` : 0
+                                    justifyContent: 'center'
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1676,15 +1679,28 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     </Layer>
                                 </Stage>
 
-                                {/* compact(Animate)の単一表示のみ: 左寄せCanvasの右余白に画像パレットを常設。
-                                    4ペイン表示ではパレットを出さない(Canvasのみ4分割)。 */}
-                                {compactMode && !isGridMode && paletteWidth > 40 && (
+                                {/* compact(Animate): 左の余白にCanvas操作ツールバーをドック（幅はレスポンシブ=sideW）。
+                                    3:2フィットで生じる左右の余白をツールバー(左)/画像パレット(右)で埋める。 */}
+                                {isSidePanels && sideW > 4 && (
+                                    <div style={{
+                                        position: 'absolute', left: 0, top: 0, bottom: 0,
+                                        width: `${sideW}px`,
+                                        overflowY: 'auto',
+                                        background: '#1a1a1a', borderRight: '1px solid #333',
+                                        display: 'flex', flexDirection: 'column'
+                                    }}>
+                                        {renderPortalUI()}
+                                    </div>
+                                )}
+
+                                {/* compact(Animate): 右の余白に画像パレットをドック（幅はレスポンシブ=sideW） */}
+                                {isSidePanels && sideW > 4 && (
                                     <div style={{
                                         position: 'absolute', right: 0, top: 0, bottom: 0,
-                                        width: `${paletteWidth}px`,
+                                        width: `${sideW}px`,
                                         overflowY: 'auto', padding: '6px',
                                         display: 'flex', flexWrap: 'wrap', gap: '5px',
-                                        alignContent: 'flex-start', justifyContent: 'flex-start',
+                                        alignContent: 'flex-start', justifyContent: 'center',
                                         background: '#1a1a1a', borderLeft: '1px solid #333'
                                     }}>
                                         {availableImages.map((src, i) => {
