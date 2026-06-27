@@ -507,9 +507,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
     const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, scale: number) => {
         const evt: MouseEvent | undefined = e?.evt;
-        // 事件ノートの基準範囲[0,1200]×[0,800]外へ出さない。確定位置を範囲内にクランプする。
-        const localX = Math.max(0, Math.min(CANVAS_BASE_W, e.target.x()));
-        const localY = Math.max(0, Math.min(CANVAS_BASE_H, e.target.y()));
+        // 事件ノート(preset)のみ基準範囲[0,1200]×[0,800]外へ出さない。それ以外(fill)は自由配置。
+        const clampRange = targetType === 'preset';
+        const localX = clampRange ? Math.max(0, Math.min(CANVAS_BASE_W, e.target.x())) : e.target.x();
+        const localY = clampRange ? Math.max(0, Math.min(CANVAS_BASE_H, e.target.y())) : e.target.y();
         // dx,dy だけ全体を平行移動する（グループは全メンバー、単体は自身）。
         // extra に canvasIndex を含めると移動先ペインへ付け替えられる。
         const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
@@ -702,9 +703,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
             const layer = e.target.getStage()?.getLayers()[0];
             const pos = layer?.getRelativePointerPosition();
             if (!pos) return;
-            // 事件ノートの基準範囲[0,1200]×[0,800]外には配置しない
-            pos.x = Math.max(0, Math.min(CANVAS_BASE_W, pos.x));
-            pos.y = Math.max(0, Math.min(CANVAS_BASE_H, pos.y));
+            // 事件ノート(preset)のみ基準範囲[0,1200]×[0,800]外への配置を禁止（Animateとの整合）。
+            // それ以外(fillの全体/キャラ/メモ)はコンテナ全体に配置可。
+            if (targetType === 'preset') {
+                pos.x = Math.max(0, Math.min(CANVAS_BASE_W, pos.x));
+                pos.y = Math.max(0, Math.min(CANVAS_BASE_H, pos.y));
+            }
 
             if (['line', 'arrow', 'curve', 'curve_arrow', 'freehand'].includes(placementMode.type as string)) {
                 isDrawingRef.current = true;
@@ -1465,6 +1469,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // アスペクト比維持でフィットさせる。Stage自体を基準範囲のフィット実寸にするので、
                         // 範囲外はクリック/配置できず、ウィンドウリサイズでも一様な拡大縮小（=レイアウト安定）になる。
                         const isSidePanels = compactMode && !isGridMode;
+                        // 事件ノート(preset)だけが基準範囲(3:2)フィット。Animateとの整合のため範囲外は配置不可。
+                        // 全体/キャラクター/メモ(overview/character/misc)は「要素いっぱいに広げる(fill)」方式に戻す
+                        // （ズームでサイズ変更しないが余白も作らない）。#06/28-3:58-1
+                        const useRangeFit = targetType === 'preset';
                         let effScale: number;
                         let stageRenderW: number;
                         let stageRenderH: number;
@@ -1485,12 +1493,19 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                 stageRenderH = CANVAS_BASE_H * widthFit;
                             }
                             toolbarW = Math.max(COMPACT_SIDE_MIN, stageWidth - stageRenderW);
-                        } else {
+                        } else if (useRangeFit) {
+                            // 非compactの事件ノート: 基準範囲フィット（中央レターボックス）
                             effScale = Math.min(stageWidth / CANVAS_BASE_W, stageHeight / CANVAS_BASE_H);
                             stageRenderW = CANVAS_BASE_W * effScale;
                             stageRenderH = CANVAS_BASE_H * effScale;
+                        } else {
+                            // overview/character/misc: Stageをコンテナ実寸にして要素いっぱいに描画（fill, 余白なし）
+                            effScale = Math.min(stageWidth / CANVAS_BASE_W, stageHeight / CANVAS_BASE_H);
+                            stageRenderW = stageWidth;
+                            stageRenderH = stageHeight;
                         }
-                        // compact: Stageはツールバーの右隣に左寄せ配置（Y中央）。非compactはセル中央。
+                        // compact: Stageはツールバーの右隣に左寄せ配置（Y中央）。
+                        // 非compact: range-fitは中央レターボックス、fillはコンテナ充填(offset 0)。
                         const stageOffsetX = isSidePanels ? toolbarW : (stageWidth - stageRenderW) / 2;
                         const stageOffsetY = (stageHeight - stageRenderH) / 2;
 
