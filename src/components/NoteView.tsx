@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Stage, Layer, Group, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
 import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } from '../store';
@@ -388,10 +388,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const trRefs = useRef<(Konva.Transformer | null)[]>([null, null, null, null]);
     // 4ペインそれぞれの DOM 要素。ペインをまたぐドラッグ移動(#4)のヒットテストに使う
     const paneRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
-    // compact(Animate): 事件ノートの実コンテンツ(オブジェクト群)を計測してズームフィットするための
-    // Group ref と、適用する変換(scale/offset)。
-    const fitGroupRefs = useRef<(Konva.Group | null)[]>([null, null, null, null]);
-    const [contentFit, setContentFit] = useState<{ scale: number, x: number, y: number } | null>(null);
     const editingTextBoundsRef = useRef<{ width: number } | null>(null);
 
     const [padPos, setPadPos] = useState<{x: number, y: number} | null>(null);
@@ -452,36 +448,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const currentCanvasObjects = useMemo(() => objects.filter(o => (o.canvasIndex || 0) === currentCanvasIndex), [objects, currentCanvasIndex]);
     const objectsLength = objects.length;
 
-    // compact(Animate): 現在ペインのオブジェクト群(実コンテンツ)の論理バウンディングボックスを計測し、
-    // Canvas領域へアスペクト比を維持してズームフィットする変換(scale/offset)を求める。
-    // オブジェクトが無い場合は基準1200×800をフィット。
-    useLayoutEffect(() => {
-        if (!compactMode || isGridMode) return;
-        const availW = Math.max(0, canvasSize.width - COMPACT_PALETTE_W);
-        const availH = canvasSize.height;
-        if (availW <= 10 || availH <= 10) return;
-        const baseFit = Math.min(availW / CANVAS_BASE_W, availH / CANVAS_BASE_H);
-        const group = fitGroupRefs.current[currentCanvasIndex];
-        const layer = group?.getLayer();
-        if (!group || !layer || currentCanvasObjects.length === 0) {
-            setContentFit({ scale: baseFit, x: 0, y: 0 });
-            return;
-        }
-        // レイヤー(=論理座標系)基準のバウンディングボックス。レイヤーの現在変換には依存しない。
-        const box = group.getClientRect({ relativeTo: layer });
-        if (!box || box.width <= 1 || box.height <= 1) {
-            setContentFit({ scale: baseFit, x: 0, y: 0 });
-            return;
-        }
-        const pad = 28;
-        const fs = Math.max(0.05, Math.min((availW - pad * 2) / box.width, (availH - pad * 2) / box.height));
-        // 中央寄せ。ただし原点(0,0)より外(負領域=事件ノートの左端/上端より外)は表示しない。
-        // 可視左上が0以上になるよう offset を 0 以下にクランプ（content が原点付近なら左上寄せになる）。
-        // これで範囲外が映らず、そこへドラッグして出すこともできなくなる。
-        const x = Math.min(0, (availW - box.width * fs) / 2 - box.x * fs);
-        const y = Math.min(0, (availH - box.height * fs) / 2 - box.y * fs);
-        setContentFit({ scale: fs, x, y });
-    }, [currentCanvasObjects, currentCanvasIndex, compactMode, isGridMode, canvasSize.width, canvasSize.height]);
 
     useEffect(() => {
         const container = canvasContainerRef.current;
@@ -563,9 +529,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
     const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, scale: number) => {
         const evt: MouseEvent | undefined = e?.evt;
-        // 事件ノートの範囲(原点0,0)外へ出さない。確定位置を x>=0, y>=0 にクランプする。
-        const localX = Math.max(0, e.target.x());
-        const localY = Math.max(0, e.target.y());
+        // 事件ノートの基準範囲[0,1200]×[0,800]外へ出さない。確定位置を範囲内にクランプする。
+        const localX = Math.max(0, Math.min(CANVAS_BASE_W, e.target.x()));
+        const localY = Math.max(0, Math.min(CANVAS_BASE_H, e.target.y()));
         // dx,dy だけ全体を平行移動する（グループは全メンバー、単体は自身）。
         // extra に canvasIndex を含めると移動先ペインへ付け替えられる。
         const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
@@ -754,10 +720,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         if (e.evt.button !== 0) return;
 
         if (placementMode) {
-            // レイヤーのローカル(=論理)座標。Layerのscale/offset(compactのズームフィット)を自動で吸収する。
+            // レイヤーのローカル(=論理)座標。Layerのscale(compactの基準範囲フィット)を自動で吸収する。
             const layer = e.target.getStage()?.getLayers()[0];
             const pos = layer?.getRelativePointerPosition();
             if (!pos) return;
+            // 事件ノートの基準範囲[0,1200]×[0,800]外には配置しない
+            pos.x = Math.max(0, Math.min(CANVAS_BASE_W, pos.x));
+            pos.y = Math.max(0, Math.min(CANVAS_BASE_H, pos.y));
 
             if (['line', 'arrow', 'curve', 'curve_arrow', 'freehand'].includes(placementMode.type as string)) {
                 isDrawingRef.current = true;
@@ -1516,19 +1485,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                         // レターボックスで中央配置する。これにより Animate と 事件ノート で
                         // 「描画/可視領域(=1200×800)」が完全一致し、端に置いたオブジェクトも双方で見える。
                         // 周囲の暗色マージン(セルとの差分)が活用したい余白領域。
-                        // compact(Animate)は右に固定幅の画像パレットを置き、残りをCanvas領域として
-                        // 事件ノートの実コンテンツへズームフィット表示する（contentFit）。
+                        // compact(Animate)は右に固定幅の画像パレットを置き、残りのCanvas領域に
+                        // 事件ノートの「基準範囲(1200×800)」をアスペクト比維持でフィットさせる。
+                        // Stage自体を基準範囲のフィット実寸にするので、範囲外はクリック/配置できない。
                         // 非compact(Noteページ)はコンテナいっぱいに描画して最大化（余白なし）。
                         const paletteWidth = (compactMode && !isGridMode) ? COMPACT_PALETTE_W : 0;
                         const canvasAreaW = Math.max(0, stageWidth - paletteWidth);
-                        const stageRenderW = compactMode ? canvasAreaW : stageWidth;
-                        const stageRenderH = stageHeight;
-                        // レイヤーに適用する変換。compactの単一表示のみ contentFit(ズームフィット)、
-                        // 4ペイン/非compactは従来のフィット(各セルにフィット)。
-                        const useContentFit = compactMode && !isGridMode;
-                        const effScale = useContentFit ? (contentFit?.scale ?? scale) : scale;
-                        const layerX = useContentFit ? (contentFit?.x ?? 0) : 0;
-                        const layerY = useContentFit ? (contentFit?.y ?? 0) : 0;
+                        const canvasAreaH = stageHeight;
+                        const rangeFitScale = compactMode ? Math.min(canvasAreaW / CANVAS_BASE_W, canvasAreaH / CANVAS_BASE_H) : scale;
+                        const effScale = compactMode ? rangeFitScale : scale;
+                        const stageRenderW = compactMode ? CANVAS_BASE_W * rangeFitScale : stageWidth;
+                        const stageRenderH = compactMode ? CANVAS_BASE_H * rangeFitScale : stageHeight;
+                        // pane内でのStage中央寄せオフセット（テキスト編集オーバーレイの座標計算に使う）
+                        const stageOffsetX = (canvasAreaW - stageRenderW) / 2;
+                        const stageOffsetY = (canvasAreaH - stageRenderH) / 2;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1548,13 +1518,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
                                     // 非compact(Noteページ)は紙面(方眼)でセルを満たし最大化（余白なし）。
-                                    // compact(Animate)は暗色マージン＋左寄せ(右に画像パレット)/中央配置。
+                                    // compact(Animate)は暗色マージン＋基準範囲を中央配置（右に画像パレットぶんの余白）。
                                     backgroundColor: compactMode ? '#1e1e1e' : '#ECD2B3',
                                     backgroundImage: compactMode ? 'none' : `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
                                     backgroundSize: `${24 * scale}px ${24 * scale}px`,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: (compactMode && !isGridMode) ? 'flex-start' : 'center'
+                                    justifyContent: 'center',
+                                    // 画像パレットぶん右に余白を空け、Stageをその左側領域に中央寄せする
+                                    paddingRight: paletteWidth ? `${paletteWidth}px` : 0
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1595,17 +1567,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                     onContextMenu={(e) => e.evt.preventDefault()}
                                     style={{
                                         cursor: placementMode && isCurrent ? 'crosshair' : (isGridMode && !isGridEditMode ? 'pointer' : 'default'),
-                                        // compactは紙面(方眼)をStage(=1200×800)にのみ表示。非compactは紙面をセル(pane)側に出すので透明。
+                                        // compactは紙面(方眼)をStage(=基準範囲1200×800)にのみ表示。非compactは紙面をセル(pane)側に出すので透明。
                                         ...(compactMode ? {
                                             backgroundColor: '#ECD2B3',
                                             backgroundImage: `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 24 0 L 0 0 0 24' fill='none' stroke='%23C2B2A1' stroke-width='1' stroke-dasharray='3 3'/%3E%3C/svg%3E")`,
-                                            backgroundSize: `${24 * scale}px ${24 * scale}px`
+                                            backgroundSize: `${24 * effScale}px ${24 * effScale}px`
                                         } : {})
                                     }}
                                 >
-                                    <Layer scaleX={effScale} scaleY={effScale} x={layerX} y={layerY}>
-                                        {/* 実コンテンツ計測用Group(変換なし)。compactのズームフィットのbbox基準にする。 */}
-                                        <Group ref={(el) => { fitGroupRefs.current[index] = el; }}>
+                                    <Layer scaleX={effScale} scaleY={effScale}>
                                         {isFontLoaded && objs.map((obj) => {
                                             const isSelected = selectedIds.includes(obj.id);
                                             if (obj.id === editingTextId) return null;
@@ -1681,7 +1651,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                             if (obj.type === 'text') return <EditableText key={obj.id} {...props} />;
                                             return <ShapeObject key={obj.id} {...props} />;
                                         })}
-                                        </Group>
 
                                         {/* 複数選択時、テキストノードの選択インジケーター（Transformerが除外するため個別描画） */}
                                         {selectedIds.length > 1 && objs
@@ -1850,8 +1819,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                             autoFocus
                                             style={{
                                                 position: 'absolute',
-                                                top: layerY + obj.y * effScale,
-                                                left: layerX + obj.x * effScale,
+                                                top: stageOffsetY + obj.y * effScale,
+                                                left: stageOffsetX + obj.x * effScale,
                                                 width: `${editWidth}px`,
                                                 height: 'auto',
                                                 minHeight: `${(obj.fontSize || 24) * 1.4 * effScale}px`,
