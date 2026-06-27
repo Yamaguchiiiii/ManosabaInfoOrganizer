@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Image as KonvaImage, Group, Circle, Line, Rect } from 'react-konva';
 import useImage from 'use-image';
 
@@ -24,9 +25,12 @@ export const THEME_COLORS = {
 };
 
 
-// マップ画像表示コンポーネント
-export const MapImage = ({ src }: { src: string }) => {
+// マップ画像表示コンポーネント。読み込んだ画像の自然サイズを onLoad で通知できる。
+export const MapImage = ({ src, onLoad }: { src: string, onLoad?: (w: number, h: number) => void }) => {
   const [image] = useImage(src);
+  useEffect(() => {
+    if (image && onLoad) onLoad(image.width, image.height);
+  }, [image, onLoad]);
   return <KonvaImage image={image} />;
 };
 

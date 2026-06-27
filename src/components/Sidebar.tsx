@@ -10,10 +10,10 @@ interface SidebarProps {
 }
 
 // ▼ 修正: 必要な状態だけを個別に取得 ▼
-export const Sidebar: React.FC<SidebarProps> = React.memo(({ 
-    selectedIcons, onIconSelect, onModeChange, onFloorChange 
+export const Sidebar: React.FC<SidebarProps> = React.memo(({
+    selectedIcons, onIconSelect, onModeChange
 }) => {
-  const activeFloor = useAppStore(state => state.activeFloor);
+  // onFloorChange / activeFloor は FLOOR セクション廃止により未使用（#06/28-6:04-6）
   const mode = useAppStore(state => state.mode);
   const isGraphEditMode = useAppStore(state => state.isGraphEditMode);
   const setGraphEditMode = useAppStore(state => state.setGraphEditMode);
@@ -107,15 +107,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             )}
         </div>
 
-        {mode !== 'note' && mode !== 'animate' && (
-            <>
-                <div className="section-title">FLOOR</div>
-                <div className={`menu-item ${activeFloor === '2F' ? 'active' : ''}`} onClick={() => onFloorChange('2F')}>2F</div>
-                <div className={`menu-item ${activeFloor === '1F' ? 'active' : ''}`} onClick={() => onFloorChange('1F')}>1F</div>
-                <div className={`menu-item ${activeFloor === 'B1' ? 'active' : ''}`} onClick={() => onFloorChange('B1')}>B1</div>
-            </>
-        )}
-        
+        {/* #06/28-6:04-6: 4ペイン表示で全フロアが同時に見えるため FLOOR セクションは廃止 */}
+
         {mode !== 'note' && (
             <>
                 <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

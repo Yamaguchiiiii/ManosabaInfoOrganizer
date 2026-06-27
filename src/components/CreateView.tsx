@@ -6,7 +6,6 @@ import { MapImage } from './common/MapElements';
 import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
 import { SuggestionSidebar } from './common/SuggestionSidebar';
-import { useStageZoom } from '../hooks/useStageZoom';
 import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeArrivalOccurrences } from '../utils/animationUtils';
 
 import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
@@ -94,7 +93,8 @@ const FloorPane: React.FC<FloorPaneProps> = ({
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [size, setSize] = useState({ width: 0, height: 0 });
-    const { stageSpec, handleWheel, handleDragEnd } = useStageZoom({ initialScale: 1.0, minScale: 0.1, maxScale: 5.0 });
+    // #06/28-6:04-1: 4ペインのマップはズーム不要。マップ自然サイズをペインにフィット（中央寄せ）するだけ。
+    const [mapNat, setMapNat] = useState({ w: 0, h: 0 });
 
     useEffect(() => {
         const update = () => {
@@ -108,6 +108,11 @@ const FloorPane: React.FC<FloorPaneProps> = ({
         if (containerRef.current) obs.observe(containerRef.current);
         return () => obs.disconnect();
     }, []);
+
+    const fitScale = (mapNat.w > 0 && mapNat.h > 0 && size.width > 0 && size.height > 0)
+        ? Math.min(size.width / mapNat.w, size.height / mapNat.h) : 1;
+    const fitX = (size.width - mapNat.w * fitScale) / 2;
+    const fitY = (size.height - mapNat.h * fitScale) / 2;
 
     const showDynamic = isGraphEditMode && !!connectingNodeId && nodeMap[connectingNodeId]?.floor === floorId;
 
@@ -126,16 +131,15 @@ const FloorPane: React.FC<FloorPaneProps> = ({
             </div>
             {size.width > 0 && size.height > 0 && (
                 <Stage
-                    width={size.width} height={size.height} draggable={!isGraphEditMode}
-                    scaleX={stageSpec.scale} scaleY={stageSpec.scale} x={stageSpec.x} y={stageSpec.y}
-                    onWheel={handleWheel} onDragEnd={handleDragEnd}
+                    width={size.width} height={size.height}
+                    scaleX={fitScale} scaleY={fitScale} x={fitX} y={fitY}
                     onClick={(e) => onStageClick(e, floorId)}
                     onMouseMove={onStageMouseMove}
                     onContextMenu={(e) => e.evt.preventDefault()}
                     style={{ cursor: isGraphEditMode ? 'crosshair' : 'default' }}
                 >
                     <Layer>
-                        <MapImage src={mapSrcFor(floorId)} />
+                        <MapImage src={mapSrcFor(floorId)} onLoad={(w, h) => setMapNat(prev => (prev.w === w && prev.h === h) ? prev : { w, h })} />
                         <MapObjectLayer
                             nodes={nodes}
                             nodeMap={nodeMap}
@@ -633,7 +637,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
   };
 
   const handleSavePath = () => {
-      if (!displayPath.length || !selectedIcons.length) return;
+      if (!displayPath.length) return;
+      // #06/28-6:04-4: キャラ未選択でSave Pathされたら、保存先キャラを選ぶフローティングウィンドウを開く
+      if (!selectedIcons.length) { setIsMultiSelectMode(false); setIsCharModalOpen(true); return; }
       const validWp = waypoints.filter(wp => wp.id !== "");
       if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints);
       else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints);
@@ -675,8 +681,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
   
   const handleModalClose = () => { setIsCharModalOpen(false); setIsMultiSelectMode(false); };
 
-  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); handleModalClose(); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime); setConnectingNodeId(null); };
-  const handleMultiSelect = (icons: string[]) => { handleModalClose(); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime); setConnectingNodeId(null); };
+  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); handleModalClose(); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); };
+  const handleMultiSelect = (icons: string[]) => { handleModalClose(); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); };
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, floorOverride?: FloorId) => {
     // 4ペインでは編集対象フロアをペイン(floorOverride)で明示。未指定時は activeFloor。
@@ -747,9 +753,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
       e.cancelBubble = true;
 
       if (isGraphEditMode) {
-          const node = nodeMap[nodeId];
           if (connectingNodeId === null) {
-              if (node?.type === 'stair' && node.connectedFloor) { onFloorChange(node.connectedFloor); return; }
+              // #06/28-6:04-5: 4ペイン化により階段クリックでのフロア表示切替は廃止（経路計算はそのまま）。
               setConnectingNodeId(nodeId);
           } else {
               if (connectingNodeId !== nodeId) addEdge({ id: generateId(), nodeA: connectingNodeId, nodeB: nodeId, floor });
@@ -762,10 +767,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
           const node = nodeMap[nodeId];
           if (!node) return;
 
-          if (node.type === 'stair' && node.connectedFloor) { 
-              onFloorChange(node.connectedFloor); 
-              return; 
-          }
+          // #06/28-6:04-5: 階段クリックでのフロア表示切替は廃止。階段も通常ノード同様に経由地として扱う。
 
           if (!isEditing) {
               setIsEditing(true);

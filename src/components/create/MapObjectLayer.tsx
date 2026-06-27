@@ -125,11 +125,21 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                             const offset = (count - (total - 1) / 2) * GAP;
                             const { x, y, x2, y2 } = getOffsetPoint(nodeA.x, nodeA.y, nodeB.x, nodeB.y, offset);
 
+                            // #06/28-6:04-3: 進行方向の「>」マークをセグメント長に依存しない固定サイズにする。
+                            // 中点 M から単位方向ベクトル u と固定長 ARROW で左右の翼を描く（V字シェブロン）。
+                            const segLen = Math.hypot(x2 - x, y2 - y);
+                            const mx = (x + x2) / 2, my = (y + y2) / 2;
+                            const ux = segLen > 0 ? (x2 - x) / segLen : 0;
+                            const uy = segLen > 0 ? (y2 - y) / segLen : 0;
+                            const ARROW = 9; // マップ論理座標での固定長
+                            const w1x = mx - ux * ARROW - uy * ARROW, w1y = my - uy * ARROW + ux * ARROW;
+                            const w2x = mx - ux * ARROW + uy * ARROW, w2y = my - uy * ARROW - ux * ARROW;
+
                             segmentLines.push(
                                 <React.Fragment key={`path-${segIndex}-${i}`}>
                                     <Line points={[x, y, x2, y2]} stroke={color} strokeWidth={4} lineCap="round" lineJoin="round" opacity={0.9} listening={false} shadowColor={color} shadowBlur={4} />
-                                    {Math.hypot(x2-x, y2-y) > 30 && (
-                                        <Line points={[(x + x2)/2, (y + y2)/2, (x + x2)/2 - (x2-x)*0.1 - (y2-y)*0.1, (y + y2)/2 - (y2-y)*0.1 + (x2-x)*0.1, (x + x2)/2, (y + y2)/2, (x + x2)/2 - (x2-x)*0.1 + (y2-y)*0.1, (y + y2)/2 - (y2-y)*0.1 - (x2-x)*0.1]} stroke="white" strokeWidth={2} lineCap="round" lineJoin="round" listening={false} opacity={0.8} />
+                                    {segLen > 30 && (
+                                        <Line points={[w1x, w1y, mx, my, w2x, w2y]} stroke="white" strokeWidth={2} lineCap="round" lineJoin="round" listening={false} opacity={0.8} />
                                     )}
                                 </React.Fragment>
                             );
@@ -145,13 +155,14 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                     const isSelected = connectingNodeId === node.id || waypoints.some(wp => wp.id === node.id);
                     const isPath = pathSegments.some(seg => seg.includes(node.id));
                     
-                    let nodeOpacity = 0.4;
-                    if (mode === 'animate') { nodeOpacity = 0; } 
-                    else if (isGraphEditMode) { nodeOpacity = 1; } 
-                    else { 
-                        if (highlightedPath.length > 0) { 
-                            if (isPath || isSelected) nodeOpacity = 1; else nodeOpacity = 0.2; 
-                        } else { 
+                    // #06/28-6:04-2: 通常時のノード不透明度を少し上げて視認性を改善
+                    let nodeOpacity = 0.6;
+                    if (mode === 'animate') { nodeOpacity = 0; }
+                    else if (isGraphEditMode) { nodeOpacity = 1; }
+                    else {
+                        if (highlightedPath.length > 0) {
+                            if (isPath || isSelected) nodeOpacity = 1; else nodeOpacity = 0.35;
+                        } else {
                             const isHovered = hoveredNodeId === node.id; 
                             const isNeighbor = hoveredNodeId && edges.some(edge => (edge.nodeA === hoveredNodeId && edge.nodeB === node.id) || (edge.nodeB === hoveredNodeId && edge.nodeA === node.id)); 
                             if (isHovered || isNeighbor || isSelected) nodeOpacity = 1; 
