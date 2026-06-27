@@ -15,6 +15,7 @@ function App() {
     const _hasHydrated = useAppStore(state => state._hasHydrated);
     const mode = useAppStore(state => state.mode);
     const setMode = useAppStore(state => state.setMode);
+    const setSkullMode = useAppStore(state => state.setSkullMode);
     const activeFloor = useAppStore(state => state.activeFloor);
     const setActiveFloor = useAppStore(state => state.setActiveFloor);
     const setGraphEditMode = useAppStore(state => state.setGraphEditMode);
@@ -83,6 +84,8 @@ function App() {
             setMode(newMode);
             if (newMode === 'animate' || newMode === 'note'){
                 setGraphEditMode(false);
+                // 死亡設定モード(どくろ)はCreate専用なので、離脱時に必ず解除する
+                setSkullMode(false);
             }
         });
     };

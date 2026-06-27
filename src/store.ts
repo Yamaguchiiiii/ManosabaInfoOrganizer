@@ -409,7 +409,7 @@ export const useAppStore = create<AppState>()(
         addPreset: () => set((state) => {
             const num = state.presets.length + 1;
             const newId = `preset_${Date.now()}`;
-            return { presets: [...state.presets, { id: newId, name: `Day ${num}`, data: {}, deadIcons: [] }], activePresetId: newId };
+            return { presets: [...state.presets, { id: newId, name: `Episode ${num}`, data: {}, deadIcons: [] }], activePresetId: newId };
         }),
         setActivePresetId: (id) => set({ activePresetId: id }),
         updatePresetName: (id, name) => set((state) => ({ presets: state.presets.map(p => p.id === id ? { ...p, name } : p) })),

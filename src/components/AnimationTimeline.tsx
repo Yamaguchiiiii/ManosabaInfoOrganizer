@@ -76,10 +76,11 @@ export const AnimationTimeline: React.FC = () => {
             flexDirection: 'column'
         }}>
             <div style={{
-                display: 'flex', alignItems: 'center', gap: '15px',
+                display: 'flex', alignItems: 'center', gap: '12px',
                 padding: '10px 20px', borderBottom: '1px solid #333',
                 flexWrap: 'wrap'
             }}>
+                {/* 1行目: プリセット | 速度 | Play （ここで折り返す） */}
                 <select
                     value={activePresetId}
                     onChange={(e) => setActivePresetId(e.target.value)}
@@ -96,9 +97,23 @@ export const AnimationTimeline: React.FC = () => {
                     ))}
                 </select>
 
-                <div style={{ width: '1px', height: '20px', background: '#555' }}></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ color: '#888', fontSize: '0.8rem' }}>Speed:</span>
+                    <select
+                        value={playbackSpeed}
+                        onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                        style={{
+                            background: '#333', color: 'white', border: '1px solid #555',
+                            borderRadius: '4px', padding: '2px 5px', fontSize: '0.9rem', cursor: 'pointer'
+                        }}
+                    >
+                        {SPEED_OPTIONS.map(speed => (
+                            <option key={speed} value={speed}>x{speed}</option>
+                        ))}
+                    </select>
+                </div>
 
-                <button 
+                <button
                     onClick={() => setIsPlaying(!isPlaying)}
                     style={{
                         background: isPlaying ? '#ef4444' : '#10b981',
@@ -109,33 +124,24 @@ export const AnimationTimeline: React.FC = () => {
                     {isPlaying ? 'Pause' : 'Play'}
                 </button>
 
-                <div style={{ color: '#ccc', fontFamily: 'monospace', fontSize: '1.2rem', minWidth: '80px', textAlign: 'center' }}>
-                    {formatTime(displayTime)}
-                </div>
+                {/* 2行目: 現在の再生時間 | 再生バー | アニメーション全体の時間（幅100%で折り返す） */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+                    <div style={{ color: '#ccc', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
+                        {formatTime(displayTime)}
+                    </div>
 
-                <input 
-                    type="range" 
-                    min="0" 
-                    max={maxDuration}
-                    value={displayTime} 
-                    onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
-                    style={{ flex: 1, cursor: 'pointer' }}
-                />
+                    <input
+                        type="range"
+                        min="0"
+                        max={maxDuration}
+                        value={displayTime}
+                        onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+                        style={{ flex: 1, cursor: 'pointer' }}
+                    />
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span style={{ color: '#888', fontSize: '0.8rem' }}>Speed:</span>
-                    <select 
-                        value={playbackSpeed}
-                        onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
-                        style={{ 
-                            background: '#333', color: 'white', border: '1px solid #555', 
-                            borderRadius: '4px', padding: '2px 5px', fontSize: '0.9rem', cursor: 'pointer'
-                        }}
-                    >
-                        {SPEED_OPTIONS.map(speed => (
-                            <option key={speed} value={speed}>x{speed}</option>
-                        ))}
-                    </select>
+                    <div style={{ color: '#888', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
+                        {formatTime(maxDuration)}
+                    </div>
                 </div>
             </div>
         </div>

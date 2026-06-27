@@ -7,7 +7,7 @@ import { ReadOnlyMapView } from './ReadOnlyMapView';
 import { AnimationTimeline } from './AnimationTimeline';
 import { NotesPanel } from './NotesPanel';
 import '../styles/AnimateView.scss';
-import { useAppStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
+import { useAppStore, usePlaybackStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
 import { MIN_SIDEBAR_WIDTH } from '../hooks/useSidebarResizer';
 import { useAnimationPositions, AnimFloorId } from '../hooks/useAnimationPositions';
 
@@ -106,6 +106,21 @@ export const AnimateView = () => {
   useEffect(() => {
     setSidebarWidth(MIN_SIDEBAR_WIDTH);
   }, [setSidebarWidth]);
+
+  // Space でアニメーションの再生/一時停止をトグルする（入力欄にフォーカス中は無効）。
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      e.preventDefault();
+      const { isPlaying, setIsPlaying } = usePlaybackStore.getState();
+      setIsPlaying(!isPlaying);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useAnimationPositions(nodesMapRef, charNodeRefs, currentVisualPositions);
 

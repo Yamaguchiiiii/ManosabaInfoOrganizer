@@ -342,6 +342,28 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const [hoveredCanvasIndex, setHoveredCanvasIndex] = useState<number | null>(null);
     // Animate(compact)の画像ギャラリー floating window の表示状態
     const [showImageGallery, setShowImageGallery] = useState(false);
+    // 画像ギャラリーはドラッグで移動可能にする（Canvasに被ると使いにくいため）。null=既定の右下。
+    const [galleryPos, setGalleryPos] = useState<{ x: number, y: number } | null>(null);
+    const [isDraggingGallery, setIsDraggingGallery] = useState(false);
+    const galleryDragRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+    const handleGalleryDragStart = (e: React.MouseEvent) => {
+        const start = galleryPos ?? { x: window.innerWidth - 222, y: window.innerHeight - 16 - Math.round(window.innerHeight * 0.45) };
+        setIsDraggingGallery(true);
+        galleryDragRef.current = { x: e.clientX, y: e.clientY, posX: start.x, posY: start.y };
+        if (!galleryPos) setGalleryPos(start);
+    };
+    useEffect(() => {
+        if (!isDraggingGallery) return;
+        const onMove = (e: MouseEvent) => {
+            const dx = e.clientX - galleryDragRef.current.x;
+            const dy = e.clientY - galleryDragRef.current.y;
+            setGalleryPos({ x: galleryDragRef.current.posX + dx, y: galleryDragRef.current.posY + dy });
+        };
+        const onUp = () => setIsDraggingGallery(false);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    }, [isDraggingGallery]);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     // コピー/ペースト用クリップボード（オブジェクトの属性を保持したまま複製する）
@@ -1177,17 +1199,23 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                 </div>
 
                 {showImageGallery && createPortal(
-                    // 登録画像ギャラリー。アニメ(マップ)が最大限見えるよう小さく、ノートセル側(右下)に配置。
+                    // 登録画像ギャラリー。アニメ(マップ)が最大限見えるよう小さく、既定は右下。ヘッダーをドラッグで移動可。
                     <div style={{
-                        position: 'fixed', right: '12px', bottom: '16px',
+                        position: 'fixed',
+                        ...(galleryPos
+                            ? { left: galleryPos.x, top: galleryPos.y }
+                            : { right: '12px', bottom: '16px' }),
                         width: '210px', maxHeight: '45vh',
                         display: 'flex', flexDirection: 'column',
                         background: 'rgba(28,28,28,0.96)', border: '1px solid #555',
                         borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                         zIndex: 1000000, padding: '8px'
                     }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#ccc' }}>画像を選んで配置</span>
+                        <div
+                            onMouseDown={handleGalleryDragStart}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', cursor: isDraggingGallery ? 'grabbing' : 'grab' }}
+                        >
+                            <span style={{ fontSize: '0.75rem', color: '#ccc', userSelect: 'none' }}>⠿ 画像を選んで配置</span>
                             <button onClick={() => setShowImageGallery(false)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
                         </div>
                         <div style={{ overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
