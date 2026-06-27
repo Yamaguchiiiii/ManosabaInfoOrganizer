@@ -298,10 +298,13 @@ export interface CanvasWorkspaceProps {
     targetType: NoteTargetType;
     targetId: string;
     titleNode?: React.ReactNode;
-    compactMode?: boolean; 
+    // Toolsサイドバーの最上部に差し込むコントロール（プリセット選択/メモ操作/キャラアイコン等）。
+    // これによりCanvas上部のトップバーを廃止し、操作をTools上に集約する。#06/28-3:58-3,4,5
+    sidebarHeader?: React.ReactNode;
+    compactMode?: boolean;
 }
 
-export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, compactMode = false }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, compactMode = false }: CanvasWorkspaceProps) => {
     
     const [displayTargetId, setDisplayTargetId] = useState(targetId);
     const [canvasOpacity, setCanvasOpacity] = useState(1);
@@ -964,7 +967,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
         if (!first) return null;
         return selectedIds.every(id => currentCanvasObjects.find(o => o.id === id)?.groupId === first) ? first : null;
     })();
-    const showTopbar = targetType === 'character' && !compactMode;
+    // トップバーは廃止（操作はTools上の sidebarHeader に集約）。常に単一行レイアウト。#06/28-3:58-3,4,5
 
     const getNodeScreenPosition = (id: string): { x: number; y: number; width: number } | null => {
         for (const tr of trRefs.current) {
@@ -1247,7 +1250,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     return (
         <div 
             className={compactMode ? "" : "character-canvas-layout"} 
-            style={compactMode ? { position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' } : { width: '100%', height: '100%', gridTemplateRows: showTopbar ? '60px 1fr' : '1fr' }}
+            style={compactMode ? { position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' } : { width: '100%', height: '100%', gridTemplateRows: '1fr' }}
         >
             {/* compact のCanvas操作ツールバーは pane の左余白にドックする（下の pane 内で renderPortalUI を描画） */}
             {renderFloatingTextToolbar()}
@@ -1255,7 +1258,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
 
             {!compactMode && (
                 <div className="char-sidebar">
-                    <h3>Tools</h3>
+                    {sidebarHeader && (
+                        <div className="sidebar-header" style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {sidebarHeader}
+                        </div>
+                    )}
+                    <h3 style={{ marginTop: 0 }}>Tools</h3>
                     <div className="tool-buttons">
                         <button onClick={() => fileInputRef.current?.click()}>Image</button>
                         <input type="file" ref={fileInputRef} style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />
@@ -1369,7 +1377,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                     </div>
                     <h3>Images</h3>
                     <div className="char-thumbnails">
-                        {/* 事件ノートでは全キャラの立ち絵を常時パレット表示（クリックで配置） */}
+                        {/* 事件ノートでは全キャラの立ち絵をImagesに常時表示（クリックで配置） */}
                         {portraitPalette.map((src, idx) => (
                             <div
                                 key={`portrait-${idx}`}
@@ -1392,20 +1400,34 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                 <img src={asset} alt={`asset-${idx}`} />
                             </div>
                         ))}
+                        {/* ToolsのImageで追加した画像(assets)はここに入る。空なら明示する。#06/28-3:58-2 */}
+                        {portraitPalette.length === 0 && assets.length === 0 && (
+                            <div style={{ gridColumn: '1 / -1', color: '#666', fontSize: '0.8rem', textAlign: 'center', padding: '8px' }}>Empty</div>
+                        )}
                     </div>
+
+                    {/* preset以外(全体/キャラ/メモ)はデフォルトで全キャラの立ち絵をCharacter Imagesに表示。#06/28-3:58-2 */}
+                    {targetType !== 'preset' && (
+                        <>
+                            <h3>Character Images</h3>
+                            <div className="char-thumbnails">
+                                {CHARACTER_PORTRAITS.map((src, idx) => (
+                                    <div
+                                        key={`charimg-${idx}`}
+                                        className={`thumb ${placementMode?.data === src ? 'active' : ''}`}
+                                        onClick={() => startPlacement('image', src)}
+                                    >
+                                        <img src={src} alt={`charimg-${idx}`} />
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
-            {showTopbar && !compactMode && (
-                <div className="char-topbar">
-                    <div className="nav-controls">
-                        {titleNode}
-                    </div>
-                </div>
-            )}
-
-            <div 
-                className="char-canvas-wrapper" 
+            <div
+                className="char-canvas-wrapper"
                 ref={canvasContainerRef}
                 onDrop={handleDrop} 
                 onDragOver={(e) => e.preventDefault()}
@@ -1422,7 +1444,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                     flexDirection: 'column',
                     opacity: canvasOpacity,
                     transition: 'opacity 0.2s ease-in-out',
-                    gridRow: showTopbar ? 2 : '1 / -1' 
+                    gridRow: '1 / -1'
                 }}
             >
                 <div style={{
@@ -2144,57 +2166,72 @@ export const NoteView: React.FC = React.memo(() => {
                 )}
 
                 {displayTab === 'preset' && actualPresetId && (
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                        <div className="preset-header" style={{ padding: '10px 20px', background: '#1e1e1e', borderBottom: '1px solid #444', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                            <div style={{ color: 'white', fontWeight: 'bold' }}>事件ノート</div>
-                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px' }}>
+                    // トップバー廃止。プリセット選択だけを Tools 上 (sidebarHeader) に移動。#06/28-3:58-3
+                    <CanvasWorkspace
+                        targetType="preset"
+                        targetId={actualPresetId}
+                        sidebarHeader={
+                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', width: '100%' }}>
                                 {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
-                        </div>
-                        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <CanvasWorkspace targetType="preset" targetId={actualPresetId} />
-                        </div>
-                    </div>
+                        }
+                    />
                 )}
 
                 {displayTab === 'character' && (
+                    // トップバー廃止。キャラ選択アイコンを Tools 上 (sidebarHeader) に移動（AnimateのICONS風）。#06/28-3:58-5
                     <CanvasWorkspace
                         targetType="character"
                         targetId={selectedChar}
-                        titleNode={
+                        sidebarHeader={
                             <>
-                                <button onClick={() => setActualCharIndex(prev => (prev - 1 + ICON_FILES.length) % ICON_FILES.length)}>◀</button>
-                                <div className="char-icon-list">
+                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>キャラクター</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(36px, 1fr))', gap: '5px' }}>
                                     {ICON_FILES.map((icon, idx) => (
-                                        <div key={icon} className={`nav-icon ${actualCharIndex === idx ? 'active' : ''}`} onClick={() => setActualCharIndex(idx)}>
-                                            <img src={`./icon/${icon}`} alt="" />
+                                        <div
+                                            key={icon}
+                                            onClick={() => setActualCharIndex(idx)}
+                                            title={icon}
+                                            style={{
+                                                width: '100%', aspectRatio: '1', borderRadius: '50%', overflow: 'hidden',
+                                                cursor: 'pointer', boxSizing: 'border-box',
+                                                border: actualCharIndex === idx ? '2px solid #66b3ff' : '2px solid transparent',
+                                                opacity: actualCharIndex === idx ? 1 : 0.55,
+                                                boxShadow: actualCharIndex === idx ? '0 0 8px rgba(0,122,204,0.5)' : 'none',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            <img src={`./icon/${icon}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         </div>
                                     ))}
                                 </div>
-                                <button onClick={() => setActualCharIndex(prev => (prev + 1) % ICON_FILES.length)}>▶</button>
                             </>
                         }
                     />
                 )}
 
                 {displayTab === 'misc' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                        <div className="preset-header" style={{ padding: '10px 20px', background: '#1e1e1e', borderBottom: '1px solid #444', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                            <div style={{ color: 'white', fontWeight: 'bold' }}>Misc Notes</div>
-                            {notes.miscPages && notes.miscPages.length > 0 ? (
+                    // トップバー廃止。メモのプリセット選択/追加/改名/削除を Tools 上 (sidebarHeader) に移動。#06/28-3:58-4
+                    (actualMiscPageId && notes.miscPages?.some(p => p.id === actualMiscPageId)) ? (
+                        <CanvasWorkspace
+                            targetType="misc"
+                            targetId={actualMiscPageId}
+                            sidebarHeader={
                                 <>
-                                    <select 
-                                        value={actualMiscPageId || ''} 
-                                        onChange={e => setActualMiscPageId(e.target.value)} 
-                                        style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px' }}
-                                    >
-                                        {notes.miscPages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                                    </select>
-                                    <button 
-                                        onClick={() => addMiscPage("New Page")}
-                                        style={{ background: '#007acc', border: 'none', color: 'white', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                        title="Add New Note"
-                                    >+</button>
+                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                        <select
+                                            value={actualMiscPageId || ''}
+                                            onChange={e => setActualMiscPageId(e.target.value)}
+                                            style={{ flex: 1, minWidth: 0, background: '#333', color: 'white', border: '1px solid #555', padding: '6px 8px', borderRadius: '4px' }}
+                                        >
+                                            {notes.miscPages!.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                                        </select>
+                                        <button
+                                            onClick={() => addMiscPage("New Page")}
+                                            style={{ background: '#007acc', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+                                            title="メモを追加"
+                                        >+</button>
+                                    </div>
                                     {renamingPageId === actualMiscPageId ? (
                                         <input
                                             autoFocus
@@ -2209,51 +2246,44 @@ export const NoteView: React.FC = React.memo(() => {
                                                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                                                 if (e.key === 'Escape') setRenamingPageId(null);
                                             }}
-                                            style={{ background: '#333', color: 'white', border: '1px solid #007acc', padding: '4px 8px', borderRadius: '4px', minWidth: '120px' }}
+                                            style={{ background: '#333', color: 'white', border: '1px solid #007acc', padding: '5px 8px', borderRadius: '4px', width: '100%', boxSizing: 'border-box' }}
                                         />
                                     ) : (
-                                        <button
-                                            onClick={() => {
-                                                const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
-                                                if (page) {
-                                                    setRenamingPageId(page.id);
-                                                    setRenameInputValue(page.title);
-                                                }
-                                            }}
-                                            style={{ background: '#444', border: '1px solid #555', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
-                                            title="Rename Note"
-                                        >✏️</button>
+                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                            <button
+                                                onClick={() => {
+                                                    const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
+                                                    if (page) { setRenamingPageId(page.id); setRenameInputValue(page.title); }
+                                                }}
+                                                style={{ flex: 1, background: '#444', border: '1px solid #555', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                title="名前を変更"
+                                            >✏️ 改名</button>
+                                            <button
+                                                onClick={async () => {
+                                                    if (await showConfirm("このノートを削除しますか？")) {
+                                                        deleteMiscPage(actualMiscPageId as string);
+                                                        setActualMiscPageId(null);
+                                                    }
+                                                }}
+                                                style={{ flex: 1, background: '#ef4444', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                title="削除"
+                                            >🗑️ 削除</button>
+                                        </div>
                                     )}
-                                    <button 
-                                        onClick={async () => {
-                                            if (await showConfirm("このノートを削除しますか？")) {
-                                                deleteMiscPage(actualMiscPageId as string);
-                                                setActualMiscPageId(null);
-                                            }
-                                        }}
-                                        style={{ background: '#ef4444', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
-                                        title="Delete Note"
-                                    >🗑️</button>
                                 </>
-                            ) : (
-                                <button 
-                                    onClick={() => addMiscPage("New Page")}
-                                    style={{ background: '#007acc', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
-                                >
-                                    Create New Note
-                                </button>
-                            )}
+                            }
+                        />
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px' }}>
+                            <div style={{ color: '#666', fontSize: '1.2rem' }}>No misc notes available.</div>
+                            <button
+                                onClick={() => addMiscPage("New Page")}
+                                style={{ background: '#007acc', border: 'none', color: 'white', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+                            >
+                                Create New Note
+                            </button>
                         </div>
-                        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            {actualMiscPageId && notes.miscPages?.some(p => p.id === actualMiscPageId) ? (
-                                <CanvasWorkspace targetType="misc" targetId={actualMiscPageId} />
-                            ) : (
-                                <div style={{ color: '#666', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '1.2rem' }}>
-                                    No misc notes available.
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    )
                 )}
             </div>
         </div>
