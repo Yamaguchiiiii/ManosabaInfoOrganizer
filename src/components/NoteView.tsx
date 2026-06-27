@@ -390,6 +390,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const isDrawingRef = useRef(false);
     const drawingShapeInfoRef = useRef<any>(null);
     const drawingNodeRef = useRef<any>(null);
+    // 各ペインの Konva.Stage 参照。ブラウザズーム時に pixelRatio を再適用して画質劣化(#6)を防ぐ。
+    const stageRefs = useRef<(Konva.Stage | null)[]>([null, null, null, null]);
     const batchSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const saveHistoryOnceThenSkip = () => {
         if (!batchSaveRef.current) {
@@ -460,6 +462,38 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             document.head.appendChild(link);
         }
         document.fonts.ready.then(() => setIsFontLoaded(true));
+    }, []);
+
+    // #06/28-3:58-6: ブラウザのズームイン時、Konvaキャンバスのバックバッファ解像度(pixelRatio)は
+    // マウント時のdevicePixelRatioで固定されるため、ズームインで拡大表示されると画像がボケる
+    // （再読み込みで直る = その時点のdprで描き直されるから）。
+    // dpr変化を検知して各StageのLayer canvasにsetPixelRatioし直し、再描画する。
+    useEffect(() => {
+        const applyPixelRatio = () => {
+            const dpr = window.devicePixelRatio || 1;
+            stageRefs.current.forEach(stage => {
+                if (!stage) return;
+                let changed = false;
+                stage.getLayers().forEach(layer => {
+                    const canvas = layer.getCanvas();
+                    if (Math.abs(canvas.getPixelRatio() - dpr) > 0.01) {
+                        canvas.setPixelRatio(dpr);
+                        changed = true;
+                    }
+                });
+                if (changed) stage.batchDraw();
+            });
+        };
+        // resolution メディアクエリは現在のdprでのみマッチし、dpr変化時に一度だけ change を発火する。
+        let mq: MediaQueryList | null = null;
+        const onChange = () => { applyPixelRatio(); subscribe(); };
+        const subscribe = () => {
+            mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+            mq.addEventListener('change', onChange, { once: true });
+        };
+        subscribe();
+        applyPixelRatio();
+        return () => { mq?.removeEventListener('change', onChange); };
     }, []);
 
     // 選択中オブジェクトをクリップボードへコピー（サイズ・色などの属性を維持）
@@ -1572,6 +1606,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                 </div>
 
                                 <Stage
+                                    ref={(node) => { stageRefs.current[index] = node; }}
                                     width={stageRenderW} height={stageRenderH}
                                     listening={!isGridMode || isGridEditMode}
                                     onMouseDown={(e) => {
