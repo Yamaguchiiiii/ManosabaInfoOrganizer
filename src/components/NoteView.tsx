@@ -390,51 +390,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     const paneRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
     const editingTextBoundsRef = useRef<{ width: number } | null>(null);
 
-    const [padPos, setPadPos] = useState<{x: number, y: number} | null>(null);
-    const [isDraggingPad, setIsDraggingPad] = useState(false);
-    const padDragStartRef = useRef({ x: 0, y: 0, padX: 0, padY: 0 });
-
-    useEffect(() => {
-        if (compactMode && !padPos && canvasContainerRef.current) {
-            const rect = canvasContainerRef.current.getBoundingClientRect();
-            setPadPos({ x: rect.left + 10, y: rect.top + 10 });
-        }
-    }, [compactMode, padPos, canvasSize]);
-
-    const handlePadDragStart = (e: React.MouseEvent) => {
-        if (!padPos) return;
-        setIsDraggingPad(true);
-        padDragStartRef.current = {
-            x: e.clientX,
-            y: e.clientY,
-            padX: padPos.x,
-            padY: padPos.y
-        };
-    };
-
-    useEffect(() => {
-        const handleGlobalMouseMove = (e: MouseEvent) => {
-            if (!isDraggingPad || !padPos) return;
-            const dx = e.clientX - padDragStartRef.current.x;
-            const dy = e.clientY - padDragStartRef.current.y;
-            setPadPos({
-                x: padDragStartRef.current.padX + dx,
-                y: padDragStartRef.current.padY + dy
-            });
-        };
-        const handleGlobalMouseUp = () => {
-            setIsDraggingPad(false);
-        };
-        if (isDraggingPad) {
-            window.addEventListener('mousemove', handleGlobalMouseMove);
-            window.addEventListener('mouseup', handleGlobalMouseUp);
-        }
-        return () => {
-            window.removeEventListener('mousemove', handleGlobalMouseMove);
-            window.removeEventListener('mouseup', handleGlobalMouseUp);
-        };
-    }, [isDraggingPad, padPos]);
-
     const objects = targetData?.objects || [];
     const assets = targetData?.assets || [];
 
@@ -1062,47 +1017,23 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
     });
 
     const renderPortalUI = () => {
-        if (!compactMode || !padPos) return null;
+        if (!compactMode) return null;
 
-        const uiElements = (
+        return (
             <>
-                <div 
+                {/* Canvas操作ツールバー: フローティングをやめ、Animateセル上部にドック表示（Noteページ同様） */}
+                <div
                     style={{
-                        position: 'fixed',
-                        left: padPos.x,
-                        top: padPos.y,
-                        zIndex: 999999,
+                        flexShrink: 0,
                         display: 'flex',
-                        alignItems: 'stretch',
-                        backgroundColor: 'rgba(30, 30, 30, 0.95)', 
-                        border: '1px solid #555',
-                        borderRadius: '12px',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                        padding: '5px'
+                        flexDirection: 'column',
+                        gap: '4px',
+                        backgroundColor: '#1e1e1e',
+                        borderBottom: '1px solid #333',
+                        padding: '5px 8px'
                     }}
                 >
-                    <div 
-                        onMouseDown={handlePadDragStart}
-                        style={{
-                            width: '16px',
-                            cursor: 'grab',
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(2, 4px)',
-                            gridTemplateRows: 'repeat(3, 4px)',
-                            gap: '2px',
-                            alignContent: 'center',
-                            justifyContent: 'center',
-                            paddingRight: '6px',
-                            borderRight: '1px solid #555',
-                            marginRight: '6px'
-                        }}
-                    >
-                        {[...Array(6)].map((_, i) => (
-                            <div key={i} style={{ width: '4px', height: '4px', backgroundColor: '#888', borderRadius: '50%' }} />
-                        ))}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button title="Image (アップロード)" onClick={() => fileInputRef.current?.click()} style={toolBtnStyle(false)}>🖼️</button>
                         <button title="登録画像から配置" onClick={() => setShowImageGallery(v => !v)} style={toolBtnStyle(showImageGallery)}>🎴</button>
                         <button title="Text" onClick={() => startPlacement('text')} style={toolBtnStyle((placementMode?.type as string) === 'text')}>T</button>
@@ -1227,7 +1158,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                     )}
                 </div>
 
-                {showImageGallery && (
+                {showImageGallery && createPortal(
                     // 登録画像ギャラリー。アニメ(マップ)が最大限見えるよう小さく、ノートセル側(右下)に配置。
                     <div style={{
                         position: 'fixed', right: '12px', bottom: '16px',
@@ -1255,13 +1186,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, titleNode, co
                                 </div>
                             ))}
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
 
             </>
         );
-
-        return createPortal(uiElements, document.body);
     };
 
     return (
