@@ -48,6 +48,123 @@ const resolveWaypointPathIndices = (path: string[], wps: Waypoint[]): number[] =
     return indices;
 };
 
+const mapSrcFor = (floor: FloorId): string => {
+    switch (floor) {
+        case 'B1': return './maps/floor_b1.png';
+        case '1F': return './maps/floor_1.png';
+        case '2F': return './maps/floor_2.png';
+        default: return './maps/floor_1.png';
+    }
+};
+
+// 4ペインの1フロア分。自前の Stage / ズーム / コンテナ計測を持つ。
+// 編集対象フロアは props.floorId で明示し、ホバーで onHover(floorId) を通知する。
+interface FloorPaneProps {
+    floorId: FloorId;
+    label: string;
+    isActive: boolean;
+    onHover: (f: FloorId) => void;
+    nodes: MapNode[];
+    nodeMap: Record<string, MapNode>;
+    edges: ReturnType<typeof useAppStore.getState>['edges'];
+    isGraphEditMode: boolean;
+    mode: string;
+    displaySegments: string[][];
+    displayPath: string[];
+    connectingNodeId: string | null;
+    hoveredNodeId: string | null;
+    waypoints: Waypoint[];
+    dynamicEdgeRef: React.RefObject<Konva.Line | null>;
+    onStageClick: (e: Konva.KonvaEventObject<MouseEvent>, floor: FloorId) => void;
+    onStageMouseMove: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+    onNodeClick: (e: Konva.KonvaEventObject<MouseEvent>, nodeId: string, floor: FloorId) => void;
+    onNodeMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => void;
+    onNodeMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => void;
+    onNodeDragMove: (e: Konva.KonvaEventObject<DragEvent>, nodeId: string) => void;
+    onNodeDragEnd: (e: Konva.KonvaEventObject<DragEvent>, nodeId: string) => void;
+    onEdgeContextMenu: (e: Konva.KonvaEventObject<PointerEvent>, edgeId: string) => void;
+}
+
+const FloorPane: React.FC<FloorPaneProps> = ({
+    floorId, label, isActive, onHover,
+    nodes, nodeMap, edges, isGraphEditMode, mode,
+    displaySegments, displayPath, connectingNodeId, hoveredNodeId, waypoints, dynamicEdgeRef,
+    onStageClick, onStageMouseMove, onNodeClick, onNodeMouseEnter, onNodeMouseLeave,
+    onNodeDragMove, onNodeDragEnd, onEdgeContextMenu
+}) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [size, setSize] = useState({ width: 0, height: 0 });
+    const { stageSpec, handleWheel, handleDragEnd } = useStageZoom({ initialScale: 1.0, minScale: 0.1, maxScale: 5.0 });
+
+    useEffect(() => {
+        const update = () => {
+            if (!containerRef.current) return;
+            const w = containerRef.current.offsetWidth;
+            const h = containerRef.current.offsetHeight;
+            setSize(prev => (prev.width === w && prev.height === h) ? prev : { width: w, height: h });
+        };
+        update();
+        const obs = new ResizeObserver(update);
+        if (containerRef.current) obs.observe(containerRef.current);
+        return () => obs.disconnect();
+    }, []);
+
+    const showDynamic = isGraphEditMode && !!connectingNodeId && nodeMap[connectingNodeId]?.floor === floorId;
+
+    return (
+        <div
+            ref={containerRef}
+            onMouseEnter={() => onHover(floorId)}
+            style={{
+                position: 'relative', width: '100%', height: '100%', overflow: 'hidden',
+                background: '#222', boxSizing: 'border-box',
+                border: isActive ? '2px solid #007acc' : '2px solid #333'
+            }}
+        >
+            <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '3px 8px', borderRadius: 4, fontSize: 12, pointerEvents: 'none' }}>
+                {label}
+            </div>
+            {size.width > 0 && size.height > 0 && (
+                <Stage
+                    width={size.width} height={size.height} draggable={!isGraphEditMode}
+                    scaleX={stageSpec.scale} scaleY={stageSpec.scale} x={stageSpec.x} y={stageSpec.y}
+                    onWheel={handleWheel} onDragEnd={handleDragEnd}
+                    onClick={(e) => onStageClick(e, floorId)}
+                    onMouseMove={onStageMouseMove}
+                    onContextMenu={(e) => e.evt.preventDefault()}
+                    style={{ cursor: isGraphEditMode ? 'crosshair' : 'default' }}
+                >
+                    <Layer>
+                        <MapImage src={mapSrcFor(floorId)} />
+                        <MapObjectLayer
+                            nodes={nodes}
+                            nodeMap={nodeMap}
+                            edges={edges} activeFloor={floorId}
+                            isGraphEditMode={isGraphEditMode} mode={mode}
+                            pathSegments={isGraphEditMode ? [] : displaySegments}
+                            highlightedPath={isGraphEditMode ? [] : displayPath}
+                            connectingNodeId={connectingNodeId} hoveredNodeId={hoveredNodeId}
+                            waypoints={waypoints} handleEdgeContextMenu={onEdgeContextMenu}
+                            onNodeClick={(e, nodeId) => onNodeClick(e, nodeId, floorId)}
+                            onNodeMouseEnter={onNodeMouseEnter}
+                            onNodeMouseLeave={onNodeMouseLeave}
+                            onNodeDragMove={onNodeDragMove}
+                            onNodeDragEnd={onNodeDragEnd}
+                        />
+                        {showDynamic && nodeMap[connectingNodeId!] && (
+                            <Line
+                                ref={dynamicEdgeRef}
+                                points={[nodeMap[connectingNodeId!].x, nodeMap[connectingNodeId!].y, nodeMap[connectingNodeId!].x, nodeMap[connectingNodeId!].y]}
+                                stroke="#007acc" strokeWidth={3} dash={[5, 5]} listening={false}
+                            />
+                        )}
+                    </Layer>
+                </Stage>
+            )}
+        </div>
+    );
+};
+
 interface CreateViewProps {
     onFloorChange: (floor: FloorId) => void;
     selectedIcons: string[];
@@ -59,7 +176,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
     onFloorChange, selectedIcons, onIconSelect, onClearSelection 
 }) => {
   const { 
-    activeFloor, mode, isGraphEditMode, nodes, edges, 
+    activeFloor, setActiveFloor, mode, isGraphEditMode, nodes, edges,
     addNode, updateNode, removeNode, addEdge, removeEdge,
     undo, saveHistory, setSidebarWidth,
     saveCharacterAnimation, saveBatchCharacterAnimations, deleteCharacterAnimation,
@@ -72,11 +189,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<MapNode | null>(null);
   
-  const stageRef = useRef<Konva.Stage>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // 4ペイン化: 各ペイン(FloorPane)が自前のStage/ズーム/計測を持つため、ここでの単一Stage用の
+  // stageRef/containerRef/size は不要になった。連結中の動的エッジ線の ref のみ共有する。
   const dynamicEdgeRef = useRef<Konva.Line>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  
+
   const [isCharModalOpen, setIsCharModalOpen] = useState(false);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -237,47 +353,16 @@ export const CreateView: React.FC<CreateViewProps> = ({
   }, [displayPath, syncTarget, nodes, waypoints, isEditing]);
 
   useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setSize({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
-      }
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const { stageSpec, handleWheel, handleDragEnd } = useStageZoom({ initialScale: 1.0, minScale: 0.1, maxScale: 5.0 });
-
-  const getMapSrc = () => {
-    switch(activeFloor) {
-      case 'B1': return './maps/floor_b1.png';
-      case '1F': return './maps/floor_1.png';
-      case '2F': return './maps/floor_2.png';
-      default: return './maps/floor_1.png';
-    }
-  };
-
-  useEffect(() => { 
-      const handleKeyDown = (e: KeyboardEvent) => { 
-          if ((e.ctrlKey || e.metaKey) && e.key === 'z' && isGraphEditMode) { e.preventDefault(); undo(); } 
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'z' && isGraphEditMode) { e.preventDefault(); undo(); }
           if (e.key === 'Escape' && isGraphEditMode && connectingNodeId) {
               setConnectingNodeId(null);
           }
-      }; 
-      window.addEventListener('keydown', handleKeyDown); 
-      return () => window.removeEventListener('keydown', handleKeyDown); 
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, isGraphEditMode, connectingNodeId]);
 
-  useEffect(() => { 
-      const stage = stageRef.current; 
-      if (stage) {
-          const container = stage.container();
-          container.style.cursor = isGraphEditMode ? 'crosshair' : 'default'; 
-      }
-  }, [nodes.length, isGraphEditMode]);
-  
   useEffect(() => { setSidebarWidth(210); }, [setSidebarWidth]);
 
   const handleEdgeContextMenu = useCallback(async (e: Konva.KonvaEventObject<PointerEvent>, edgeId: string) => {
@@ -593,7 +678,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const handleCharSelect = (icon: string) => { onIconSelect(icon, false); handleModalClose(); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime); setConnectingNodeId(null); };
   const handleMultiSelect = (icons: string[]) => { handleModalClose(); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime); setConnectingNodeId(null); };
 
-  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, floorOverride?: FloorId) => {
+    // 4ペインでは編集対象フロアをペイン(floorOverride)で明示。未指定時は activeFloor。
+    const floor = floorOverride ?? activeFloor;
     // 死亡設定モード(どくろ)中にマップがクリックされたら自動解除する
     if (isSkullMode) setSkullMode(false);
     if (e.evt.button === 2) {
@@ -622,7 +709,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
     setConnectingNodeId(null);
     const stage = e.target.getStage();
     const pointer = stage?.getRelativePointerPosition();
-    if (pointer) addNode({ id: generateId(), x: pointer.x, y: pointer.y, floor: activeFloor, type: 'pass' });
+    if (pointer) addNode({ id: generateId(), x: pointer.x, y: pointer.y, floor, type: 'pass' });
   }, [isGraphEditMode, suggestionTargetIndex, activeFloor, addNode, selectedIcons.length, onClearSelection, connectingNodeId, isSkullMode, setSkullMode]);
 
   const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -638,7 +725,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
       }
   }, [isGraphEditMode, connectingNodeId, nodeMap]);
 
-  const handleNodeClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => {
+  const handleNodeClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, nodeId: string, floorOverride?: FloorId) => {
+      const floor = floorOverride ?? activeFloor;
       // 死亡設定モード(どくろ)中にマップ上のノードがクリックされたら自動解除する
       if (isSkullMode) setSkullMode(false);
       if (e.evt.button === 2) {
@@ -664,7 +752,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
               if (node?.type === 'stair' && node.connectedFloor) { onFloorChange(node.connectedFloor); return; }
               setConnectingNodeId(nodeId);
           } else {
-              if (connectingNodeId !== nodeId) addEdge({ id: generateId(), nodeA: connectingNodeId, nodeB: nodeId, floor: activeFloor });
+              if (connectingNodeId !== nodeId) addEdge({ id: generateId(), nodeA: connectingNodeId, nodeB: nodeId, floor });
               setConnectingNodeId(null);
           }
           return;
@@ -763,49 +851,40 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', overflow: 'hidden', backgroundColor: '#111' }}>
-      <div ref={containerRef} style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
-        {size.width > 0 && size.height > 0 && (
-            <Stage ref={stageRef} width={size.width} height={size.height} draggable={!isGraphEditMode}
-                scaleX={stageSpec.scale} scaleY={stageSpec.scale} x={stageSpec.x} y={stageSpec.y}
-                onWheel={handleWheel} onDragEnd={handleDragEnd} 
-                onClick={handleStageClick} 
-                onMouseMove={handleStageMouseMove}
-                onContextMenu={(e) => e.evt.preventDefault()} style={{ cursor: isGraphEditMode ? 'crosshair' : 'default' }}>
-                <Layer>
-                    <MapImage src={getMapSrc()} />
-                    <MapObjectLayer 
-                        nodes={nodes} 
-                        nodeMap={nodeMap}
-                        edges={edges} activeFloor={activeFloor}
-                        isGraphEditMode={isGraphEditMode} mode={mode}
-                        pathSegments={isGraphEditMode ? [] : displaySegments} 
-                        highlightedPath={isGraphEditMode ? [] : displayPath}
-                        connectingNodeId={connectingNodeId} hoveredNodeId={hoveredNodeId}
-                        waypoints={waypoints} handleEdgeContextMenu={handleEdgeContextMenu}
-                        onNodeClick={handleNodeClick}
-                        onNodeMouseEnter={handleNodeMouseEnter}
-                        onNodeMouseLeave={handleNodeMouseLeave}
-                        onNodeDragMove={handleNodeDragMove}
-                        onNodeDragEnd={handleNodeDragEnd}
-                    />
-                    {isGraphEditMode && connectingNodeId && nodeMap[connectingNodeId] && (
-                        <Line
-                            ref={dynamicEdgeRef}
-                            points={[
-                                nodeMap[connectingNodeId].x, 
-                                nodeMap[connectingNodeId].y, 
-                                nodeMap[connectingNodeId].x, 
-                                nodeMap[connectingNodeId].y
-                            ]}
-                            stroke="#007acc"
-                            strokeWidth={3}
-                            dash={[5, 5]}
-                            listening={false}
-                        />
-                    )}
-                </Layer>
-            </Stage>
-        )}
+      <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
+        {/* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
+            ホバーされたペインのフロアを編集対象(activeFloor)とする。右下はハウス広告枠。#06/28-3:58-7 */}
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 4, padding: 4, boxSizing: 'border-box' }}>
+            {(['2F', '1F', 'B1'] as FloorId[]).map((fl, i) => (
+                <FloorPane
+                    key={fl}
+                    floorId={fl}
+                    label={`Map ${i + 1} (${fl})`}
+                    isActive={activeFloor === fl}
+                    onHover={setActiveFloor}
+                    nodes={nodes} nodeMap={nodeMap} edges={edges}
+                    isGraphEditMode={isGraphEditMode} mode={mode}
+                    displaySegments={displaySegments} displayPath={displayPath}
+                    connectingNodeId={connectingNodeId} hoveredNodeId={hoveredNodeId}
+                    waypoints={waypoints} dynamicEdgeRef={dynamicEdgeRef}
+                    onStageClick={handleStageClick}
+                    onStageMouseMove={handleStageMouseMove}
+                    onNodeClick={handleNodeClick}
+                    onNodeMouseEnter={handleNodeMouseEnter}
+                    onNodeMouseLeave={handleNodeMouseLeave}
+                    onNodeDragMove={handleNodeDragMove}
+                    onNodeDragEnd={handleNodeDragEnd}
+                    onEdgeContextMenu={handleEdgeContextMenu}
+                />
+            ))}
+            {/* 右下: ハウス広告枠（画像＋外部リンク）。広告ネットワークはWeb版のみ別途差し込む想定。 */}
+            <div style={{ position: 'relative', border: '2px solid #333', borderRadius: 4, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                <div style={{ color: '#555', fontSize: 13, textAlign: 'center', lineHeight: 1.6, userSelect: 'none' }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.7 }}>AD</div>
+                    広告スペース
+                </div>
+            </div>
+        </div>
 
         <WaypointPanel
             isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
