@@ -10,6 +10,7 @@ import '../styles/AnimateView.scss';
 import { useAppStore, usePlaybackStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
 import { MIN_SIDEBAR_WIDTH } from '../hooks/useSidebarResizer';
 import { useAnimationPositions, AnimFloorId } from '../hooks/useAnimationPositions';
+import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
 
 const ICON_SIZE = 80;
 const HALF_SIZE = ICON_SIZE / 2;
@@ -53,6 +54,10 @@ export const AnimateView = () => {
 
   const charNodeRefs = useRef<Map<string, Konva.Group>>(new Map());
   const currentVisualPositions = useRef<Record<string, { x: number, y: number, floor: string }>>({});
+
+  // #06/28-3:58-8: ウィンドウサイズに応じて 2x2 / 縦1x4 / 横4x1 をマップ最大化で切替
+  const gridRef = useRef<HTMLDivElement>(null);
+  const gridStyle = useResponsiveQuadGrid(gridRef);
 
   // 再生操作盤をフローティングウィンドウ化する。デフォルト位置は Map3 B1(左下ペイン)の左下隅。
   const mapCellRef = useRef<HTMLDivElement>(null);     // Map3 B1 セル
@@ -137,7 +142,7 @@ export const AnimateView = () => {
   };
 
   return (
-    <div className="animate-view-container">
+    <div className="animate-view-container" ref={gridRef} style={gridStyle}>
       <div className="grid-cell">
         <div className="cell-label">Map 1 (2F)</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>

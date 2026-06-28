@@ -11,6 +11,7 @@ import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeArrivalOc
 import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
 import { useWaypointPath } from '../hooks/useWaypointPath';
+import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
 import { MergeModal, MergeCandidate } from './modals/MergeModal';
 import { setNavigationGuard } from '../services/navigationGuard';
 
@@ -196,6 +197,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
   // 4ペイン化: 各ペイン(FloorPane)が自前のStage/ズーム/計測を持つため、ここでの単一Stage用の
   // stageRef/containerRef/size は不要になった。連結中の動的エッジ線の ref のみ共有する。
   const dynamicEdgeRef = useRef<Konva.Line>(null);
+
+  // #06/28-3:58-8: ウィンドウサイズに応じて 2x2 / 縦1x4 / 横4x1 をマップ最大化で切替
+  const gridRef = useRef<HTMLDivElement>(null);
+  const gridStyle = useResponsiveQuadGrid(gridRef);
 
   const [isCharModalOpen, setIsCharModalOpen] = useState(false);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -856,7 +861,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
         {/* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
             ホバーされたペインのフロアを編集対象(activeFloor)とする。右下はハウス広告枠。#06/28-3:58-7 */}
-        <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 4, padding: 4, boxSizing: 'border-box' }}>
+        <div ref={gridRef} style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
             {(['2F', '1F', 'B1'] as FloorId[]).map((fl, i) => (
                 <FloorPane
                     key={fl}
