@@ -112,6 +112,8 @@ export interface AppState {
 
     isGraphEditMode: boolean; setGraphEditMode:(isEdit: boolean) => void;
     isSkullMode: boolean; setSkullMode: (v: boolean) => void;
+    // チュートリアル: 初回スポットライトツアーを見たか（persist）
+    tutorialSeen: boolean; setTutorialSeen: (v: boolean) => void;
     nodes: MapNode[]; edges: MapEdge[]; history: HistoryState[];
     undo: () => void; saveHistory: () => void;
     addNode: (node: MapNode) => void; updateNode: (id: string, pos: { x:number, y:number }, data?: Partial<MapNode>) => void;
@@ -359,6 +361,7 @@ export const useAppStore = create<AppState>()(
 
         isGraphEditMode: false, setGraphEditMode: (isEdit) => set({ isGraphEditMode: isEdit }),
         isSkullMode: false, setSkullMode: (v) => set({ isSkullMode: v }),
+        tutorialSeen: false, setTutorialSeen: (v) => set({ tutorialSeen: v }),
         nodes: INITIAL_NODES, edges: INITIAL_EDGES, history: [],
         sidebarWidth: 200, setSidebarWidth: (width) => set({ sidebarWidth: width }),
 

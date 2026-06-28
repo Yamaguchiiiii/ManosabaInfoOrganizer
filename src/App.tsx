@@ -6,6 +6,7 @@ import { CreateView } from './components/CreateView';
 import { AnimateView } from './components/AnimateView';
 import { NoteView } from './components/NoteView';
 import { DialogHost } from './components/common/DialogHost';
+import { TutorialRoot } from './components/tutorial/TutorialRoot';
 import { runNavigationGuard } from './services/navigationGuard';
 import './styles/App.scss';
 import './styles/Modal.scss';
@@ -137,6 +138,7 @@ function App() {
             </div>
 
             <DialogHost />
+            <TutorialRoot />
         </div>
     );
 }

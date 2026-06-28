@@ -896,7 +896,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
         {/* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
             ホバーされたペインのフロアを編集対象(activeFloor)とする。右下はハウス広告枠。#06/28-3:58-7 */}
-        <div ref={gridRef} style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
+        <div ref={gridRef} data-tour="create-maps" style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
             {(['2F', '1F', 'B1'] as FloorId[]).map((fl, i) => (
                 <FloorPane
                     key={fl}

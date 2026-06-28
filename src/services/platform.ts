@@ -11,3 +11,11 @@ export const isTauri = (): boolean => {
 
 /** ブラウザ(Web)上で動作しているか。 */
 export const isWeb = (): boolean => !isTauri();
+
+/** macOS 上か（ショートカット表記を ⌘ に切り替えるため）。 */
+export const isMac = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+    const platform = nav.userAgentData?.platform || nav.platform || nav.userAgent || '';
+    return /mac|iphone|ipad|ipod/i.test(platform);
+};

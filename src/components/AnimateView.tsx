@@ -183,6 +183,7 @@ export const AnimateView = () => {
       {timelinePos && createPortal(
         <div
           ref={toolbarRef}
+          data-tour="animate-playback"
           style={{
             position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
             width: '480px', maxWidth: '92vw',

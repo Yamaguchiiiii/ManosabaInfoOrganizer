@@ -53,10 +53,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             サイト名(仮)
         </div>
 
+        <div data-tour="sidebar-pages">
         <div className="section-title" style={{ marginTop: 0 }}>PAGE</div>
-        
-        <div 
-            className={`menu-item ${mode === 'create' ? 'active' : ''}`} 
+
+        <div
+            className={`menu-item ${mode === 'create' ? 'active' : ''}`}
             onClick={() => onModeChange('create')}
         >
             Create
@@ -78,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             </div>
 
             {mode === 'note' && (
-                <div className="sub-menu-container">
+                <div className="sub-menu-container" data-tour="note-tabs">
                     <div 
                         className={`sub-menu-item ${activeNoteTab === 'overview' ? 'active' : ''}`} 
                         onClick={(e) => { e.stopPropagation(); setActiveNoteTab('overview'); }}
@@ -105,6 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     </div>
                 </div>
             )}
+        </div>
         </div>
 
         {/* #06/28-6:04-6: 4ペイン表示で全フロアが同時に見えるため FLOOR セクションは廃止 */}
@@ -134,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     )}
                 </div>
 
-                <div className="icon-grid">
+                <div className="icon-grid" data-tour="sidebar-icons">
                 {ICON_FILES.map((fileName, index) => {
                     const isSelected = selectedIcons.includes(fileName);
                     const isDead = deadIcons.includes(fileName);
