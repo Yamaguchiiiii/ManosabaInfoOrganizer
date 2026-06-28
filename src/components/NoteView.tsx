@@ -825,18 +825,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         }
 
         if (e.target === e.target.getStage()) {
-            // shift+空白クリックは複数選択を維持する（跨ぎ選択中に誤って消さない）。#06/28-14:47-2
-            if (!e.evt.shiftKey) {
-                setSelectedIds([]);
-                setEditingTextId(null);
-                const layer = e.target.getStage()?.getLayers()[0];
-                const lp = layer?.getRelativePointerPosition();
-                if (lp) {
-                    setSelectionRect({ startX: lp.x, startY: lp.y, w: 0, h: 0, visible: true, canvasIndex: index });
-                }
-            }
+            setSelectedIds([]);
+            setEditingTextId(null);
             setShapeContextMenu(null);
             setAssetContextMenu(null);
+
+            const layer = e.target.getStage()?.getLayers()[0];
+            const lp = layer?.getRelativePointerPosition();
+            if (lp) {
+                setSelectionRect({ startX: lp.x, startY: lp.y, w: 0, h: 0, visible: true, canvasIndex: index });
+            }
         } else {
             setShapeContextMenu(null);
             setAssetContextMenu(null);
@@ -1631,11 +1629,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     onMouseDown={(e) => {
                                         if (isGridMode && !isGridEditMode && !isCurrent) return;
 
-                                        // #06/28-14:47-2: shift+クリックの跨ぎ複数選択を壊さないため、
-                                        // shift 時は current ペインの切替＆選択クリアを行わない。
-                                        // （この mousedown は onSelect より先に発火し、選択を消していた）
-                                        const shift = !!e.evt?.shiftKey;
-                                        if (isGridMode && isGridEditMode && !isCurrent && !shift) {
+                                        if (isGridMode && isGridEditMode && !isCurrent) {
                                             setCurrentCanvasIndex(index);
                                             setSelectedIds([]);
                                         }
@@ -1691,18 +1685,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 // ドラッグ確定はグループ/単体ともに統一ハンドラへ（#4 ペイン跨ぎ移動対応）
                                                 onDragEnd: (e: any) => handleObjectDragEnd(e, obj, index, scale),
                                                 onSelect: (e: any) => {
-                                                    const shift = !!e.evt?.shiftKey;
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
 
-                                                    // #06/28-14:10-2: 4ペイン編集中、shift+クリックは別ペインのオブジェクトでも
-                                                    // ペイン跨ぎで複数選択する。currentペインは移さない（移すと選択維持が崩れるため）。
-                                                    if (isGridMode && isGridEditMode && !isCurrent && !shift) {
+                                                    if (isGridMode && isGridEditMode && !isCurrent) {
                                                         setCurrentCanvasIndex(index);
                                                     }
 
                                                     if (placementMode) return;
-                                                    if (shift) {
-                                                        e.evt?.stopPropagation?.();
+                                                    if (e.evt?.shiftKey) {
                                                         setSelectedIds(prev => prev.includes(obj.id) ? prev.filter(id => id !== obj.id) : [...prev, obj.id]);
                                                     } else if (obj.groupId) {
                                                         setSelectedIds(currentCanvasObjects.filter(o => o.groupId === obj.groupId).map(o => o.id));
@@ -1803,9 +1793,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             )
                                         )}
 
-                                        {/* #06/28-14:47-2: 4ペイン編集中は全ペインに Transformer を出し、
-                                            ペインを跨いだ複数選択を各ペインで可視化する（current ペインだけだと見えなかった）。 */}
-                                        {(isCurrent || (isGridMode && isGridEditMode)) && (() => {
+                                        {isCurrent && (() => {
                                             const isOnlyText = selectedIds.length === 1 && selectedObject?.type === 'text';
                                             return (
                                                 <Transformer
