@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { useAppStore, usePlaybackStore, ICON_FILES, MapNode, CharacterTimelineData } from '../store';
-import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity } from '../utils/animationUtils';
+import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity, resolveStartTimes } from '../utils/animationUtils';
 
 export const FLOOR_IDS = ['1F', '2F', 'B1'] as const;
 export type AnimFloorId = typeof FLOOR_IDS[number];
@@ -64,16 +64,21 @@ export const useAnimationPositions = (
         const nodesMap = nodesMapRef.current;
         const data = activePreset.data as Record<string, unknown>;
 
+        // 開始条件(startRef)を持つキャラの開始時刻を動的に解決（循環は0にフォールバック）。
+        const allNodes = Object.values(nodesMap);
+        const resolvedStarts = resolveStartTimes(data, allNodes);
+
         // 全キャラの startTime 最小値を求め、先頭の「誰も動かない待機時間」を除去する。
-        // 全員を同じ offset でシフトするため、Sync による相対的な時間差は保たれる。
+        // 全員を同じ offset でシフトするため、Sync/開始条件 による相対的な時間差は保たれる。
         const charDataList: { icon: string; charData: CharacterTimelineData }[] = [];
         let minStart = Infinity;
         ICON_FILES.forEach(icon => {
-            const charData = toCharacterTimelineData(data[icon]);
-            if (!charData) return;
+            const base = toCharacterTimelineData(data[icon]);
+            if (!base) return;
+            const startTime = resolvedStarts[icon] ?? base.startTime ?? 0;
+            const charData: CharacterTimelineData = { ...base, startTime };
             charDataList.push({ icon, charData });
-            const st = charData.startTime ?? 0;
-            if (st < minStart) minStart = st;
+            if (startTime < minStart) minStart = startTime;
         });
         const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
 

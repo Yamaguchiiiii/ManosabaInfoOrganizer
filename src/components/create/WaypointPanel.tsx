@@ -1,8 +1,13 @@
 import React from 'react';
-import { Waypoint, SyncConstraint } from '../../store';
+import { Waypoint, SyncConstraint, StartRef } from '../../store';
 import { SEGMENT_COLORS } from '../../utils/mapDrawUtils';
 
 export type { SyncConstraint };
+
+const selStyle: React.CSSProperties = {
+    background: '#333', color: 'white', border: '1px solid #555',
+    borderRadius: '4px', padding: '3px 6px', fontSize: '0.8rem', maxWidth: '120px',
+};
 
 interface WaypointPanelProps {
     isGraphEditMode: boolean;
@@ -10,8 +15,13 @@ interface WaypointPanelProps {
     highlightedPath: string[];
     savedPathData: string[] | null;
     isEditing: boolean;
-    startTime: number;
-    setStartTime: (time: number) => void;
+    // 開始条件（数値delayの代替）
+    startRef: StartRef | null;
+    setStartRef: (r: StartRef | null) => void;
+    showBeforeStart: boolean;
+    setShowBeforeStart: (v: boolean) => void;
+    startRefCharOptions: { id: string; name: string }[];
+    startRefNodeOptions: { nodeId: string; occurrence: number; label: string }[];
     waypoints: Waypoint[];
     handleWaypointChange: (index: number, field: keyof Waypoint, value: string | number) => void;
     setSuggestionTargetIndex: (index: number) => void;
@@ -27,7 +37,9 @@ interface WaypointPanelProps {
 
 export const WaypointPanel: React.FC<WaypointPanelProps> = ({
     isGraphEditMode, selectedIcons, highlightedPath, savedPathData, isEditing,
-    startTime, setStartTime, waypoints, handleWaypointChange, setSuggestionTargetIndex,
+    startRef, setStartRef, showBeforeStart, setShowBeforeStart,
+    startRefCharOptions, startRefNodeOptions,
+    waypoints, handleWaypointChange, setSuggestionTargetIndex,
     handleSyncTime, handleRemoveWaypoint, handleAddWaypoint,
     handleSavePath, handleEditPath, handleDeletePath,
     syncConstraints, onRemoveSyncConstraint
@@ -50,15 +62,56 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
 
             {(!savedPathData || isEditing) && (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '300px', overflowY: 'auto' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid #444' }}>
-                            <span style={{ fontSize: '0.8rem', color: '#ccc', width: '60px' }}>Delay:</span>
-                            <input 
-                            type="number" min="0" value={startTime}
-                            onChange={(e) => setStartTime(parseFloat(e.target.value) || 0)}
-                            onFocus={(e) => e.target.select()}
-                            style={{ flex: 1, background: '#222', border: '1px solid #444', color: 'white', padding: '4px', borderRadius: '4px', textAlign: 'right' }}
-                            />
-                            <span style={{ fontSize: '0.7rem', color: '#888' }}>frames</span>
+                    {/* 開始条件（数値delayの代替）: 「基準キャラが地点に到達後 +N」 */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid #444' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>開始条件</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                            <select
+                                value={startRef?.charId ?? ''}
+                                onChange={(e) => {
+                                    const cid = e.target.value;
+                                    if (!cid) { setStartRef(null); return; }
+                                    // 既存 nodeId が無効なら未選択にして、ユーザーに地点を選ばせる
+                                    setStartRef({ charId: cid, nodeId: '', occurrence: 0, extraDelay: startRef?.extraDelay ?? 0 });
+                                }}
+                                style={selStyle}
+                            >
+                                <option value="">即時（待たない）</option>
+                                {startRefCharOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            {startRef && (
+                                <>
+                                    <span style={{ fontSize: '0.75rem', color: '#ccc' }}>が</span>
+                                    <select
+                                        value={startRef.nodeId ? `${startRef.nodeId}#${startRef.occurrence}` : ''}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (!v) { setStartRef({ ...startRef, nodeId: '', occurrence: 0 }); return; }
+                                            const [nodeId, occStr] = v.split('#');
+                                            setStartRef({ ...startRef, nodeId, occurrence: parseInt(occStr, 10) || 0 });
+                                        }}
+                                        style={selStyle}
+                                    >
+                                        <option value="">地点を選択…</option>
+                                        {startRefNodeOptions.map(o => (
+                                            <option key={`${o.nodeId}#${o.occurrence}`} value={`${o.nodeId}#${o.occurrence}`}>{o.label}</option>
+                                        ))}
+                                    </select>
+                                    <span style={{ fontSize: '0.75rem', color: '#ccc' }}>に到達後</span>
+                                    <input
+                                        type="number" min="0" value={startRef.extraDelay}
+                                        onChange={(e) => setStartRef({ ...startRef, extraDelay: parseFloat(e.target.value) || 0 })}
+                                        onFocus={(e) => e.target.select()}
+                                        style={{ width: '52px', background: '#222', border: '1px solid #444', color: 'white', padding: '4px', borderRadius: '4px', textAlign: 'right' }}
+                                    />
+                                    <span style={{ fontSize: '0.7rem', color: '#888' }}>fr</span>
+                                </>
+                            )}
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#ccc', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={showBeforeStart} onChange={(e) => setShowBeforeStart(e.target.checked)} />
+                            待機中も開始地点にアイコンを表示する
+                        </label>
                     </div>
 
                     {waypoints.map((wp, index) => {

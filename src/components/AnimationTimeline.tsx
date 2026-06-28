@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect } from 'react';
 import { useAppStore, usePlaybackStore } from '../store';
+import { resolveStartTimes } from '../utils/animationUtils';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
@@ -19,6 +20,7 @@ export const AnimationTimeline: React.FC = () => {
     const presets = useAppStore(state => state.presets);
     const activePresetId = useAppStore(state => state.activePresetId);
     const setActivePresetId = useAppStore(state => state.setActivePresetId);
+    const nodes = useAppStore(state => state.nodes);
 
     const activePreset = presets.find(p => p.id === activePresetId);
 
@@ -35,21 +37,24 @@ export const AnimationTimeline: React.FC = () => {
     const maxDuration = useMemo(() => {
         if (!activePreset || !activePreset.data) return 300;
 
-        const vals = Object.values(activePreset.data) as any[];
+        const entries = Object.entries(activePreset.data) as [string, any][];
+        // 開始条件(startRef)も含めて開始時刻を解決し、Animate と同じ時間軸にする。
+        const resolvedStarts = resolveStartTimes(activePreset.data, nodes);
+        const startOf = (id: string, val: any) => resolvedStarts[id] ?? ((val && val.startTime) || 0);
 
         // useAnimationPositions と同じく startTime 最小値を offset として除去し、
         // タイムラインの長さを正規化後のアニメーションと一致させる
         let minStart = Infinity;
-        vals.forEach((val) => {
-            const start = (val && val.startTime) || 0;
+        entries.forEach(([id, val]) => {
+            const start = startOf(id, val);
             if (start < minStart) minStart = start;
         });
         const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
 
         let max = 0;
-        vals.forEach((val) => {
-            const start = ((val && val.startTime) || 0) - offset;
-            const dur = val.duration !== undefined ? val.duration : (Array.isArray(val) ? val.length * 30 : 0);
+        entries.forEach(([id, val]) => {
+            const start = startOf(id, val) - offset;
+            const dur = val && val.duration !== undefined ? val.duration : (Array.isArray(val) ? val.length * 30 : 0);
             const end = start + dur;
             if (end > max) {
                 max = end;
@@ -57,7 +62,7 @@ export const AnimationTimeline: React.FC = () => {
         });
 
         return Math.max(max + 60, 300);
-    }, [activePreset]);
+    }, [activePreset, nodes]);
 
     const formatTime = (frames: number) => {
         const seconds = Math.floor(frames / 30);

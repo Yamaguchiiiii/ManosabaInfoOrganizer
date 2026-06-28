@@ -212,7 +212,9 @@ export const calculateRawPositionCached = (
 
     if (currentTime < startTime) {
         const startNode = pathNodes[0];
-        return { x: startNode.x, y: startNode.y, floor: startNode.floor, visible: true, vx: 0, vy: 0, isFinished: false };
+        // 待機中の表示は showBeforeStart で制御（既定 true）。false なら開始まで非表示。
+        const visible = charData.showBeforeStart !== false;
+        return { x: startNode.x, y: startNode.y, floor: startNode.floor, visible, vx: 0, vy: 0, isFinished: false };
     }
 
     if (pathNodes.length === 1) {
@@ -262,15 +264,15 @@ export const calculateRawPosition = (
     const pathNodes = path.map(id => getNode(id, allNodes)).filter((n): n is MapNode => !!n);
     if (pathNodes.length === 0) return null;
 
-    // 開始前: 始点で待機
+    // 開始前: 始点で待機（showBeforeStart=false なら非表示）
     if (currentTime < startTime) {
         const startNode = pathNodes[0];
-        return { 
-            x: startNode.x, 
-            y: startNode.y, 
-            floor: startNode.floor, 
-            visible: true, 
-            vx: 0, 
+        return {
+            x: startNode.x,
+            y: startNode.y,
+            floor: startNode.floor,
+            visible: charData.showBeforeStart !== false,
+            vx: 0,
             vy: 0,
             isFinished: false
         };
@@ -430,4 +432,65 @@ export const getNodeArrivalOccurrences = (
         if (i < segDist.length) cum += segDist[i];
     }
     return result;
+};
+
+// プリセット data の1エントリを CharacterTimelineData に正規化（旧 string[] 形式にも対応）。
+export const normalizeTimelineData = (raw: unknown): CharacterTimelineData | null => {
+    if (Array.isArray(raw) && raw.length > 0) {
+        return { path: raw as string[], startTime: 0, duration: (raw as string[]).length * 30 };
+    }
+    if (raw !== null && typeof raw === 'object' && !Array.isArray(raw) && 'path' in raw) {
+        return raw as CharacterTimelineData;
+    }
+    return null;
+};
+
+// 各キャラの「開始時刻（絶対フレーム）」を解決する。
+// startRef を持つキャラは「基準キャラが地点に occurrence 回目に到達した時刻 + extraDelay」で開始。
+// 基準キャラ自身も startRef を持つ場合は再帰解決し、循環は検出して 0 にフォールバックする。
+export const resolveStartTimes = (
+    rawData: Record<string, unknown>,
+    allNodes: MapNode[]
+): Record<string, number> => {
+    const data: Record<string, CharacterTimelineData> = {};
+    Object.entries(rawData).forEach(([id, v]) => {
+        const n = normalizeTimelineData(v);
+        if (n) data[id] = n;
+    });
+
+    const resolved: Record<string, number> = {};
+    const visiting = new Set<string>();
+
+    const resolve = (charId: string): number => {
+        if (charId in resolved) return resolved[charId];
+        if (visiting.has(charId)) return 0; // 循環 → 0 にフォールバック
+        const cd = data[charId];
+        if (!cd) return 0;
+        const ref = cd.startRef;
+        // sync 制約があるキャラは sync が開始時刻を決める（startRef より優先）。
+        const hasSync = Array.isArray(cd.syncConstraints) && cd.syncConstraints.length > 0;
+        if (!ref || hasSync) { resolved[charId] = cd.startTime ?? 0; return resolved[charId]; }
+
+        visiting.add(charId);
+        let start: number;
+        const refData = data[ref.charId];
+        if (refData && ref.charId !== charId) {
+            const refStart = resolve(ref.charId);
+            const occ = getNodeArrivalOccurrences({ ...refData, startTime: refStart }, ref.nodeId, allNodes);
+            if (occ.length > 0) {
+                const idx = Math.min(Math.max(ref.occurrence || 0, 0), occ.length - 1);
+                start = occ[idx].arrival + (ref.extraDelay || 0);
+            } else {
+                start = cd.startTime ?? 0; // 基準キャラがその地点を通らない → 旧値にフォールバック
+            }
+        } else {
+            start = cd.startTime ?? 0; // 基準キャラが存在しない/自己参照 → フォールバック
+        }
+        visiting.delete(charId);
+        resolved[charId] = start;
+        return start;
+    };
+
+    Object.keys(data).forEach(resolve);
+    return resolved;
 };

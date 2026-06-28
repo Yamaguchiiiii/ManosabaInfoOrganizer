@@ -50,8 +50,20 @@ export interface SyncConstraint {
     charIds: string[];
 }
 
+// 開始条件（相対参照）: 「基準キャラ(charId)が地点(nodeId)に occurrence 回目に到達した後 +extraDelay」で開始。
+export interface StartRef {
+    charId: string;
+    nodeId: string;
+    occurrence: number; // 0始まり（同地点を複数回通る場合の何回目か）
+    extraDelay: number; // 到達後の追加フレーム（0可）
+}
+
 export interface CharacterTimelineData {
     path: string[]; startTime: number; duration: number; waypoints?: Waypoint[]; syncConstraints?: SyncConstraint[];
+    // 数値delayの代わりの開始条件。設定時は Animate 側で動的に startTime を解決する。
+    startRef?: StartRef | null;
+    // 待機中（開始前）も開始地点にアイコンを表示するか。既定 true（従来挙動）。
+    showBeforeStart?: boolean;
 }
 
 export interface AnimationPreset {
@@ -125,9 +137,9 @@ export interface AppState {
     updatePresetName: (id: string, name: string) => void; updatePresetNote: (id: string, note: string) => void;
     deletePreset: (id: string) => void;
 
-    saveCharacterAnimation: (presetId: string, charId: string, path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[]) => void;
+    saveCharacterAnimation: (presetId: string, charId: string, path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[], startRef?: StartRef | null, showBeforeStart?: boolean) => void;
     deleteCharacterAnimation: (presetId: string, charId: string) => void;
-    saveBatchCharacterAnimations: (presetId: string, charIds: string[], path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[]) => void;
+    saveBatchCharacterAnimations: (presetId: string, charIds: string[], path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[], startRef?: StartRef | null, showBeforeStart?: boolean) => void;
     updateTimelineItem: (presetId: string, charId: string, updates: Partial<CharacterTimelineData>) => void;
     toggleDeadIcon: (icon: string) => void;
 
@@ -424,10 +436,10 @@ export const useAppStore = create<AppState>()(
             return { presets: newPresets, activePresetId: newActiveId };
         }),
 
-        saveCharacterAnimation: (presetId, charId, path, waypoints, startTIme = 0, syncConstraints) => set((state) => ({
+        saveCharacterAnimation: (presetId, charId, path, waypoints, startTIme = 0, syncConstraints, startRef = null, showBeforeStart = true) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
-                const newData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints };
+                const newData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints, startRef, showBeforeStart };
                 return { ...p, data: { ...p.data, [charId]: newData } };
             })
         })),
@@ -451,11 +463,11 @@ export const useAppStore = create<AppState>()(
                 return { ...p, data: newData };
             })
         })),
-        saveBatchCharacterAnimations: (presetId, charIds, path, waypoints, startTIme=0, syncConstraints) => set((state) => ({
+        saveBatchCharacterAnimations: (presetId, charIds, path, waypoints, startTIme=0, syncConstraints, startRef = null, showBeforeStart = true) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
                 const newData = { ...p.data };
-                const timelineData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints };
+                const timelineData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints, startRef, showBeforeStart };
                 charIds.forEach(charId => { newData[charId] = timelineData; });
                 return { ...p, data: newData };
             })

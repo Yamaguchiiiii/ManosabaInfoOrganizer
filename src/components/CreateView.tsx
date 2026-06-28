@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
 import Konva from 'konva';
-import { useAppStore, FloorId, MapNode, Waypoint, computeDuration } from '../store';
+import { useAppStore, FloorId, MapNode, Waypoint, StartRef, computeDuration } from '../store';
 import { MapImage } from './common/MapElements';
 import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
@@ -210,6 +210,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [startTime, setStartTime] = useState<number>(0);
+  // 開始条件（数値delayの代替）: 「基準キャラが地点に occurrence 回目に到達後 +extraDelay」
+  const [startRef, setStartRef] = useState<StartRef | null>(null);
+  // 待機中（開始前）もアイコンを表示するか（既定 true）
+  const [showBeforeStart, setShowBeforeStart] = useState<boolean>(true);
   const [suggestionTargetIndex, setSuggestionTargetIndex] = useState<number | null>(null);
 
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -262,11 +266,42 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const primaryIcon = selectedIcons.length > 0 ? selectedIcons[selectedIcons.length - 1] : null;
   const activePreset = presets.find(p => p.id === activePresetId);
   const savedDataRaw = (primaryIcon && activePreset?.data) ? activePreset.data[primaryIcon] : null;
+
+  // 開始条件ピッカー用: 基準にできる他キャラ（このプリセットで経路を持つ・自分以外）
+  const prettyCharName = (cid: string) => cid.replace(/^[0-9]+_/, '').replace(/\.[a-z]+$/i, '').replace(/_/g, ' ');
+  const startRefCharOptions = useMemo(() => {
+      if (!activePreset?.data) return [] as { id: string; name: string }[];
+      return Object.keys(activePreset.data)
+          .filter(cid => !selectedIcons.includes(cid))
+          .map(cid => ({ id: cid, name: prettyCharName(cid) }));
+  }, [activePreset, selectedIcons]);
+
+  // 選択中の基準キャラが通る「名前付き地点」を訪問順（オカレンス付き）で列挙
+  const startRefNodeOptions = useMemo(() => {
+      const cid = startRef?.charId;
+      if (!cid || !activePreset?.data) return [] as { nodeId: string; occurrence: number; label: string }[];
+      const raw: any = activePreset.data[cid];
+      const path: string[] = Array.isArray(raw) ? raw : (raw?.path || []);
+      const total: Record<string, number> = {};
+      path.forEach(nid => { total[nid] = (total[nid] || 0) + 1; });
+      const seen: Record<string, number> = {};
+      const opts: { nodeId: string; occurrence: number; label: string }[] = [];
+      path.forEach(nid => {
+          const occ = seen[nid] || 0; seen[nid] = occ + 1;
+          const node = nodeMap[nid];
+          if (!node || !node.name || !node.name.trim()) return; // 名前付き地点のみ
+          const label = total[nid] > 1 ? `${node.name}（${occ + 1}回目）` : node.name;
+          opts.push({ nodeId: nid, occurrence: occ, label });
+      });
+      return opts;
+  }, [startRef?.charId, activePreset, nodeMap]);
   
   useEffect(() => {
       setIsEditing(false);
       setWaypoints([{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }]);
       setStartTime(0);
+      setStartRef(null);
+      setShowBeforeStart(true);
       setConnectingNodeId(null);
       setSyncTarget(null);
       setSyncConstraints([]);
@@ -468,6 +503,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
           setSyncTarget(null);
       }
       setStartTime(currentData.startTime || 0);
+      setStartRef(currentData.startRef ?? null);
+      setShowBeforeStart(currentData.showBeforeStart ?? true);
       setIsEditing(true);
   };
 
@@ -590,7 +627,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
                   target.charId,
                   targetPath,
                   targetWaypoints,
-                  newTargetStartTime
+                  newTargetStartTime,
+                  target.data.syncConstraints,
+                  target.data.startRef ?? null,
+                  target.data.showBeforeStart ?? true
               );
           }
       });
@@ -654,8 +694,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
       // #06/28-6:04-4: キャラ未選択でSave Pathされたら、保存先キャラを選ぶフローティングウィンドウを開く
       if (!selectedIcons.length) { setIsMultiSelectMode(false); setIsCharModalOpen(true); return; }
       const validWp = waypoints.filter(wp => wp.id !== "");
-      if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints);
-      else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints);
+      if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
+      else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
       setConnectingNodeId(null); setIsEditing(false);
   };
 
@@ -665,8 +705,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (!displayPath.length) return Promise.resolve(true);
       if (selectedIcons.length) {
           const validWp = waypoints.filter(wp => wp.id !== "");
-          if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints);
-          else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints);
+          if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
+          else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
           setConnectingNodeId(null); setIsEditing(false);
           return Promise.resolve(true);
       }
@@ -675,7 +715,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
           setIsMultiSelectMode(false);
           setIsCharModalOpen(true);
       });
-  }, [displayPath, selectedIcons, waypoints, activePresetId, startTime, syncConstraints, saveCharacterAnimation, saveBatchCharacterAnimations]);
+  }, [displayPath, selectedIcons, waypoints, activePresetId, startTime, syncConstraints, startRef, showBeforeStart, saveCharacterAnimation, saveBatchCharacterAnimations]);
 
   // 未保存の経路があるまま別キャラ/別モードへ遷移しようとした際のガードを登録する
   const hasUnsavedPath = isEditing && displayPath.length > 0;
@@ -722,8 +762,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (pendingSaveResolveRef.current) { pendingSaveResolveRef.current(true); pendingSaveResolveRef.current = null; }
   };
 
-  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); setIsCharModalOpen(false); setIsMultiSelectMode(false); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
-  const handleMultiSelect = (icons: string[]) => { setIsCharModalOpen(false); setIsMultiSelectMode(false); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
+  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); setIsCharModalOpen(false); setIsMultiSelectMode(false); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints, startRef, showBeforeStart); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
+  const handleMultiSelect = (icons: string[]) => { setIsCharModalOpen(false); setIsMultiSelectMode(false); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints, startRef, showBeforeStart); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, floorOverride?: FloorId) => {
     // 4ペインでは編集対象フロアをペイン(floorOverride)で明示。未指定時は activeFloor。
@@ -927,7 +967,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
         <WaypointPanel
             isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
             highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
-            startTime={startTime} setStartTime={setStartTime} waypoints={waypoints}
+            waypoints={waypoints}
+            startRef={startRef} setStartRef={setStartRef}
+            showBeforeStart={showBeforeStart} setShowBeforeStart={setShowBeforeStart}
+            startRefCharOptions={startRefCharOptions} startRefNodeOptions={startRefNodeOptions}
             handleWaypointChange={handleWaypointChange} setSuggestionTargetIndex={setSuggestionTargetIndex}
             handleSyncTime={handleSyncTime} handleRemoveWaypoint={handleRemoveWaypoint}
             handleAddWaypoint={handleAddWaypoint} handleSavePath={handleSavePath}
