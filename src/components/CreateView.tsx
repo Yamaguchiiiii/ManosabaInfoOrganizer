@@ -282,17 +282,23 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (!cid || !activePreset?.data) return [] as { nodeId: string; occurrence: number; label: string }[];
       const raw: any = activePreset.data[cid];
       const path: string[] = Array.isArray(raw) ? raw : (raw?.path || []);
+      // 滞在(連続重複)は1訪問に集約して数える（getNodeVisitTimes と同じ集約）
       const total: Record<string, number> = {};
-      path.forEach(nid => { total[nid] = (total[nid] || 0) + 1; });
+      { let j = 0; while (j < path.length) { const nid = path[j]; let k = j; while (k + 1 < path.length && path[k + 1] === nid) k++; total[nid] = (total[nid] || 0) + 1; j = k + 1; } }
       const seen: Record<string, number> = {};
       const opts: { nodeId: string; occurrence: number; label: string }[] = [];
-      path.forEach(nid => {
-          const occ = seen[nid] || 0; seen[nid] = occ + 1;
+      let i = 0;
+      while (i < path.length) {
+          const nid = path[i];
+          let k = i; while (k + 1 < path.length && path[k + 1] === nid) k++;
           const node = nodeMap[nid];
-          if (!node || !node.name || !node.name.trim()) return; // 名前付き地点のみ
-          const label = total[nid] > 1 ? `${node.name}（${occ + 1}回目）` : node.name;
-          opts.push({ nodeId: nid, occurrence: occ, label });
-      });
+          if (node && node.name && node.name.trim()) {
+              const occ = seen[nid] || 0; seen[nid] = occ + 1;
+              const label = total[nid] > 1 ? `${node.name}（${occ + 1}回目）` : node.name;
+              opts.push({ nodeId: nid, occurrence: occ, label });
+          }
+          i = k + 1;
+      }
       return opts;
   }, [startRef?.charId, activePreset, nodeMap]);
   
@@ -503,7 +509,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
           setSyncTarget(null);
       }
       setStartTime(currentData.startTime || 0);
-      setStartRef(currentData.startRef ?? null);
+      setStartRef(currentData.startRef ? { ...currentData.startRef, phase: currentData.startRef.phase ?? 'arrival' } : null);
       setShowBeforeStart(currentData.showBeforeStart ?? true);
       setIsEditing(true);
   };

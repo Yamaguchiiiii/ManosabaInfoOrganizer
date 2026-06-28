@@ -434,6 +434,63 @@ export const getNodeArrivalOccurrences = (
     return result;
 };
 
+// 指定ノードへの「訪問（visit）」ごとに到達時刻と出発時刻を返す。
+// 滞在(stayTime)は path 上の連続重複ノードで表現されるため、連続重複は1訪問に集約し、
+// arrival=ブロック先頭の時刻、departure=ブロック末尾の時刻（＝滞在後に動き出す時刻）とする。
+export const getNodeVisitTimes = (
+    charData: CharacterTimelineData,
+    targetNodeId: string,
+    allNodes: MapNode[]
+): { arrival: number; departure: number }[] => {
+    const { path, startTime, duration } = charData;
+    if (!path || path.length === 0) return [];
+
+    const nodesMap: Record<string, MapNode> = {};
+    allNodes.forEach(n => { nodesMap[n.id] = n; });
+
+    const segDist: number[] = [];
+    let totalDist = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        const a = nodesMap[path[i]];
+        const b = nodesMap[path[i + 1]];
+        let d = 0;
+        if (a && b) {
+            if (a.id === b.id) {
+                d = WAIT_VIRTUAL_DISTANCE;
+            } else {
+                const isStairJump = (a.type === 'stair' && b.type === 'stair');
+                const isFloorChange = (a.floor !== b.floor);
+                d = (isStairJump || isFloorChange) ? 0 : getDistance(a, b);
+            }
+        }
+        segDist.push(d);
+        totalDist += d;
+    }
+
+    const cumAt: number[] = [];
+    let cum = 0;
+    for (let i = 0; i < path.length; i++) {
+        cumAt.push(cum);
+        if (i < segDist.length) cum += segDist[i];
+    }
+    const timeAt = (c: number) => (totalDist === 0) ? startTime : startTime + duration * (c / totalDist);
+
+    const visits: { arrival: number; departure: number }[] = [];
+    let i = 0;
+    while (i < path.length) {
+        if (path[i] === targetNodeId) {
+            const startIdx = i;
+            let endIdx = i;
+            while (endIdx + 1 < path.length && path[endIdx + 1] === targetNodeId) endIdx++;
+            visits.push({ arrival: timeAt(cumAt[startIdx]), departure: timeAt(cumAt[endIdx]) });
+            i = endIdx + 1;
+        } else {
+            i++;
+        }
+    }
+    return visits;
+};
+
 // プリセット data の1エントリを CharacterTimelineData に正規化（旧 string[] 形式にも対応）。
 export const normalizeTimelineData = (raw: unknown): CharacterTimelineData | null => {
     if (Array.isArray(raw) && raw.length > 0) {
@@ -476,10 +533,11 @@ export const resolveStartTimes = (
         const refData = data[ref.charId];
         if (refData && ref.charId !== charId) {
             const refStart = resolve(ref.charId);
-            const occ = getNodeArrivalOccurrences({ ...refData, startTime: refStart }, ref.nodeId, allNodes);
-            if (occ.length > 0) {
-                const idx = Math.min(Math.max(ref.occurrence || 0, 0), occ.length - 1);
-                start = occ[idx].arrival + (ref.extraDelay || 0);
+            const visits = getNodeVisitTimes({ ...refData, startTime: refStart }, ref.nodeId, allNodes);
+            if (visits.length > 0) {
+                const idx = Math.min(Math.max(ref.occurrence || 0, 0), visits.length - 1);
+                const base = ref.phase === 'departure' ? visits[idx].departure : visits[idx].arrival;
+                start = base + (ref.extraDelay || 0);
             } else {
                 start = cd.startTime ?? 0; // 基準キャラがその地点を通らない → 旧値にフォールバック
             }

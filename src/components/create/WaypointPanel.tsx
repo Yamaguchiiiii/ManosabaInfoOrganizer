@@ -72,7 +72,7 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                     const cid = e.target.value;
                                     if (!cid) { setStartRef(null); return; }
                                     // 既存 nodeId が無効なら未選択にして、ユーザーに地点を選ばせる
-                                    setStartRef({ charId: cid, nodeId: '', occurrence: 0, extraDelay: startRef?.extraDelay ?? 0 });
+                                    setStartRef({ charId: cid, nodeId: '', occurrence: 0, phase: startRef?.phase ?? 'arrival', extraDelay: startRef?.extraDelay ?? 0 });
                                 }}
                                 style={selStyle}
                             >
@@ -97,7 +97,14 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                             <option key={`${o.nodeId}#${o.occurrence}`} value={`${o.nodeId}#${o.occurrence}`}>{o.label}</option>
                                         ))}
                                     </select>
-                                    <span style={{ fontSize: '0.75rem', color: '#ccc' }}>に到達後</span>
+                                    <select
+                                        value={startRef.phase ?? 'arrival'}
+                                        onChange={(e) => setStartRef({ ...startRef, phase: e.target.value as 'arrival' | 'departure' })}
+                                        style={selStyle}
+                                    >
+                                        <option value="arrival">に到達後</option>
+                                        <option value="departure">を出発後</option>
+                                    </select>
                                     <input
                                         type="number" min="0" value={startRef.extraDelay}
                                         onChange={(e) => setStartRef({ ...startRef, extraDelay: parseFloat(e.target.value) || 0 })}

@@ -50,12 +50,14 @@ export interface SyncConstraint {
     charIds: string[];
 }
 
-// 開始条件（相対参照）: 「基準キャラ(charId)が地点(nodeId)に occurrence 回目に到達した後 +extraDelay」で開始。
+// 開始条件（相対参照）: 「基準キャラ(charId)が地点(nodeId)の occurrence 回目の visit に
+// 到達(arrival)／出発(departure)した後 +extraDelay」で開始。
 export interface StartRef {
     charId: string;
     nodeId: string;
-    occurrence: number; // 0始まり（同地点を複数回通る場合の何回目か）
-    extraDelay: number; // 到達後の追加フレーム（0可）
+    occurrence: number; // 0始まり（同地点を複数回“訪れる”うちの何回目か。滞在の連続重複は1訪問に集約）
+    phase: 'arrival' | 'departure'; // 到達時 / 出発時（滞在後）
+    extraDelay: number; // 追加フレーム（0可）
 }
 
 export interface CharacterTimelineData {
