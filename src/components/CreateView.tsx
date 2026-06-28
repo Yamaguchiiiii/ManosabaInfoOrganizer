@@ -197,6 +197,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
   // 4ペイン化: 各ペイン(FloorPane)が自前のStage/ズーム/計測を持つため、ここでの単一Stage用の
   // stageRef/containerRef/size は不要になった。連結中の動的エッジ線の ref のみ共有する。
   const dynamicEdgeRef = useRef<Konva.Line>(null);
+  // #06/28-14:10-1: ナビゲーションガードから「保存」した際、キャラ未選択ならモーダルでの
+  // キャラ選択完了まで遷移を待つためのリゾルバ。
+  const pendingSaveResolveRef = useRef<((ok: boolean) => void) | null>(null);
 
   // #06/28-3:58-8: ウィンドウサイズに応じて 2x2 / 縦1x4 / 横4x1 をマップ最大化で切替
   const gridRef = useRef<HTMLDivElement>(null);
@@ -425,16 +428,19 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const handleSelectSuggestion = useCallback((node: MapNode) => {
       if (suggestionTargetIndex === null) return;
       setIsEditing(true);
-      setWaypoints(prev => {
-          const next = [...prev];
-          next[suggestionTargetIndex] = {
-              ...next[suggestionTargetIndex],
-              name: node.name || "",
-              id: node.id
-          };
-          return next;
-      });
-  }, [suggestionTargetIndex]);
+      const updated = [...waypoints];
+      updated[suggestionTargetIndex] = {
+          ...updated[suggestionTargetIndex],
+          name: node.name || "",
+          id: node.id
+      };
+      setWaypoints(updated);
+      // #06/28-14:10-6: 地点を入力したら、次の空ボックスへターゲットを自動で移動する
+      // （移動しないと連続クリックで同じボックスを上書きしてしまう）。空きが無ければ閉じる。
+      const nextAfter = updated.findIndex((wp, i) => i > suggestionTargetIndex && wp.id === "");
+      const target = nextAfter !== -1 ? nextAfter : updated.findIndex(wp => wp.id === "");
+      setSuggestionTargetIndex(target !== -1 ? target : null);
+  }, [suggestionTargetIndex, waypoints]);
 
   const handleEditPath = () => {
       if (!savedDataRaw) return;
@@ -651,6 +657,24 @@ export const CreateView: React.FC<CreateViewProps> = ({
       setConnectingNodeId(null); setIsEditing(false);
   };
 
+  // #06/28-14:10-1: 保存を要求し、完了したら true を解決する。
+  // キャラ選択済みなら即保存して true。未選択ならモーダルを開き、選択(true)/キャンセル(false)まで待つ。
+  const requestSaveOrPrompt = useCallback((): Promise<boolean> => {
+      if (!displayPath.length) return Promise.resolve(true);
+      if (selectedIcons.length) {
+          const validWp = waypoints.filter(wp => wp.id !== "");
+          if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints);
+          else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints);
+          setConnectingNodeId(null); setIsEditing(false);
+          return Promise.resolve(true);
+      }
+      return new Promise<boolean>((resolve) => {
+          pendingSaveResolveRef.current = resolve;
+          setIsMultiSelectMode(false);
+          setIsCharModalOpen(true);
+      });
+  }, [displayPath, selectedIcons, waypoints, activePresetId, startTime, syncConstraints, saveCharacterAnimation, saveBatchCharacterAnimations]);
+
   // 未保存の経路があるまま別キャラ/別モードへ遷移しようとした際のガードを登録する
   const hasUnsavedPath = isEditing && displayPath.length > 0;
   useEffect(() => {
@@ -668,12 +692,13 @@ export const CreateView: React.FC<CreateViewProps> = ({
                   { label: '保存して移動', value: 'save', variant: 'primary' },
               ]
           });
-          if (choice === 'save') { handleSavePath(); return true; }
+          // #06/28-14:10-1: 「保存」選択時、キャラ未選択ならモーダルでの選択完了を待ってから遷移を許可する。
+          if (choice === 'save') { return await requestSaveOrPrompt(); }
           if (choice === 'discard') { return true; }
           return false; // cancel → 遷移中止
       });
       return () => setNavigationGuard(null);
-  }, [hasUnsavedPath, showDialog, handleSavePath]);
+  }, [hasUnsavedPath, showDialog, requestSaveOrPrompt]);
 
   const handleDeletePath = async () => {
       if(selectedIcons.length && await showConfirm("この経路を削除しますか？")){
@@ -684,10 +709,19 @@ export const CreateView: React.FC<CreateViewProps> = ({
       }
   };
   
-  const handleModalClose = () => { setIsCharModalOpen(false); setIsMultiSelectMode(false); };
+  // モーダルを閉じる。保存待ち(ガード由来)があれば「キャンセル＝遷移しない(false)」で解決する。
+  const handleModalClose = () => {
+      setIsCharModalOpen(false); setIsMultiSelectMode(false);
+      if (pendingSaveResolveRef.current) { pendingSaveResolveRef.current(false); pendingSaveResolveRef.current = null; }
+  };
 
-  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); handleModalClose(); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); };
-  const handleMultiSelect = (icons: string[]) => { handleModalClose(); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); };
+  // 保存待ちがあれば「保存完了＝遷移してよい(true)」で解決する。
+  const resolvePendingSave = () => {
+      if (pendingSaveResolveRef.current) { pendingSaveResolveRef.current(true); pendingSaveResolveRef.current = null; }
+  };
+
+  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); setIsCharModalOpen(false); setIsMultiSelectMode(false); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
+  const handleMultiSelect = (icons: string[]) => { setIsCharModalOpen(false); setIsMultiSelectMode(false); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, floorOverride?: FloorId) => {
     // 4ペインでは編集対象フロアをペイン(floorOverride)で明示。未指定時は activeFloor。

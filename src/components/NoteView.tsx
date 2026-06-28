@@ -1281,8 +1281,23 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         );
     };
 
+    // #06/28-14:10-5: compact(Animate)では単一/4ペインのどちらでも左にツールバーを常設する。
+    // ツールバー幅を一度だけ計算し、ペイン領域(panesW)をその分だけ狭める。
+    // 単一表示: 3:2を高さフィットした残り幅をツールバーに（余白を埋める）。4ペイン: 固定幅。
+    const COMPACT_ASPECT = CANVAS_BASE_W / CANVAS_BASE_H; // 1.5
+    let compactToolbarW = 0;
+    if (compactMode) {
+        if (isGridMode) {
+            compactToolbarW = Math.round(Math.min(150, Math.max(COMPACT_SIDE_MIN, canvasSize.width * 0.16)));
+        } else {
+            const canvasWAtHeightFit = canvasSize.height * COMPACT_ASPECT;
+            compactToolbarW = Math.max(COMPACT_SIDE_MIN, Math.round(canvasSize.width - canvasWAtHeightFit));
+        }
+    }
+    const panesW = Math.max(0, canvasSize.width - compactToolbarW);
+
     return (
-        <div 
+        <div
             className={compactMode ? "" : "character-canvas-layout"} 
             style={compactMode ? { position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' } : { width: '100%', height: '100%', gridTemplateRows: '1fr' }}
         >
@@ -1481,26 +1496,35 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     gridRow: '1 / -1'
                 }}
             >
+                <div style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%', flex: 1, minHeight: 0 }}>
+                {/* compact: 左にCanvas操作ツールバーを常設（単一表示でも4ペインでも）。#06/28-14:10-5 */}
+                {compactMode && compactToolbarW > 4 && (
+                    <div style={{ width: `${compactToolbarW}px`, flexShrink: 0, height: '100%', overflowY: 'auto', background: '#1a1a1a', borderRight: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
+                        {renderPortalUI()}
+                    </div>
+                )}
                 <div style={{
                     display: isGridMode ? 'grid' : 'flex',
                     gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
                     gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)',
                     // ▼ 修正: 4ペイン表示の時は、ペイン間のみ隙間(gap)を設定する
                     gap: isGridMode ? '4px' : '0px',
-                    width: '100%',
+                    width: compactMode ? `${panesW}px` : '100%',
                     height: '100%',
-                    flex: 1,
+                    flex: compactMode ? '0 0 auto' : 1,
                     position: 'relative'
                 }}>
-                    {canvasSize.width > 0 && [0, 1, 2, 3].map(index => {
+                    {panesW > 0 && [0, 1, 2, 3].map(index => {
                         if (!isGridMode && currentCanvasIndex !== index) return null;
                         
                         const isCurrent = currentCanvasIndex === index;
                         const isHovered = hoveredCanvasIndex === index;
                         
                         // 外側のパディングをなくしたため、幅の計算から引くのはgap分のみ
+                        // compactではツールバー分を除いたペイン領域幅(panesW)を基準にする。
                         const gapWidth = isGridMode ? 4 : 0;
-                        const cellWidth = isGridMode ? (canvasSize.width - gapWidth) / 2 : canvasSize.width;
+                        const areaW = compactMode ? panesW : canvasSize.width;
+                        const cellWidth = isGridMode ? (areaW - gapWidth) / 2 : areaW;
                         const cellHeight = isGridMode ? (canvasSize.height - gapWidth) / 2 : canvasSize.height;
 
                         const borderWidth = (isGridMode && !compactMode) ? 2 : 0;
@@ -1524,33 +1548,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         // Note/Animate を統一: 事件ノートの「基準範囲(1200×800, 3:2)」を Canvas領域へ
                         // アスペクト比維持でフィットさせる。Stage自体を基準範囲のフィット実寸にするので、
                         // 範囲外はクリック/配置できず、ウィンドウリサイズでも一様な拡大縮小（=レイアウト安定）になる。
-                        const isSidePanels = compactMode && !isGridMode;
                         // 事件ノート(preset)だけが基準範囲(3:2)フィット。Animateとの整合のため範囲外は配置不可。
-                        // 全体/キャラクター/メモ(overview/character/misc)は「要素いっぱいに広げる(fill)」方式に戻す
+                        // 全体/キャラクター/メモ(overview/character/misc)は「要素いっぱいに広げる(fill)」方式
                         // （ズームでサイズ変更しないが余白も作らない）。#06/28-3:58-1
+                        // ツールバーはペイン外(左の常設ストリップ)に出したので、ここでは Stage をセル中央に配置する。
                         const useRangeFit = targetType === 'preset';
                         let effScale: number;
                         let stageRenderW: number;
                         let stageRenderH: number;
-                        let toolbarW = 0;        // compact: 左にドックするツールバー幅（=Canvasの左余白を全部埋める）
-                        if (isSidePanels) {
-                            // Canvasは高さ優先でフィットし、横の余白を全部ツールバーが埋める（空白を作らない）。
-                            // 横幅が足りない(縦長セル)場合は幅優先にフォールバックし、最小ツールバー幅を確保。
-                            const heightFit = stageHeight / CANVAS_BASE_H;
-                            const canvasWAtHeightFit = CANVAS_BASE_W * heightFit;
-                            if (canvasWAtHeightFit <= stageWidth - COMPACT_SIDE_MIN) {
-                                effScale = heightFit;
-                                stageRenderW = canvasWAtHeightFit;
-                                stageRenderH = stageHeight;
-                            } else {
-                                const widthFit = Math.max(0, (stageWidth - COMPACT_SIDE_MIN)) / CANVAS_BASE_W;
-                                effScale = widthFit;
-                                stageRenderW = CANVAS_BASE_W * widthFit;
-                                stageRenderH = CANVAS_BASE_H * widthFit;
-                            }
-                            toolbarW = Math.max(COMPACT_SIDE_MIN, stageWidth - stageRenderW);
-                        } else if (useRangeFit) {
-                            // 非compactの事件ノート: 基準範囲フィット（中央レターボックス）
+                        if (useRangeFit) {
+                            // 基準範囲フィット（中央レターボックス）
                             effScale = Math.min(stageWidth / CANVAS_BASE_W, stageHeight / CANVAS_BASE_H);
                             stageRenderW = CANVAS_BASE_W * effScale;
                             stageRenderH = CANVAS_BASE_H * effScale;
@@ -1560,9 +1567,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                             stageRenderW = stageWidth;
                             stageRenderH = stageHeight;
                         }
-                        // compact: Stageはツールバーの右隣に左寄せ配置（Y中央）。
-                        // 非compact: range-fitは中央レターボックス、fillはコンテナ充填(offset 0)。
-                        const stageOffsetX = isSidePanels ? toolbarW : (stageWidth - stageRenderW) / 2;
+                        const stageOffsetX = (stageWidth - stageRenderW) / 2;
                         const stageOffsetY = (stageHeight - stageRenderH) / 2;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
@@ -1582,13 +1587,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
-                                    // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示。
-                                    // compactは左の余白(toolbarW)をツールバーで全部埋め、Stageはその右隣に左寄せ＋Y中央。
+                                    // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示し中央配置。
                                     backgroundColor: '#1e1e1e',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: isSidePanels ? 'flex-start' : 'center',
-                                    paddingLeft: isSidePanels ? `${toolbarW}px` : 0
+                                    justifyContent: 'center'
                                 }}
                                 onClick={(e) => {
                                     // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
@@ -1812,19 +1815,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     </Layer>
                                 </Stage>
 
-                                {/* compact(Animate): 左の余白にCanvas操作ツールバーをドック。
-                                    幅(toolbarW)は3:2フィットで生じる左余白を全部埋めるレスポンシブ値。 */}
-                                {isSidePanels && toolbarW > 4 && (
-                                    <div style={{
-                                        position: 'absolute', left: 0, top: 0, bottom: 0,
-                                        width: `${toolbarW}px`,
-                                        overflowY: 'auto',
-                                        background: '#1a1a1a', borderRight: '1px solid #333',
-                                        display: 'flex', flexDirection: 'column'
-                                    }}>
-                                        {renderPortalUI()}
-                                    </div>
-                                )}
+                                {/* compact のCanvas操作ツールバーはペイン外(左の常設ストリップ)へ移動済み(#06/28-14:10-5) */}
 
                                 {isCurrent && editingTextId && (() => {
                                     const obj = objs.find(o => o.id === editingTextId);
@@ -1884,6 +1875,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                             </div>
                         );
                     })}
+                </div>
                 </div>
 
                 <div style={{ position: 'absolute', bottom: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2220,7 +2212,7 @@ export const NoteView: React.FC = React.memo(() => {
                         targetId={selectedChar}
                         sidebarHeader={
                             <>
-                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>キャラクター</div>
+                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>Character</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(36px, 1fr))', gap: '5px' }}>
                                     {ICON_FILES.map((icon, idx) => (
                                         <div
@@ -2228,7 +2220,7 @@ export const NoteView: React.FC = React.memo(() => {
                                             onClick={() => setActualCharIndex(idx)}
                                             title={icon}
                                             style={{
-                                                width: '100%', aspectRatio: '1', borderRadius: '50%', overflow: 'hidden',
+                                                width: '100%', aspectRatio: '1', overflow: 'hidden',
                                                 cursor: 'pointer', boxSizing: 'border-box',
                                                 border: actualCharIndex === idx ? '2px solid #66b3ff' : '2px solid transparent',
                                                 opacity: actualCharIndex === idx ? 1 : 0.55,
