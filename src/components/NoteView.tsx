@@ -555,21 +555,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         const clampX = (v: number) => clampRange ? Math.max(0, Math.min(CANVAS_BASE_W, v)) : v;
         const clampY = (v: number) => clampRange ? Math.max(0, Math.min(CANVAS_BASE_H, v)) : v;
 
-        // 移動対象: グループならグループ全員、複数選択中なら選択全員、それ以外は自分のみ。#06/28-14:10-3
-        // ソースペイン(sourceIndex)のオブジェクトに限定して、別ペインのドラッグでも正しく対象を取る。
-        const srcPaneObjs = objects.filter(o => (o.canvasIndex || 0) === sourceIndex);
-        const dragSet: NoteObject[] = obj.groupId
-            ? srcPaneObjs.filter(o => o.groupId === obj.groupId)
-            : (selectedIds.length > 1 && selectedIds.includes(obj.id))
-                ? srcPaneObjs.filter(o => selectedIds.includes(o.id))
-                : [obj];
-
-        // dx,dy だけ dragSet 全体を平行移動する。extra に canvasIndex を含めると移動先ペインへ付け替える。
+        // dx,dy だけ移動する。グループならグループ全員（同ペイン）、それ以外は自分のみ。
+        // extra に canvasIndex を含めると移動先ペインへ付け替える。
         const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
             saveHistoryOnceThenSkip();
-            if (dragSet.length > 1) {
+            if (obj.groupId) {
+                const groupObjs = objects.filter(o => (o.canvasIndex || 0) === sourceIndex && o.groupId === obj.groupId);
                 updateNoteObjects(targetType, displayTargetId,
-                    dragSet.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy, ...extra } })));
+                    groupObjs.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy, ...extra } })));
             } else {
                 updateNoteObject(targetType, displayTargetId, obj.id, { x: (obj.x ?? 0) + dx, y: (obj.y ?? 0) + dy, ...extra }, true);
             }
@@ -606,7 +599,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
         // 同一ペイン内: 通常の移動として確定（最終位置をクランプ）
         applyMove(clampX(rawX) - (obj.x ?? 0), clampY(rawY) - (obj.y ?? 0));
-    }, [isGridMode, isGridEditMode, compactMode, objects, selectedIds, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
+    }, [isGridMode, isGridEditMode, compactMode, objects, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
 
     // カラーピッカー/スライダーなど「連続入力」のコミットを間引く（先頭で即時1回＋末尾で最終値）。
     // これをしないと、ドラッグ中に毎フレーム updateNoteObject→キャンバス全再描画が走り、
@@ -832,16 +825,18 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         }
 
         if (e.target === e.target.getStage()) {
-            setSelectedIds([]);
-            setEditingTextId(null);
+            // shift+空白クリックは複数選択を維持する（跨ぎ選択中に誤って消さない）。#06/28-14:47-2
+            if (!e.evt.shiftKey) {
+                setSelectedIds([]);
+                setEditingTextId(null);
+                const layer = e.target.getStage()?.getLayers()[0];
+                const lp = layer?.getRelativePointerPosition();
+                if (lp) {
+                    setSelectionRect({ startX: lp.x, startY: lp.y, w: 0, h: 0, visible: true, canvasIndex: index });
+                }
+            }
             setShapeContextMenu(null);
             setAssetContextMenu(null);
-
-            const layer = e.target.getStage()?.getLayers()[0];
-            const lp = layer?.getRelativePointerPosition();
-            if (lp) {
-                setSelectionRect({ startX: lp.x, startY: lp.y, w: 0, h: 0, visible: true, canvasIndex: index });
-            }
         } else {
             setShapeContextMenu(null);
             setAssetContextMenu(null);
@@ -1635,12 +1630,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     listening={!isGridMode || isGridEditMode}
                                     onMouseDown={(e) => {
                                         if (isGridMode && !isGridEditMode && !isCurrent) return;
-                                        
-                                        if (isGridMode && isGridEditMode && !isCurrent) {
+
+                                        // #06/28-14:47-2: shift+クリックの跨ぎ複数選択を壊さないため、
+                                        // shift 時は current ペインの切替＆選択クリアを行わない。
+                                        // （この mousedown は onSelect より先に発火し、選択を消していた）
+                                        const shift = !!e.evt?.shiftKey;
+                                        if (isGridMode && isGridEditMode && !isCurrent && !shift) {
                                             setCurrentCanvasIndex(index);
                                             setSelectedIds([]);
                                         }
-                                        
+
                                         handleStageMouseDown(e, index, scale);
                                     }}
                                     onMouseMove={(e) => {
@@ -1665,24 +1664,21 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             const isSelected = selectedIds.includes(obj.id);
                                             if (obj.id === editingTextId) return null;
 
-                                            // グループ/複数選択ドラッグ: ドラッグ中に他メンバー（グループ全員 or 選択全員）を追従させる。#06/28-14:10-3
-                                            const followMembers = obj.groupId
-                                                ? objs.filter(o => o.groupId === obj.groupId && o.id !== obj.id)
-                                                : (selectedIds.length > 1 && selectedIds.includes(obj.id))
-                                                    ? objs.filter(o => selectedIds.includes(o.id) && o.id !== obj.id)
-                                                    : [];
-                                            const groupDragHandlers = followMembers.length > 0 ? {
+                                            // グループドラッグ: ドラッグ中に同グループの他メンバーを追従させる
+                                            const groupDragHandlers = obj.groupId ? {
                                                 onDragMove: (e: any) => {
                                                     const dx = e.target.x() - (obj.x ?? 0);
                                                     const dy = e.target.y() - (obj.y ?? 0);
                                                     const stage = stageRefs.current[index];
-                                                    followMembers.forEach(member => {
-                                                        const node = stage?.findOne(`#${member.id}`);
-                                                        if (node) {
-                                                            node.x((member.x ?? 0) + dx);
-                                                            node.y((member.y ?? 0) + dy);
-                                                        }
-                                                    });
+                                                    objs
+                                                        .filter(o => o.groupId === obj.groupId && o.id !== obj.id)
+                                                        .forEach(member => {
+                                                            const node = stage?.findOne(`#${member.id}`);
+                                                            if (node) {
+                                                                node.x((member.x ?? 0) + dx);
+                                                                node.y((member.y ?? 0) + dy);
+                                                            }
+                                                        });
                                                     stage?.getLayers()[0]?.batchDraw();
                                                 },
                                             } : {};
