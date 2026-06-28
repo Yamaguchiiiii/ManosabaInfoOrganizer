@@ -372,9 +372,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // コピー/ペースト用クリップボード（オブジェクトの属性を保持したまま複製する）
     const [clipboard, setClipboard] = useState<NoteObject[]>([]);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
-    // #06/28-14:10-4: テキスト編集中はローカル状態で持ち、確定(blur)時のみ store にコミットする。
+    // #06/28-14:10-4: テキスト編集中はローカル状態で持ち、確定時のみ store にコミットする。
     // 1キーストロークごとに updateNoteObject→全オブジェクト再描画していたためフレーム落ちしていた。
     const [editingTextValue, setEditingTextValue] = useState('');
+    // #06/28-17:04-3: 入力値を ref にもミラーする。クリックで編集を抜ける際、mousedown が
+    // onBlur より先に editingTextId を消すと onBlur のコミットが走らず入力が失われるため、
+    // どの経路から編集終了しても確実にコミットできるよう finishTextEditing() を用意する。
+    const editingTextValueRef = useRef('');
+    const editingTextIdRef = useRef<string | null>(null);
+    useEffect(() => { editingTextIdRef.current = editingTextId; }, [editingTextId]);
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
     type PlacementMode = { type: ExtendedNoteObjectType, data?: any } | null;
@@ -395,6 +401,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const drawingNodeRef = useRef<any>(null);
     // 各ペインの Konva.Stage 参照。ブラウザズーム時に pixelRatio を再適用して画質劣化(#6)を防ぐ。
     const stageRefs = useRef<(Konva.Stage | null)[]>([null, null, null, null]);
+
+    // テキスト編集を確定して終了する。どの経路（blur/クリック離脱/Enter）から呼ばれても
+    // 入力値(ref)を必ずコミットする。二重呼び出しは prevId=null で無視（冪等）。#06/28-17:04-3
+    const finishTextEditing = useCallback(() => {
+        const id = editingTextIdRef.current;
+        if (!id) return;
+        editingTextIdRef.current = null; // 二重コミット防止（mousedown と blur の両方から呼ばれ得る）
+        updateNoteObject(targetType, displayTargetId, id, { text: editingTextValueRef.current }, true);
+        saveNoteHistory();
+        setEditingTextId(null);
+    }, [targetType, displayTargetId, updateNoteObject, saveNoteHistory]);
     const batchSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const saveHistoryOnceThenSkip = () => {
         if (!batchSaveRef.current) {
@@ -826,7 +843,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
         if (e.target === e.target.getStage()) {
             setSelectedIds([]);
-            setEditingTextId(null);
+            // 編集中テキストは破棄せず確定してから閉じる（mousedown が onBlur より先に走るため）。#06/28-17:04-3
+            finishTextEditing();
             setShapeContextMenu(null);
             setAssetContextMenu(null);
 
@@ -1715,6 +1733,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                         : null;
 
                                                     setEditingTextValue(obj.text ?? '');
+                                                    editingTextValueRef.current = obj.text ?? '';
+                                                    editingTextIdRef.current = obj.id;
                                                     setEditingTextId(obj.id);
                                                     setSelectedIds([]);
                                                 },
@@ -1847,19 +1867,23 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 }
                                             }}
                                             onChange={(e) => {
-                                                // ローカル状態のみ更新（store コミットは blur 時）。全再描画を避けフレーム落ちを防ぐ。
+                                                // ローカル状態のみ更新（store コミットは確定時）。全再描画を避けフレーム落ちを防ぐ。
                                                 setEditingTextValue(e.target.value);
+                                                editingTextValueRef.current = e.target.value;
                                                 const el = e.target;
                                                 el.style.height = 'auto';
                                                 el.style.height = `${el.scrollHeight}px`;
                                             }}
-                                            onBlur={() => {
-                                                updateNoteObject(targetType, displayTargetId, obj.id, { text: editingTextValue }, true);
-                                                saveNoteHistory();
-                                                setEditingTextId(null);
-                                            }}
+                                            onBlur={() => finishTextEditing()}
                                             onKeyDown={(e) => {
-                                                if (e.key === 'Escape') e.currentTarget.blur();
+                                                // #06/28-17:04-4: Enter で確定、Shift+Enter で改行。
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    finishTextEditing();
+                                                } else if (e.key === 'Escape') {
+                                                    e.preventDefault();
+                                                    finishTextEditing();
+                                                }
                                                 e.stopPropagation();
                                             }}
                                             autoFocus

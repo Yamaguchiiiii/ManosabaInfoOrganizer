@@ -21,26 +21,26 @@ const STEPS: TourStep[] = [
     {
         target: 'create-maps',
         mode: 'create',
-        title: 'Create — 経路をつくる',
-        body: <>2F/1F/B1 の 4 ペイン。ホバーしたペインが編集対象フロアです。ノードを置いて接続し、Start/Goal を指定して <b>Save Path</b> で保存します。</>,
+        title: 'Create — 行動経路をつくる',
+        body: <>2F/1F/B1 を同時表示。ホバーしたペインが編集対象です。地点をクリックして Start→Goal を指定、<b>Add Stop</b> で経由地、<b>sync(⏱)</b> で他キャラと合流/すれ違い、<b>Save Path</b> で保存します。</>,
     },
     {
         target: 'animate-playback',
         mode: 'animate',
-        title: 'Animate — 再生する',
-        body: <><Kbd keys={['Space']} /> または操作盤の ▶ で再生／一時停止。操作盤はドラッグで移動でき、速度・再生位置も変えられます。</>,
+        title: 'Animate — 再生して検証',
+        body: <><Kbd keys={['Space']} /> または ▶ で再生／停止。操作盤はドラッグ移動でき、プリセット・速度・再生位置を調整。右下の事件ノートに状況メモを重ねられます。</>,
     },
     {
         target: 'note-tabs',
         mode: 'note',
         title: 'Note — 推理を整理する',
-        body: <>全体／事件／キャラクター／メモの 4 種類。Canvas に図形・テキスト・画像を配置。<Kbd keys={['Mod', 'Z']} /> や <Kbd keys={['Delete']} /> も使えます。</>,
+        body: <>全体／事件／キャラクター／メモの 4 種。図形・テキスト・画像（立ち絵）を配置し、複数選択・グループ化・コピー/貼り付け・<Kbd keys={['Mod', 'Z']} /> に対応します。</>,
     },
     {
         target: 'help-button',
-        title: 'いつでもヘルプ',
+        title: 'すべての機能はここから',
         placement: 'top',
-        body: <>この <b>?</b> ボタン（または <Kbd keys={['F1']} />）でショートカット一覧とクイックスタートをいつでも開けます。</>,
+        body: <>サイドバー右下の <b>?</b>（または <Kbd keys={['F1']} /> / <Kbd keys={['Shift', '/']} />）で、全機能の説明とショートカット一覧をいつでも開けます。</>,
     },
 ];
 
