@@ -545,20 +545,31 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // オブジェクトのドラッグ確定処理（#4: 4ペインをまたぐ移動に対応）。
     // グリッド編集中に別ペイン上でドロップされたら、対象（グループなら全メンバー）を
     // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
-    const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, scale: number) => {
+    const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, _scale: number) => {
         const evt: MouseEvent | undefined = e?.evt;
+        const rawX = e.target.x();
+        const rawY = e.target.y();
         // 事件ノート(preset)のみ基準範囲[0,1200]×[0,800]外へ出さない。それ以外(fill)は自由配置。
+        // クランプは「最終配置位置」に対して行う（ドラッグ途中値をクランプすると跨ぎ移動の計算が壊れるため）。
         const clampRange = targetType === 'preset';
-        const localX = clampRange ? Math.max(0, Math.min(CANVAS_BASE_W, e.target.x())) : e.target.x();
-        const localY = clampRange ? Math.max(0, Math.min(CANVAS_BASE_H, e.target.y())) : e.target.y();
-        // dx,dy だけ全体を平行移動する（グループは全メンバー、単体は自身）。
-        // extra に canvasIndex を含めると移動先ペインへ付け替えられる。
+        const clampX = (v: number) => clampRange ? Math.max(0, Math.min(CANVAS_BASE_W, v)) : v;
+        const clampY = (v: number) => clampRange ? Math.max(0, Math.min(CANVAS_BASE_H, v)) : v;
+
+        // 移動対象: グループならグループ全員、複数選択中なら選択全員、それ以外は自分のみ。#06/28-14:10-3
+        // ソースペイン(sourceIndex)のオブジェクトに限定して、別ペインのドラッグでも正しく対象を取る。
+        const srcPaneObjs = objects.filter(o => (o.canvasIndex || 0) === sourceIndex);
+        const dragSet: NoteObject[] = obj.groupId
+            ? srcPaneObjs.filter(o => o.groupId === obj.groupId)
+            : (selectedIds.length > 1 && selectedIds.includes(obj.id))
+                ? srcPaneObjs.filter(o => selectedIds.includes(o.id))
+                : [obj];
+
+        // dx,dy だけ dragSet 全体を平行移動する。extra に canvasIndex を含めると移動先ペインへ付け替える。
         const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
             saveHistoryOnceThenSkip();
-            if (obj.groupId) {
-                const groupObjs = currentCanvasObjects.filter(o => o.groupId === obj.groupId);
+            if (dragSet.length > 1) {
                 updateNoteObjects(targetType, displayTargetId,
-                    groupObjs.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy, ...extra } })));
+                    dragSet.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy, ...extra } })));
             } else {
                 updateNoteObject(targetType, displayTargetId, obj.id, { x: (obj.x ?? 0) + dx, y: (obj.y ?? 0) + dy, ...extra }, true);
             }
@@ -572,23 +583,30 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             });
 
             if (targetPane !== -1 && targetPane !== sourceIndex) {
-                // ドロップ時にマウス位置へ原点を合わせると「掴んだ位置」のズレぶん飛んでしまう。
-                // 代わりに、ドラッグ後のオブジェクト原点(localX)を保ったまま、
-                // 元ペインと移動先ペインの画面上のオフセット差ぶんだけ論理座標を平行移動する。
-                // これで「見えている位置のまま」移動先キャンバスへ付け替わる。
-                const srcRect = paneRefs.current[sourceIndex]?.getBoundingClientRect();
-                const tgtRect = paneRefs.current[targetPane]!.getBoundingClientRect();
-                const offX = srcRect ? (srcRect.left - tgtRect.left) / scale : 0;
-                const offY = srcRect ? (srcRect.top - tgtRect.top) / scale : 0;
-                applyMove((localX - (obj.x ?? 0)) + offX, (localY - (obj.y ?? 0)) + offY, { canvasIndex: targetPane });
-                setSelectedIds([]);
-                return;
+                // 跨ぎ移動: 「見えている画面位置のまま」移動先ペインの論理座標へ変換する。
+                // Stageコンテナの画面矩形とLayerのscale/offsetを使って正確に変換（#06/28-14:47-1）。
+                const srcStage = stageRefs.current[sourceIndex];
+                const tgtStage = stageRefs.current[targetPane];
+                const sLayer = srcStage?.getLayers()[0];
+                const tLayer = tgtStage?.getLayers()[0];
+                if (srcStage && tgtStage && sLayer && tLayer) {
+                    const srcBox = srcStage.container().getBoundingClientRect();
+                    const tgtBox = tgtStage.container().getBoundingClientRect();
+                    // オブジェクト原点の画面座標（ドラッグ後の生の論理座標 rawX を使う＝クランプ前）
+                    const screenX = srcBox.left + rawX * sLayer.scaleX() + sLayer.x();
+                    const screenY = srcBox.top + rawY * sLayer.scaleY() + sLayer.y();
+                    // 画面→移動先Layerの論理座標
+                    const newX = clampX((screenX - tgtBox.left - tLayer.x()) / tLayer.scaleX());
+                    const newY = clampY((screenY - tgtBox.top - tLayer.y()) / tLayer.scaleY());
+                    applyMove(newX - (obj.x ?? 0), newY - (obj.y ?? 0), { canvasIndex: targetPane });
+                    return;
+                }
             }
         }
 
-        // 同一ペイン内: 通常の移動として確定
-        applyMove(localX - (obj.x ?? 0), localY - (obj.y ?? 0));
-    }, [isGridMode, isGridEditMode, compactMode, currentCanvasObjects, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
+        // 同一ペイン内: 通常の移動として確定（最終位置をクランプ）
+        applyMove(clampX(rawX) - (obj.x ?? 0), clampY(rawY) - (obj.y ?? 0));
+    }, [isGridMode, isGridEditMode, compactMode, objects, selectedIds, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
 
     // カラーピッカー/スライダーなど「連続入力」のコミットを間引く（先頭で即時1回＋末尾で最終値）。
     // これをしないと、ドラッグ中に毎フレーム updateNoteObject→キャンバス全再描画が走り、
@@ -1647,22 +1665,25 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             const isSelected = selectedIds.includes(obj.id);
                                             if (obj.id === editingTextId) return null;
 
-                                            // グループドラッグ: ドラッグ中に同グループの他メンバーを追従させる
-                                            const groupDragHandlers = obj.groupId ? {
+                                            // グループ/複数選択ドラッグ: ドラッグ中に他メンバー（グループ全員 or 選択全員）を追従させる。#06/28-14:10-3
+                                            const followMembers = obj.groupId
+                                                ? objs.filter(o => o.groupId === obj.groupId && o.id !== obj.id)
+                                                : (selectedIds.length > 1 && selectedIds.includes(obj.id))
+                                                    ? objs.filter(o => selectedIds.includes(o.id) && o.id !== obj.id)
+                                                    : [];
+                                            const groupDragHandlers = followMembers.length > 0 ? {
                                                 onDragMove: (e: any) => {
                                                     const dx = e.target.x() - (obj.x ?? 0);
                                                     const dy = e.target.y() - (obj.y ?? 0);
-                                                    const stage = trRefs.current[index]?.getStage();
-                                                    currentCanvasObjects
-                                                        .filter(o => o.groupId === obj.groupId && o.id !== obj.id)
-                                                        .forEach(member => {
-                                                            const node = stage?.findOne(`#${member.id}`);
-                                                            if (node) {
-                                                                node.x((member.x ?? 0) + dx);
-                                                                node.y((member.y ?? 0) + dy);
-                                                            }
-                                                        });
-                                                    trRefs.current[index]?.getLayer()?.batchDraw();
+                                                    const stage = stageRefs.current[index];
+                                                    followMembers.forEach(member => {
+                                                        const node = stage?.findOne(`#${member.id}`);
+                                                        if (node) {
+                                                            node.x((member.x ?? 0) + dx);
+                                                            node.y((member.y ?? 0) + dy);
+                                                        }
+                                                    });
+                                                    stage?.getLayers()[0]?.batchDraw();
                                                 },
                                             } : {};
 
@@ -1786,7 +1807,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             )
                                         )}
 
-                                        {isCurrent && (() => {
+                                        {/* #06/28-14:47-2: 4ペイン編集中は全ペインに Transformer を出し、
+                                            ペインを跨いだ複数選択を各ペインで可視化する（current ペインだけだと見えなかった）。 */}
+                                        {(isCurrent || (isGridMode && isGridEditMode)) && (() => {
                                             const isOnlyText = selectedIds.length === 1 && selectedObject?.type === 'text';
                                             return (
                                                 <Transformer
