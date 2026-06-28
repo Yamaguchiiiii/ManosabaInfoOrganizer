@@ -12,6 +12,7 @@ import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
 import { useWaypointPath } from '../hooks/useWaypointPath';
 import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
+import { AdSlot } from './AdSlot';
 import { MergeModal, MergeCandidate } from './modals/MergeModal';
 import { setNavigationGuard } from '../services/navigationGuard';
 
@@ -918,13 +919,8 @@ export const CreateView: React.FC<CreateViewProps> = ({
                     onEdgeContextMenu={handleEdgeContextMenu}
                 />
             ))}
-            {/* 右下: ハウス広告枠（画像＋外部リンク）。広告ネットワークはWeb版のみ別途差し込む想定。 */}
-            <div style={{ position: 'relative', border: '2px solid #333', borderRadius: 4, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                <div style={{ color: '#555', fontSize: 13, textAlign: 'center', lineHeight: 1.6, userSelect: 'none' }}>
-                    <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.7 }}>AD</div>
-                    広告スペース
-                </div>
-            </div>
+            {/* 右下: 広告枠。Web版はAdSense、デスクトップ/未設定時はハウス枠にフォールバック。 */}
+            <AdSlot />
         </div>
 
         <WaypointPanel
