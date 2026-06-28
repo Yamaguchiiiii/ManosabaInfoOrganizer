@@ -372,6 +372,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // コピー/ペースト用クリップボード（オブジェクトの属性を保持したまま複製する）
     const [clipboard, setClipboard] = useState<NoteObject[]>([]);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
+    // #06/28-14:10-4: テキスト編集中はローカル状態で持ち、確定(blur)時のみ store にコミットする。
+    // 1キーストロークごとに updateNoteObject→全オブジェクト再描画していたためフレーム落ちしていた。
+    const [editingTextValue, setEditingTextValue] = useState('');
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
     type PlacementMode = { type: ExtendedNoteObjectType, data?: any } | null;
@@ -1671,14 +1674,18 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 // ドラッグ確定はグループ/単体ともに統一ハンドラへ（#4 ペイン跨ぎ移動対応）
                                                 onDragEnd: (e: any) => handleObjectDragEnd(e, obj, index, scale),
                                                 onSelect: (e: any) => {
+                                                    const shift = !!e.evt?.shiftKey;
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
 
-                                                    if (isGridMode && isGridEditMode && !isCurrent) {
+                                                    // #06/28-14:10-2: 4ペイン編集中、shift+クリックは別ペインのオブジェクトでも
+                                                    // ペイン跨ぎで複数選択する。currentペインは移さない（移すと選択維持が崩れるため）。
+                                                    if (isGridMode && isGridEditMode && !isCurrent && !shift) {
                                                         setCurrentCanvasIndex(index);
                                                     }
 
                                                     if (placementMode) return;
-                                                    if (e.evt?.shiftKey) {
+                                                    if (shift) {
+                                                        e.evt?.stopPropagation?.();
                                                         setSelectedIds(prev => prev.includes(obj.id) ? prev.filter(id => id !== obj.id) : [...prev, obj.id]);
                                                     } else if (obj.groupId) {
                                                         setSelectedIds(currentCanvasObjects.filter(o => o.groupId === obj.groupId).map(o => o.id));
@@ -1700,6 +1707,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                         ? { width: Math.max(50, textNode.width() * effScale) }
                                                         : null;
 
+                                                    setEditingTextValue(obj.text ?? '');
                                                     setEditingTextId(obj.id);
                                                     setSelectedIds([]);
                                                 },
@@ -1824,7 +1832,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     return (
                                         <textarea
                                             key={editingTextId}
-                                            value={obj.text}
+                                            value={editingTextValue}
                                             ref={(el) => {
                                                 if (el) {
                                                     el.style.height = 'auto';
@@ -1832,12 +1840,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 }
                                             }}
                                             onChange={(e) => {
-                                                updateNoteObject(targetType, displayTargetId, obj.id, { text: e.target.value }, true);
+                                                // ローカル状態のみ更新（store コミットは blur 時）。全再描画を避けフレーム落ちを防ぐ。
+                                                setEditingTextValue(e.target.value);
                                                 const el = e.target;
                                                 el.style.height = 'auto';
                                                 el.style.height = `${el.scrollHeight}px`;
                                             }}
                                             onBlur={() => {
+                                                updateNoteObject(targetType, displayTargetId, obj.id, { text: editingTextValue }, true);
                                                 saveNoteHistory();
                                                 setEditingTextId(null);
                                             }}
