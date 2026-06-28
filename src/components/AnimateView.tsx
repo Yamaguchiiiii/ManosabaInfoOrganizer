@@ -115,6 +115,7 @@ export const AnimateView = () => {
   // Space でアニメーションの再生/一時停止をトグルする（入力欄にフォーカス中は無効）。
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
       if (e.code !== 'Space' && e.key !== ' ') return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;

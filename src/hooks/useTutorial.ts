@@ -20,6 +20,7 @@ export const useTutorial = () => {
     // F1 / Shift+/（=?）でヘルプドロワーを開閉。
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
+            if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
             const t = e.target as HTMLElement | null;
             const tag = t?.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;

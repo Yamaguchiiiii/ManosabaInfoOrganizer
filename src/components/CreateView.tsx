@@ -367,6 +367,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
           if ((e.ctrlKey || e.metaKey) && e.key === 'z' && isGraphEditMode) { e.preventDefault(); undo(); }
           if (e.key === 'Escape' && isGraphEditMode && connectingNodeId) {
               setConnectingNodeId(null);

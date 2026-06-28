@@ -41,7 +41,7 @@ export const PresetSelector: React.FC = () => {
           value={editName}
           onChange={(e) => setEditName(e.target.value)}
           onBlur={handleRenameSave}
-          onKeyDown={(e) => e.key === 'Enter' && handleRenameSave()}
+          onKeyDown={(e) => { if (e.nativeEvent.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') handleRenameSave(); }}
           style={{ 
             background: '#222', border: '1px solid #007acc', color: 'white', 
             padding: '4px 8px', borderRadius: '4px', outline: 'none', fontSize: '0.9rem'
@@ -73,7 +73,7 @@ export const PresetSelector: React.FC = () => {
               <option key={p.id} value={p.id}>{p.name}</option>
           ))}
           <option disabled>──────────</option>
-          <option value="__NEW__">+ New Day...</option>
+          <option value="__NEW__">+ New Episode...</option>
         </select>
       )}
 

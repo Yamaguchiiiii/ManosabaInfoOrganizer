@@ -635,6 +635,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // IME変換中（日本語入力中）はショートカットを発火させない（半角/全角や変換キーを奪わない）。
+            if (e.isComposing || e.keyCode === 229) return;
             if (e.key === 'Escape') {
                 setPlacementMode(null);
                 return;
@@ -1876,6 +1878,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             }}
                                             onBlur={() => finishTextEditing()}
                                             onKeyDown={(e) => {
+                                                // IME変換中（日本語入力中）は一切横取りしない。
+                                                // 変換確定の Enter 等をアプリが奪ってローマ字強制になるのを防ぐ。
+                                                if (e.nativeEvent.isComposing || e.keyCode === 229) {
+                                                    e.stopPropagation();
+                                                    return;
+                                                }
                                                 // #06/28-17:04-4: Enter で確定、Shift+Enter で改行。
                                                 if (e.key === 'Enter' && !e.shiftKey) {
                                                     e.preventDefault();
@@ -2151,6 +2159,7 @@ export const NoteView: React.FC = React.memo(() => {
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
             if (activeNoteTab === 'character' && e.target === document.body) {
                 if (e.key.toLowerCase() === 'a' || e.key === 'ArrowLeft') {
                     setActualCharIndex(prev => (prev - 1 + ICON_FILES.length) % ICON_FILES.length);
@@ -2311,6 +2320,7 @@ export const NoteView: React.FC = React.memo(() => {
                                                 setRenamingPageId(null);
                                             }}
                                             onKeyDown={e => {
+                                                if (e.nativeEvent.isComposing || e.keyCode === 229) return; // IME変換中は確定で奪わない
                                                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                                                 if (e.key === 'Escape') setRenamingPageId(null);
                                             }}

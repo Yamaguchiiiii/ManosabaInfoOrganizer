@@ -19,6 +19,7 @@ export const DialogHost: React.FC = () => {
     useEffect(() => {
         if (!dialog) return;
         const handleKey = (e: KeyboardEvent) => {
+            if (e.isComposing || e.keyCode === 229) return; // IME変換中は確定/取消で奪わない
             if (e.key === 'Escape') {
                 e.preventDefault();
                 // キャンセル相当（cancel ボタンがあればその値、無ければ空文字）
