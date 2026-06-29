@@ -223,8 +223,6 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const [mergeTargetWaypointId, setMergeTargetWaypointId] = useState(""); 
   const [followTargetInfo, setFollowTargetInfo] = useState<FollowTargetInfo | null>(null);
 
-  const [myCurrentTravelTime, setMyCurrentTravelTime] = useState<number>(0);
-
   // ▼ 追加: 同期した地点と時間を保持し、パスが伸びても時間がズレないように追従させるためのステート
   // pathIndex は同期地点が経路上で何番目の訪問かを保持する（同一地点を複数回訪れる経路でアンカーがずれないように）
   const [syncTarget, setSyncTarget] = useState<{ waypointId: string, meetingTime: number, pathIndex?: number } | null>(null);
@@ -542,7 +540,6 @@ export const CreateView: React.FC<CreateViewProps> = ({
           myPathIndex = 0;
       }
       if (myTime === null) { showAlert("到達時刻を計算できませんでした。"); return; }
-      setMyCurrentTravelTime(myTime);
       setMyCurrentSyncPathIndex(myPathIndex);
 
       // 自分の自然な絶対到達時刻。相手キャラのどの訪問(オカレンス)に合流するかの基準にする。
@@ -598,27 +595,39 @@ export const CreateView: React.FC<CreateViewProps> = ({
       
       if (!isEditing) setIsEditing(true);
 
-      // 「自分が相手(同行先)に合わせる」: 合流時刻は相手の到達時刻に揃え、自分の開始時刻だけを
-      // 調整する。相手の開始時刻は変更しない。複数選択時は全員が揃う最も遅い到達に合わせる。#sync-startref
+      // 「自分が相手(同行先)に合わせる」: 合流時刻は相手の到達時刻に揃える。相手は変更しない。
+      // 複数選択時は全員が揃う最も遅い到達に合わせる。#sync-startref
       const meetingTime = Math.max(...targets.map(t => t.arrivalTime));
-      setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime, pathIndex: myCurrentSyncPathIndex >= 0 ? myCurrentSyncPathIndex : undefined });
-      setStartTime(meetingTime - myCurrentTravelTime);
 
-      setSyncConstraints(prev => {
-          const newConstraint: SyncConstraint = {
-              waypointId: mergeTargetWaypointId,
-              waypointName: mergeTargetWaypointName,
-              meetingTime,
-              charIds: targets.map(t => t.charId)
-          };
-          const existingIdx = prev.findIndex(c => c.waypointId === mergeTargetWaypointId);
-          if (existingIdx !== -1) {
-              const next = [...prev];
-              next[existingIdx] = newConstraint;
-              return next;
-          }
-          return [...prev, newConstraint];
-      });
+      // この合流が自経路の waypoint の何回目の訪問か（複数地点sync の時刻アンカー解決に使う）
+      const myOccurrence = displayPath
+          .slice(0, myCurrentSyncPathIndex >= 0 ? myCurrentSyncPathIndex : displayPath.length)
+          .filter(id => id === mergeTargetWaypointId).length;
+
+      const newConstraint: SyncConstraint = {
+          waypointId: mergeTargetWaypointId,
+          waypointName: mergeTargetWaypointName,
+          meetingTime,
+          charIds: targets.map(t => t.charId),
+          occurrence: myOccurrence,
+      };
+      const existingIdx = syncConstraints.findIndex(c => c.waypointId === mergeTargetWaypointId && (c.occurrence ?? 0) === myOccurrence);
+      const nextConstraints = existingIdx !== -1
+          ? syncConstraints.map((c, i) => i === existingIdx ? newConstraint : c)
+          : [...syncConstraints, newConstraint];
+      setSyncConstraints(nextConstraints);
+
+      // 複数地点sync: 開始時刻は「最も手前の合流地点」に揃える（最初の区間は通常速度）。
+      // それ以降の区間は Animate 側がアンカー間で速度を変えて各合流時刻を満たす。
+      const idxOf = (sc: SyncConstraint) => {
+          const occ = sc.occurrence ?? 0; let cnt = 0;
+          for (let i = 0; i < displayPath.length; i++) { if (displayPath[i] === sc.waypointId) { if (cnt === occ) return i; cnt++; } }
+          return displayPath.indexOf(sc.waypointId);
+      };
+      let earliest = nextConstraints[0]; let earliestIdx = idxOf(earliest);
+      nextConstraints.forEach(c => { const pi = idxOf(c); if (pi >= 0 && (earliestIdx < 0 || pi < earliestIdx)) { earliest = c; earliestIdx = pi; } });
+      setSyncTarget({ waypointId: earliest.waypointId, meetingTime: earliest.meetingTime, pathIndex: earliestIdx >= 0 ? earliestIdx : undefined });
+
       setIsMergeModalOpen(false);
 
       const followTarget = targets[0];

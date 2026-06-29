@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { useAppStore, usePlaybackStore, ICON_FILES, MapNode, CharacterTimelineData } from '../store';
-import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity, resolveStartTimes } from '../utils/animationUtils';
+import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity, resolveStartTimes, computeAnchors, TimeAnchor } from '../utils/animationUtils';
 
 export const FLOOR_IDS = ['1F', '2F', 'B1'] as const;
 export type AnimFloorId = typeof FLOOR_IDS[number];
@@ -28,7 +28,7 @@ function toCharacterTimelineData(raw: unknown): CharacterTimelineData | null {
 
 type ActivePosition = PositionWithVelocity & { isFinished: boolean };
 
-type PathCacheEntry = { charData: CharacterTimelineData; cached: PrecomputedPath };
+type PathCacheEntry = { charData: CharacterTimelineData; cached: PrecomputedPath; anchors: TimeAnchor[] };
 
 // charNodeRefs のキーは "${icon}:${floorId}" の形式（例: "1_sakuraba_ema.png:1F"）
 export const useAnimationPositions = (
@@ -83,11 +83,17 @@ export const useAnimationPositions = (
         const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
 
         charDataList.forEach(({ icon, charData }) => {
+            const cached = precomputePath(charData.path, nodesMap);
+            // アンカーは絶対時刻（解決済み startTime + 合流 meetingTime）で作り、正規化 offset 分だけ後でシフトする。
+            const anchorsAbs = computeAnchors(charData, cached);
             const normalized: CharacterTimelineData = offset !== 0
                 ? { ...charData, startTime: (charData.startTime ?? 0) - offset }
                 : charData;
-            pathCacheRef.current.set(icon, { charData: normalized, cached: precomputePath(normalized.path, nodesMap) });
-            const end = (normalized.startTime ?? 0) + (normalized.duration ?? 0);
+            const anchors = offset !== 0
+                ? anchorsAbs.map(a => ({ cumDist: a.cumDist, time: a.time - offset }))
+                : anchorsAbs;
+            pathCacheRef.current.set(icon, { charData: normalized, cached, anchors });
+            const end = anchors.length > 0 ? anchors[anchors.length - 1].time : 0;
             if (end > max) max = end;
         });
         maxDurationRef.current = max;
@@ -154,7 +160,7 @@ export const useAnimationPositions = (
                 const entry = pathCacheRef.current.get(icon);
                 if (!entry) return;
 
-                const pos = calculateRawPositionCached(entry.charData, currentTime, entry.cached);
+                const pos = calculateRawPositionCached(entry.charData, currentTime, entry.cached, entry.anchors);
                 if (!pos || !pos.visible) return;
 
                 let { vx, vy } = pos;

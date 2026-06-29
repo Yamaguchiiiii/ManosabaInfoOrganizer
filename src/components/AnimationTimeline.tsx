@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect } from 'react';
 import { useAppStore, usePlaybackStore } from '../store';
-import { resolveStartTimes } from '../utils/animationUtils';
+import { resolveStartTimes, normalizeTimelineData, precomputePath, computeAnchors } from '../utils/animationUtils';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
@@ -37,29 +37,23 @@ export const AnimationTimeline: React.FC = () => {
     const maxDuration = useMemo(() => {
         if (!activePreset || !activePreset.data) return 300;
 
-        const entries = Object.entries(activePreset.data) as [string, any][];
-        // 開始条件(startRef)も含めて開始時刻を解決し、Animate と同じ時間軸にする。
+        // Animate と同じく、開始条件(startRef)解決＋合流アンカーで各キャラの開始/終了時刻を求める。
         const resolvedStarts = resolveStartTimes(activePreset.data, nodes);
-        const startOf = (id: string, val: any) => resolvedStarts[id] ?? ((val && val.startTime) || 0);
-
-        // useAnimationPositions と同じく startTime 最小値を offset として除去し、
-        // タイムラインの長さを正規化後のアニメーションと一致させる
-        let minStart = Infinity;
-        entries.forEach(([id, val]) => {
-            const start = startOf(id, val);
-            if (start < minStart) minStart = start;
+        const spans: { start: number; end: number }[] = [];
+        Object.entries(activePreset.data).forEach(([id, raw]) => {
+            const base = normalizeTimelineData(raw);
+            if (!base) return;
+            const charData = { ...base, startTime: resolvedStarts[id] ?? base.startTime ?? 0 };
+            const cached = precomputePath(charData.path, nodes);
+            const anchors = computeAnchors(charData, cached);
+            if (anchors.length === 0) return;
+            spans.push({ start: anchors[0].time, end: anchors[anchors.length - 1].time });
         });
+        if (spans.length === 0) return 300;
+
+        const minStart = Math.min(...spans.map(s => s.start));
         const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
-
-        let max = 0;
-        entries.forEach(([id, val]) => {
-            const start = startOf(id, val) - offset;
-            const dur = val && val.duration !== undefined ? val.duration : (Array.isArray(val) ? val.length * 30 : 0);
-            const end = start + dur;
-            if (end > max) {
-                max = end;
-            }
-        });
+        const max = Math.max(...spans.map(s => s.end - offset));
 
         return Math.max(max + 60, 300);
     }, [activePreset, nodes]);

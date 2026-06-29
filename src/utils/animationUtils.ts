@@ -1,6 +1,6 @@
 import { MapNode } from '../store';
 import { CharacterTimelineData } from '../store';
-import { WAIT_VIRTUAL_DISTANCE } from '../constants';
+import { WAIT_VIRTUAL_DISTANCE, MOVEMENT_SPEED_PX_PER_SEC, TARGET_FPS } from '../constants';
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -174,6 +174,7 @@ export interface PrecomputedPath {
     pathNodes: MapNode[];
     distances: number[];
     totalDistance: number;
+    cumulative: number[]; // cumulative[i] = pathNodes[i] までの累積距離（先頭=0）
 }
 
 export const precomputePath = (
@@ -182,8 +183,11 @@ export const precomputePath = (
 ): PrecomputedPath => {
     const pathNodes = path.map(id => getNode(id, allNodes)).filter((n): n is MapNode => !!n);
     const distances: number[] = [];
+    const cumulative: number[] = [];
     let totalDistance = 0;
-    for (let i = 0; i < pathNodes.length - 1; i++) {
+    for (let i = 0; i < pathNodes.length; i++) {
+        cumulative.push(totalDistance);
+        if (i >= pathNodes.length - 1) break;
         const nodeA = pathNodes[i];
         const nodeB = pathNodes[i + 1];
         let d = 0;
@@ -197,18 +201,73 @@ export const precomputePath = (
         distances.push(d);
         totalDistance += d;
     }
-    return { pathNodes, distances, totalDistance };
+    return { pathNodes, distances, totalDistance, cumulative };
+};
+
+// 時刻アンカー: 経路の累積距離 cumDist の地点に、絶対時刻 time に到達する。
+// アンカー間は距離比例（区間ごとに速度が異なる＝複数地点の合流を満たす）。
+export interface TimeAnchor { cumDist: number; time: number; }
+
+// charData(startTime/duration/syncConstraints) と cached からアンカー列を作る。
+// 合流が無ければ [start, end]（従来の一定速度）。合流があれば各合流地点を時刻アンカーにし、
+// 末尾区間は通常速度。時刻は単調増加にクランプ（手前への合流時刻は無効）。
+export const computeAnchors = (charData: CharacterTimelineData, cached: PrecomputedPath): TimeAnchor[] => {
+    const startTime = charData.startTime ?? 0;
+    const { cumulative, totalDistance, pathNodes } = cached;
+    const anchors: TimeAnchor[] = [{ cumDist: 0, time: startTime }];
+
+    const syncs = charData.syncConstraints;
+    if (!syncs || syncs.length === 0) {
+        anchors.push({ cumDist: totalDistance, time: startTime + (charData.duration ?? 0) });
+        return anchors;
+    }
+
+    const mapped = syncs.map(sc => {
+        const occ = (sc as { occurrence?: number }).occurrence ?? 0;
+        let count = 0, idx = -1;
+        for (let i = 0; i < pathNodes.length; i++) {
+            if (pathNodes[i].id === sc.waypointId) {
+                if (count === occ) { idx = i; break; }
+                count++;
+            }
+        }
+        if (idx === -1) idx = pathNodes.findIndex(n => n.id === sc.waypointId);
+        return { idx, time: sc.meetingTime };
+    }).filter(m => m.idx > 0).sort((a, b) => a.idx - b.idx);
+
+    let prevTime = startTime;
+    let prevCum = 0;
+    for (const m of mapped) {
+        const cum = cumulative[m.idx] ?? totalDistance;
+        if (cum <= prevCum + 0.001) continue; // 同一/手前の地点は無視
+        let t = m.time;
+        if (t <= prevTime) t = prevTime + 1; // 単調増加クランプ
+        anchors.push({ cumDist: cum, time: t });
+        prevTime = t; prevCum = cum;
+    }
+
+    // 末尾区間は通常速度
+    const speedPerFrame = MOVEMENT_SPEED_PX_PER_SEC / TARGET_FPS;
+    const last = anchors[anchors.length - 1];
+    if (last.cumDist < totalDistance - 0.001) {
+        const remTime = (totalDistance - last.cumDist) / speedPerFrame;
+        anchors.push({ cumDist: totalDistance, time: last.time + Math.max(remTime, 1) });
+    }
+    return anchors;
 };
 
 export const calculateRawPositionCached = (
     charData: CharacterTimelineData,
     currentTime: number,
-    cached: PrecomputedPath
+    cached: PrecomputedPath,
+    anchors: TimeAnchor[]
 ): { x: number; y: number; floor: string; visible: boolean; vx: number; vy: number; isFinished: boolean } | null => {
-    const { path, startTime, duration } = charData;
+    const { path } = charData;
     const { pathNodes, distances, totalDistance } = cached;
 
-    if (!path || path.length === 0 || pathNodes.length === 0) return null;
+    if (!path || path.length === 0 || pathNodes.length === 0 || anchors.length === 0) return null;
+
+    const startTime = anchors[0].time;
 
     if (currentTime < startTime) {
         const startNode = pathNodes[0];
@@ -222,10 +281,20 @@ export const calculateRawPositionCached = (
         return { x: node.x, y: node.y, floor: node.floor, visible: true, vx: 0, vy: 0, isFinished: false };
     }
 
-    const rawProgress = duration > 0 ? (currentTime - startTime) / duration : 1;
-    const progress = Math.min(Math.max(rawProgress, 0), 1);
-    const isFinished = rawProgress >= 1.0;
-    const targetDistance = totalDistance * progress;
+    // アンカー列から「現在時刻に対応する累積距離」を求める（アンカー間は距離比例＝区間ごとの速度）。
+    const lastAnchor = anchors[anchors.length - 1];
+    const isFinished = currentTime >= lastAnchor.time;
+    let targetDistance: number;
+    if (isFinished) {
+        targetDistance = totalDistance;
+    } else {
+        let ai = 0;
+        while (ai < anchors.length - 1 && currentTime > anchors[ai + 1].time) ai++;
+        const a = anchors[ai];
+        const b = anchors[ai + 1];
+        const segT = b.time > a.time ? (currentTime - a.time) / (b.time - a.time) : 1;
+        targetDistance = a.cumDist + (b.cumDist - a.cumDist) * segT;
+    }
 
     let currentDistSum = 0;
     for (let i = 0; i < distances.length; i++) {
@@ -239,7 +308,7 @@ export const calculateRawPositionCached = (
             const y = nodeA.y + (nodeB.y - nodeA.y) * segmentProgress;
             const vx = nodeB.x - nodeA.x;
             const vy = nodeB.y - nodeA.y;
-            return { x, y, floor: nodeA.floor, visible: true, vx, vy, isFinished: isFinished && progress === 1 };
+            return { x, y, floor: nodeA.floor, visible: true, vx, vy, isFinished };
         }
         currentDistSum += segmentDist;
     }

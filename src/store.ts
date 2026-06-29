@@ -48,6 +48,9 @@ export interface SyncConstraint {
     waypointName: string;
     meetingTime: number;
     charIds: string[];
+    // このキャラ自身の経路における waypointId の何回目の訪問で合流するか（0始まり）。
+    // 複数地点sync時、合流地点を時刻アンカーに解決するために使う。
+    occurrence?: number;
 }
 
 // 開始条件（相対参照）: 「基準キャラ(charId)が地点(nodeId)の occurrence 回目の visit に
