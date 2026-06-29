@@ -6,7 +6,7 @@ import { MapImage } from './common/MapElements';
 import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
 import { SuggestionSidebar } from './common/SuggestionSidebar';
-import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeArrivalOccurrences } from '../utils/animationUtils';
+import { calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeArrivalOccurrences, resolveStartTimes } from '../utils/animationUtils';
 
 import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
@@ -548,10 +548,17 @@ export const CreateView: React.FC<CreateViewProps> = ({
       // 自分の自然な絶対到達時刻。相手キャラのどの訪問(オカレンス)に合流するかの基準にする。
       const myAbsArrival = startTime + myTime;
 
+      // 相手キャラの実開始時刻は startRef により動的に決まるため、保存済み startTime ではなく
+      // 解決後の開始時刻で到達時刻を計算する（startRef を使う相手とも正しく合流できるように）。#sync-startref
+      const resolvedStarts = resolveStartTimes(activePreset.data, nodes);
+
       const candidates: MergeCandidate[] = [];
       Object.entries(activePreset.data).forEach(([cid, data]: [string, any]) => {
           if (selectedIcons.includes(cid)) return;
-          const cData = Array.isArray(data) ? { path: data, startTime: 0, duration: computeDuration(data, nodes) } : data;
+          const resolvedStart = resolvedStarts[cid] ?? (Array.isArray(data) ? 0 : (data?.startTime || 0));
+          const cData = Array.isArray(data)
+              ? { path: data, startTime: resolvedStart, duration: computeDuration(data, nodes) }
+              : { ...data, startTime: resolvedStart };
           // 相手キャラがこの地点を通る「全ての訪問」を取得し、自分の到達時刻に最も近い訪問を合流点に選ぶ。
           // 従来は indexOf(最初の訪問)固定だったため、同一地点を複数回通る複雑Syncで時刻がずれていた。
           // 最も近い訪問を選ぶことで、相手の他の予定（別Sync等）を壊しにくくなる。
@@ -591,20 +598,11 @@ export const CreateView: React.FC<CreateViewProps> = ({
       
       if (!isEditing) setIsEditing(true);
 
-      const isFirstSync = syncConstraints.length === 0;
-      const myAbsArrival = startTime + myCurrentTravelTime;
-
-      let meetingTime: number;
-      if (isFirstSync) {
-          // 1回目: 全員の到達時刻の最大値を合流時刻とし、自分のstartTimeも調整する
-          const allArrivalTimes = [myAbsArrival, ...targets.map(t => t.arrivalTime)];
-          meetingTime = Math.max(...allArrivalTimes);
-          setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime, pathIndex: myCurrentSyncPathIndex >= 0 ? myCurrentSyncPathIndex : undefined });
-          setStartTime(meetingTime - myCurrentTravelTime);
-      } else {
-          // 2回目以降: startTimeは1回目のアンカーで固定。自分の自然到達時刻を合流時刻とする
-          meetingTime = myAbsArrival;
-      }
+      // 「自分が相手(同行先)に合わせる」: 合流時刻は相手の到達時刻に揃え、自分の開始時刻だけを
+      // 調整する。相手の開始時刻は変更しない。複数選択時は全員が揃う最も遅い到達に合わせる。#sync-startref
+      const meetingTime = Math.max(...targets.map(t => t.arrivalTime));
+      setSyncTarget({ waypointId: mergeTargetWaypointId, meetingTime, pathIndex: myCurrentSyncPathIndex >= 0 ? myCurrentSyncPathIndex : undefined });
+      setStartTime(meetingTime - myCurrentTravelTime);
 
       setSyncConstraints(prev => {
           const newConstraint: SyncConstraint = {
@@ -620,25 +618,6 @@ export const CreateView: React.FC<CreateViewProps> = ({
               return next;
           }
           return [...prev, newConstraint];
-      });
-
-      targets.forEach(target => {
-          const newTargetStartTime = meetingTime - target.travelTime;
-          const targetPath = target.data.path || (Array.isArray(target.data) ? target.data : []);
-          const targetWaypoints = target.data.waypoints || [];
-
-          if (newTargetStartTime !== target.currentStartTime) {
-              saveCharacterAnimation(
-                  activePresetId,
-                  target.charId,
-                  targetPath,
-                  targetWaypoints,
-                  newTargetStartTime,
-                  target.data.syncConstraints,
-                  target.data.startRef ?? null,
-                  target.data.showBeforeStart ?? true
-              );
-          }
       });
       setIsMergeModalOpen(false);
 
