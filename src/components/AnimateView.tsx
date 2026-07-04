@@ -8,7 +8,6 @@ import { AnimationTimeline } from './AnimationTimeline';
 import { NotesPanel } from './NotesPanel';
 import '../styles/AnimateView.scss';
 import { useAppStore, usePlaybackStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
-import { MIN_SIDEBAR_WIDTH } from '../hooks/useSidebarResizer';
 import { useAnimationPositions, AnimFloorId } from '../hooks/useAnimationPositions';
 import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
@@ -38,7 +37,6 @@ const MovingCharIcon = React.memo(React.forwardRef<Konva.Group, { icon: string, 
 ));
 
 export const AnimateView = () => {
-  const setSidebarWidth = useAppStore(state => state.setSidebarWidth);
   const presets         = useAppStore(state => state.presets);
   const activePresetId  = useAppStore(state => state.activePresetId);
   const nodes           = useAppStore(state => state.nodes);
@@ -109,10 +107,8 @@ export const AnimateView = () => {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
   }, [isDraggingTimeline]);
 
-  useEffect(() => {
-    // 同値なら set しない（無駄な persist 起動と Sidebar 再レンダリングを避ける）。#06/30-10, refactoring A-8-4
-    if (useAppStore.getState().sidebarWidth !== MIN_SIDEBAR_WIDTH) setSidebarWidth(MIN_SIDEBAR_WIDTH);
-  }, [setSidebarWidth]);
+  // ui.md P2: ContextPanel は折りたたみで幅を制御できるため、Animate での強制縮小は廃止。
+  // （sidebarWidth の強制 set をやめ、ユーザーのパネル幅/折りたたみ設定を尊重する）
 
   // Space でアニメーションの再生/一時停止をトグルする（入力欄にフォーカス中は無効）。
   useEffect(() => {

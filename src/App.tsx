@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FloorId, useAppStore } from './store';
-import { Sidebar } from './components/Sidebar';
-import { TopBar } from './components/TopBar';
+import { NavRail } from './components/NavRail';
+import { ContextPanel } from './components/ContextPanel';
+import { ContextBar } from './components/ContextBar';
 import { CreateView } from './components/CreateView';
 import { AnimateView } from './components/AnimateView';
 import { NoteView } from './components/NoteView';
@@ -21,6 +22,7 @@ function App() {
     const activeFloor = useAppStore(state => state.activeFloor);
     const setActiveFloor = useAppStore(state => state.setActiveFloor);
     const sidebarWidth = useAppStore(state => state.sidebarWidth);
+    const contextPanelCollapsed = useAppStore(state => state.contextPanelCollapsed);
 
     const [selectedIcons, setSelectedIcons] = useState<string[]>([]);
     // #06/30-8: ページ遷移中はロゴ+「Loading ...」オーバーレイを表示する（旧: workspace の黒フェード）
@@ -96,19 +98,20 @@ function App() {
             className="app-container" 
             style={{ '--sidebar-width': `${sidebarWidth}px`, '--scale-factor': sidebarWidth / 250 } as React.CSSProperties}
         >
-            <Sidebar
-                selectedIcons={selectedIcons}
-                onIconSelect={handleIconSelect}
-                onModeChange={changeModeWithTransition}
-            />
+            <NavRail onModeChange={changeModeWithTransition} />
+
+            {!contextPanelCollapsed && (
+                <ContextPanel
+                    selectedIcons={selectedIcons}
+                    onIconSelect={handleIconSelect}
+                />
+            )}
 
             <div className="main-content">
-                {mode !== 'animate' && mode !== 'note' && (
-                    <TopBar
-                        selectedIcons={selectedIcons}
-                        onIconSelect={handleIconSelect}
-                    />
-                )}
+                <ContextBar
+                    selectedIcons={selectedIcons}
+                    onIconSelect={handleIconSelect}
+                />
 
                 <div className="workspace">
                     {mode === 'create' ? (

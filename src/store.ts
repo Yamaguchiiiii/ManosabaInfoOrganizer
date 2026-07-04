@@ -141,6 +141,8 @@ export interface AppState {
     addNode: (node: MapNode) => void; updateNode: (id: string, pos: { x:number, y:number }, data?: Partial<MapNode>) => void;
     removeNode: (id: string) => void; removeEdge: (id: string) => void; addEdge: (edge: MapEdge) => void;
     sidebarWidth: number; setSidebarWidth: (width: number) => void;
+    // ContextPanel（旧サイドバー本体）の折りたたみ状態（persist）。ui.md P2
+    contextPanelCollapsed: boolean; setContextPanelCollapsed: (v: boolean) => void;
 
     presets: AnimationPreset[]; activePresetId: string;
     addPreset: () => void; setActivePresetId: (id: string) => void;
@@ -294,6 +296,7 @@ export const useAppStore = create<AppState>()(
         tutorialSeen: false, setTutorialSeen: (v) => set({ tutorialSeen: v }),
         nodes: INITIAL_NODES, edges: INITIAL_EDGES, history: [],
         sidebarWidth: 200, setSidebarWidth: (width) => set({ sidebarWidth: width }),
+        contextPanelCollapsed: false, setContextPanelCollapsed: (v) => set({ contextPanelCollapsed: v }),
 
         presets: [{ id: 'chapter1', name: 'Episode 1', data: {}, deadIcons: [] }],
         activePresetId: 'chapter1',

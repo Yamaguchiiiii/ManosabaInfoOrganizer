@@ -69,9 +69,54 @@ body {
   // calc()内で除算を行うため、単位を外すテクニックを使用
   --scale-factor: calc(var(--sidebar-width) / 250);
 
-  // 左サイドバー
-  .sidebar {
-    // widthはJS側でインラインスタイルとして設定されるためここでは指定しない
+  // 左端ナビゲーションレール（64px固定・ページ切替）。ui.md P2
+  .nav-rail {
+    width: 64px;
+    flex-shrink: 0;
+    background-color: var(--surface-2);
+    border-right: 1px solid $border-color;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 0 64px; // 下は HelpButton の分の余白
+    gap: 6px;
+    user-select: none;
+    -webkit-user-select: none;
+
+    .nav-rail-logo {
+      width: 46px;
+      margin-bottom: 6px;
+      display: flex; align-items: center; justify-content: center;
+      img { width: 100%; height: auto; object-fit: contain; display: block; }
+    }
+
+    .nav-rail-pages { display: flex; flex-direction: column; gap: 4px; width: 100%; align-items: center; }
+
+    .nav-rail-item {
+      width: 56px;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 8px 0 6px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      transition: all 0.15s;
+
+      .nav-rail-icon { font-size: 1.15rem; line-height: 1; }
+      .nav-rail-label { font-size: 0.62rem; letter-spacing: 0.02em; }
+
+      &:hover { background: var(--surface-4); color: #fff; }
+      &.active {
+        background: rgba(124, 92, 255, 0.15);
+        color: #fff;
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+    }
+  }
+
+  // 文脈パネル（旧サイドバー本体）。ページで扱う対象（キャラ/ノート種別）を表示。
+  .context-panel {
     background-color: $bg-sidebar;
     border-right: 1px solid $border-color;
     display: flex;
@@ -83,7 +128,7 @@ body {
     user-select: none;
     -webkit-user-select: none;  //safari chrome
 
-    .sidebar-content {
+    .context-panel-content {
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -95,6 +140,18 @@ body {
       // clamp(最小値, 推奨値(スケール連動), 最大値)
       --dynamic-font-size-base: clamp(12px, calc(14px * var(--scale-factor)), 14px);
       --dynamic-font-size-small: clamp(10px, calc(12px * var(--scale-factor)), 12px);
+
+      .context-panel-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid $border-color;
+
+        .context-panel-title { font-size: 0.8rem; font-weight: bold; color: #ccc; }
+        .collapse-btn {
+          background: transparent; border: 1px solid #555; border-radius: 4px;
+          color: #aaa; cursor: pointer; padding: 2px 7px; font-size: 0.75rem; line-height: 1;
+          &:hover { color: #fff; background: var(--surface-4); }
+        }
+      }
 
       .section-title {
         font-size: var(--dynamic-font-size-small);
@@ -239,36 +296,43 @@ body {
     background-color: $bg-dark;
     overflow: hidden;
 
-    .top-bar {
-      height: 50px;
+    // 全ビュー共通の上部バー（旧 top-bar を吸収）。ui.md P2
+    .context-bar {
+      height: 44px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 20px;
+      gap: 12px;
+      padding: 0 14px;
       border-bottom: 1px solid $border-color;
       background-color: $bg-sidebar;
       flex-shrink: 0;
-
-      // テキスト選択と画像ドラッグを無効化
       user-select: none;
-      -webkit-user-select: none;  //safari chrome
+      -webkit-user-select: none;
 
-      .current-icon-display {
-        display: flex;
-        align-items: center;
-        background-color: #2d2d2d;
-        padding: 4px 10px;
-        border-radius: 20px;
-        border: 1px solid $border-color;
-        margin-left: 15px;
-
-        img {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%; // 丸く切り抜く
-          object-fit: cover;
-          border: 1px solid #555;
+      .context-bar-left {
+        display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+        .expand-btn {
+          background: transparent; border: 1px solid #555; border-radius: 4px;
+          color: #aaa; cursor: pointer; padding: 2px 7px; font-size: 0.75rem; line-height: 1;
+          &:hover { color: #fff; background: var(--surface-4); }
         }
+        .context-bar-title { font-size: 0.9rem; font-weight: bold; color: #ddd; white-space: nowrap; }
+      }
+
+      .context-bar-center {
+        display: flex; align-items: center; gap: 12px;
+        flex: 1; min-width: 0; overflow-x: auto;
+      }
+
+      .context-bar-right { display: flex; align-items: center; flex-shrink: 0; }
+
+      .progress-chip {
+        display: flex; align-items: center; gap: 5px;
+        padding: 2px 8px; border-radius: 15px; flex-shrink: 0;
+        .chip-label { font-size: 0.7rem; font-weight: bold; }
+        &.done { background: #1e3a2f; border: 1px solid var(--success, #10b981); .chip-label { color: var(--success, #10b981); } }
+        &.todo { background: #333; border: 1px solid #555; .chip-label { color: #888; } }
       }
     }
 
