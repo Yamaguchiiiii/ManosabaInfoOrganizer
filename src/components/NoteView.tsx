@@ -7,6 +7,7 @@ import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } f
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 import { putAsset, resolveAssetUrl } from '../services/assetStore';
 import { useAssetUrl } from '../hooks/useAssetUrl';
+import { useViewport } from '../hooks/useViewport';
 import { toast } from '../services/toast';
 import '../styles/NoteView.scss';
 
@@ -337,9 +338,11 @@ export interface CanvasWorkspaceProps {
     // border を持つため false にして二重線・位置ずれを防ぐ。#06/30-3
     sidebarHeaderDivider?: boolean;
     compactMode?: boolean;
+    // compact 時にキャンバス上部へ出す横並びヘッダ（モバイルのプリセット/キャラ選択用）。smartphone.md M1
+    headerBar?: React.ReactNode;
 }
 
-export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false, headerBar }: CanvasWorkspaceProps) => {
     
     const [displayTargetId, setDisplayTargetId] = useState(targetId);
     const [canvasOpacity, setCanvasOpacity] = useState(1);
@@ -1400,6 +1403,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             {renderFloatingTextToolbar()}
             {compactMode && <input type="file" ref={fileInputRef} style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />}
 
+            {/* モバイル: プリセット/キャラ選択の横並びヘッダ（smartphone.md M1） */}
+            {compactMode && headerBar && (
+                <div style={{ flexShrink: 0, display: 'flex', gap: '8px', alignItems: 'center', padding: '6px 8px', overflowX: 'auto', background: 'var(--surface-2, #252526)', borderBottom: '1px solid #333' }}>
+                    {headerBar}
+                </div>
+            )}
+
             {!compactMode && (
                 <div className="char-sidebar">
                     {sidebarHeader && (
@@ -2203,7 +2213,8 @@ export const NoteView: React.FC = React.memo(() => {
     const renameMiscPage = useAppStore(state => state.renameMiscPage);
     const deleteMiscPage = useAppStore(state => state.deleteMiscPage);
     const showConfirm = useAppStore(state => state.showConfirm);
-    
+    const isMobile = useViewport() === 'mobile';
+
     const [displayTab, setDisplayTab] = useState(activeNoteTab);
     const [opacity, setOpacity] = useState(1);
 
@@ -2306,6 +2317,7 @@ export const NoteView: React.FC = React.memo(() => {
                     <CanvasWorkspace
                         targetType="overview"
                         targetId="overview"
+                        compactMode={isMobile}
                     />
                 )}
 
@@ -2314,6 +2326,12 @@ export const NoteView: React.FC = React.memo(() => {
                     <CanvasWorkspace
                         targetType="preset"
                         targetId={actualPresetId}
+                        compactMode={isMobile}
+                        headerBar={isMobile ? (
+                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', minWidth: '160px' }}>
+                                {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                        ) : undefined}
                         sidebarHeader={
                             <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', width: '100%' }}>
                                 {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -2328,6 +2346,25 @@ export const NoteView: React.FC = React.memo(() => {
                         targetType="character"
                         targetId={selectedChar}
                         sidebarHeaderDivider={false}
+                        compactMode={isMobile}
+                        headerBar={isMobile ? (
+                            // モバイル: キャラ選択を横スクロールの丸アイコン列で（smartphone.md M1）
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                                {ICON_FILES.map((icon, idx) => (
+                                    <img
+                                        key={icon}
+                                        src={`./icon/${icon}`}
+                                        alt=""
+                                        onClick={() => setActualCharIndex(idx)}
+                                        style={{
+                                            width: '34px', height: '34px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, cursor: 'pointer',
+                                            border: actualCharIndex === idx ? '2px solid var(--focus, #66b3ff)' : '2px solid transparent',
+                                            opacity: actualCharIndex === idx ? 1 : 0.55,
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        ) : undefined}
                         sidebarHeader={
                             // h3 にすることで .char-sidebar h3 の太字+border-bottom が適用され、
                             // 境界線が「Character の文字」と「アイコン」の間に入る（#06/30-3）
@@ -2363,6 +2400,20 @@ export const NoteView: React.FC = React.memo(() => {
                         <CanvasWorkspace
                             targetType="misc"
                             targetId={actualMiscPageId}
+                            compactMode={isMobile}
+                            headerBar={isMobile ? (
+                                // モバイル: メモ選択+追加（改名/削除はデスクトップの Tools 側）。smartphone.md M1
+                                <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                    <select
+                                        value={actualMiscPageId || ''}
+                                        onChange={e => setActualMiscPageId(e.target.value)}
+                                        style={{ minWidth: '150px', background: '#333', color: 'white', border: '1px solid #555', padding: '6px 8px', borderRadius: '4px' }}
+                                    >
+                                        {notes.miscPages!.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                                    </select>
+                                    <button onClick={() => addMiscPage("New Page")} style={{ background: 'var(--accent, #7c5cff)', border: 'none', color: 'white', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }} title="メモを追加">+</button>
+                                </div>
+                            ) : undefined}
                             sidebarHeader={
                                 <>
                                     <div style={{ display: 'flex', gap: '5px' }}>
