@@ -15,6 +15,8 @@ import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
 import { AdSlot } from './AdSlot';
 import { MergeModal, MergeCandidate } from './modals/MergeModal';
 import { setNavigationGuard } from '../services/navigationGuard';
+import { TOUR_TARGETS } from './tutorial/tourTargets';
+import { formatCharName } from '../utils/charName';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -278,8 +280,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
   const startRefNodeOptions = useMemo(() => {
       const cid = startRef?.charId;
       if (!cid || !activePreset?.data) return [] as { nodeId: string; occurrence: number; label: string }[];
-      const raw: any = activePreset.data[cid];
-      const path: string[] = Array.isArray(raw) ? raw : (raw?.path || []);
+      const path: string[] = activePreset.data[cid]?.path || [];
       // 滞在(連続重複)は1訪問に集約して数える（getNodeVisitTimes と同じ集約）
       const total: Record<string, number> = {};
       { let j = 0; while (j < path.length) { const nid = path[j]; let k = j; while (k + 1 < path.length && path[k + 1] === nid) k++; total[nid] = (total[nid] || 0) + 1; j = k + 1; } }
@@ -316,8 +317,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
   
   const savedPathData = useMemo(() => {
     if (!savedDataRaw) return null;
-      if (Array.isArray(savedDataRaw)) return savedDataRaw as string[];
-      return (savedDataRaw as any).path as string[];
+      return savedDataRaw.path ?? null;
   }, [savedDataRaw]);
 
   useEffect(() => {
@@ -485,7 +485,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   const handleEditPath = () => {
       if (!savedDataRaw) return;
-      const currentData = Array.isArray(savedDataRaw) ? { path: savedDataRaw, waypoints: undefined, startTime: 0 } : savedDataRaw as any;
+      const currentData = savedDataRaw;
 
       if (currentData.waypoints && currentData.waypoints.length > 0) {
           setWaypoints(currentData.waypoints);
@@ -550,12 +550,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
       const resolvedStarts = resolveStartTimes(activePreset.data, nodes);
 
       const candidates: MergeCandidate[] = [];
-      Object.entries(activePreset.data).forEach(([cid, data]: [string, any]) => {
+      Object.entries(activePreset.data).forEach(([cid, data]) => {
           if (selectedIcons.includes(cid)) return;
-          const resolvedStart = resolvedStarts[cid] ?? (Array.isArray(data) ? 0 : (data?.startTime || 0));
-          const cData = Array.isArray(data)
-              ? { path: data, startTime: resolvedStart, duration: computeDuration(data, nodes) }
-              : { ...data, startTime: resolvedStart };
+          const resolvedStart = resolvedStarts[cid] ?? (data.startTime || 0);
+          const cData = { ...data, startTime: resolvedStart };
           // 相手キャラがこの地点を通る「全ての訪問」を取得し、自分の到達時刻に最も近い訪問を合流点に選ぶ。
           // 従来は indexOf(最初の訪問)固定だったため、同一地点を複数回通る複雑Syncで時刻がずれていた。
           // 最も近い訪問を選ぶことで、相手の他の予定（別Sync等）を壊しにくくなる。
@@ -632,7 +630,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
       const followTarget = targets[0];
       const targetWaypoints: Waypoint[] = followTarget.data.waypoints || [];
-      const targetPath: string[] = followTarget.data.path || (Array.isArray(followTarget.data) ? followTarget.data : []);
+      const targetPath: string[] = followTarget.data.path || [];
       
       // 合流地点は handleSyncTime で選んだ訪問（オカレンス）に揃える。
       // これにより「同行できる以降の経由地」も正しい訪問以降だけが対象になる。
@@ -931,7 +929,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
         {/* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
             ホバーされたペインのフロアを編集対象(activeFloor)とする。右下はハウス広告枠。#06/28-3:58-7 */}
-        <div ref={gridRef} data-tour="create-maps" style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
+        <div ref={gridRef} data-tour={TOUR_TARGETS.createMaps} style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
             {(['2F', '1F', 'B1'] as FloorId[]).map((fl, i) => (
                 <FloorPane
                     key={fl}
@@ -1024,15 +1022,6 @@ export const CreateView: React.FC<CreateViewProps> = ({
         onSelect={handleCharSelect} onMultiSelect={handleMultiSelect} />
     </div>
   );
-};
-
-const formatCharName = (charId: string) => {
-    let name = charId.replace(/\.[^/.]+$/, ""); 
-    const parts = name.split('_');
-    if (parts.length > 1 && !isNaN(Number(parts[0]))) {
-        parts.shift(); 
-    }
-    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
 };
 
 const FollowConfirmModal: React.FC<{

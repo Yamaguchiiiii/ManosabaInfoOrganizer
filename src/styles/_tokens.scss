@@ -1,0 +1,47 @@
+// デザイントークン（ui.md P0）。色・余白・寸法を CSS カスタムプロパティで一元管理する。
+// 既存UIは青系(--focus)のまま。新規コンポーネントは --accent(紫) を主アクションに使う。
+// テーマ切替やインラインstyleからの参照を可能にするため SCSS 変数でなく CSS 変数で定義する。
+:root {
+  /* 面（暗い順にレイヤー番号） */
+  --surface-0: #141414;   /* workspace 背景 */
+  --surface-1: #1e1e1e;   /* ビュー背景 */
+  --surface-2: #252526;   /* サイドバー/パネル */
+  --surface-3: #2f2f33;   /* カード/入力欄 */
+  --surface-4: #3a3a40;   /* hover */
+  --border-default: #3e3e42;
+  --border-strong: #55555c;
+
+  /* テキスト */
+  --text-primary: #e6e6e6;
+  --text-secondary: #a9a9b0;
+  --text-disabled: #6b6b72;
+
+  /* アクセント: 魔法少女×法廷 = 夜色+金。既存の青は info/選択(--focus)として維持 */
+  --accent: #7c5cff;            /* 主アクション（紫: 魔法） */
+  --accent-hover: #6a4be6;
+  --focus: #66b3ff;             /* 選択・フォーカス（既存の青系を統合） */
+  --focus-strong: #007acc;
+  --gold: #d4a94f;              /* 見出し飾り・DONE 系 */
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+
+  /* 寸法 */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
+  --radius-1: 4px; --radius-2: 8px; --radius-3: 12px;
+  --hit-target: 32px;           /* デスクトップ最小。タッチは 44px（smartphone.md） */
+
+  /* 文字 */
+  --font-ui: 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  --fs-xs: 0.75rem; --fs-sm: 0.85rem; --fs-md: 1rem; --fs-lg: 1.15rem;
+
+  /* 動き */
+  --dur-fast: 120ms; --dur-med: 200ms; --ease: cubic-bezier(.2, .8, .2, 1);
+
+  /* 重なり（既存コードの数値と整合させる） */
+  --z-panel: 100;
+  --z-float: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+  --z-tour: 100000;
+}

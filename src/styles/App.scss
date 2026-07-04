@@ -1,4 +1,5 @@
 // src/App.scss
+@use './tokens';  // デザイントークン(:root CSS変数)。既存$変数は当面据え置き、新規UIはトークン参照。
 
 // 変数定義
 $bg-dark: #1e1e1e;
@@ -36,6 +37,16 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
   caret-color: auto;
   user-select: text;
   -webkit-user-select: text;
+}
+
+// キーボード操作時のフォーカスリング（ui.md §6 DoD-2: アクセシビリティ）。
+// マウスクリックでは出さない(:focus-visible)。Canvas(Konva)には影響しない。
+button, a, input, select, textarea, [tabindex], [role="button"] {
+  &:focus-visible {
+    outline: 2px solid var(--focus, #66b3ff);
+    outline-offset: 1px;
+    border-radius: 3px;
+  }
 }
 
 body {

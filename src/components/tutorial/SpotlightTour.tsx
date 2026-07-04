@@ -32,7 +32,12 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({ open, steps, onClo
     const measure = useCallback(() => {
         if (!step) return false;
         const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
-        if (!el) { setRect(null); return false; }
+        if (!el) {
+            // 退行の早期検知（#06/30-1: data-tour が消えるとハイライトが出なくなる）
+            if (import.meta.env.DEV) console.warn(`[tour] target not found: [data-tour="${step.target}"]`);
+            setRect(null);
+            return false;
+        }
         const r = el.getBoundingClientRect();
         if (r.width <= 0 && r.height <= 0) { setRect(null); return false; }
         setRect({ top: r.top, left: r.left, width: r.width, height: r.height });

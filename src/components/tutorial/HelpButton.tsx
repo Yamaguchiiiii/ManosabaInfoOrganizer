@@ -1,10 +1,11 @@
 import React from 'react';
+import { TOUR_TARGETS } from './tourTargets';
 
 // いつでもヘルプ＆ショートカットを開く常設ボタン（サイドバーの右下）。
 // 位置は --sidebar-width（.app-container 上の CSS 変数）に追従させ、サイドバー幅が変わっても右下に揃う。
 export const HelpButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     <button
-        data-tour="help-button"
+        data-tour={TOUR_TARGETS.helpButton}
         onClick={onClick}
         title="ヘルプ＆ショートカット (F1 / Shift+/)"
         style={{

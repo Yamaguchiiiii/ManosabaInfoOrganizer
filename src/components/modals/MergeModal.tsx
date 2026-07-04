@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import type { CharacterTimelineData } from '../../store';
+import { formatCharName } from '../../utils/charName';
 
 // マージ候補のデータ型
 export interface MergeCandidate {
@@ -6,7 +8,7 @@ export interface MergeCandidate {
     arrivalTime: number; // 到達予定時刻 (絶対時間)
     travelTime: number;  // 移動にかかる時間 (Duration * progress)
     currentStartTime: number; // 現在設定されている開始時間
-    data: any; // 保存用データ
+    data: CharacterTimelineData; // 保存用データ（正規化済み）
     pathIndex?: number; // 合流に使う「相手キャラの経路上の訪問位置」(同一地点を複数回通る場合の選択結果)
 }
 
@@ -17,14 +19,6 @@ interface MergeModalProps {
     candidates: MergeCandidate[];
     waypointName: string;
 }
-
-// 内部ID("1_sakuraba_ema.png")を読みやすい表示名("Sakuraba Ema")へ整形する
-const formatCharName = (charId: string) => {
-    const base = charId.replace(/\.[^/.]+$/, '');
-    const parts = base.split('_');
-    if (parts.length > 1 && !isNaN(Number(parts[0]))) parts.shift();
-    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-};
 
 // 合流までの所要フレームを「待つ/先着」の関係として読みやすく示す
 const relationLabel = (c: MergeCandidate) => {

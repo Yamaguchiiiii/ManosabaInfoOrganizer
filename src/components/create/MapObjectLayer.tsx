@@ -177,9 +177,9 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                         isPath,
                         opacity: nodeOpacity,
                         draggable: isGraphEditMode,
-                        onClick: (e: any) => onNodeClick(e, node.id),
-                        onMouseEnter: (e: any) => onNodeMouseEnter(e, node.id),
-                        onMouseLeave: (e: any) => onNodeMouseLeave(e, node.id),
+                        onClick: (e: Konva.KonvaEventObject<MouseEvent>) => onNodeClick(e, node.id),
+                        onMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>) => onNodeMouseEnter(e, node.id),
+                        onMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>) => onNodeMouseLeave(e, node.id),
                     };
 
                     // ▼ 修正: ドラッグイベントを親のGroupでキャッチして確実に状態を更新する

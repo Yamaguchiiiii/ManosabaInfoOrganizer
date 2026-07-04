@@ -1,6 +1,8 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
 import { INITIAL_NODES, INITIAL_EDGES, WAIT_VIRTUAL_DISTANCE, MOVEMENT_SPEED_PX_PER_SEC, TARGET_FPS } from './constants';
+import { createIdbPersistStorage } from './persistStorage';
+import { normalizeTimelineData } from './utils/animationUtils';
 
 const saveHistoryNum = 50;
 
@@ -72,7 +74,8 @@ export interface CharacterTimelineData {
 }
 
 export interface AnimationPreset {
-    id: string; name: string; data: Record<string, any>; deadIcons: string[]; note?: string; 
+    // data は onRehydrate で正規化され、常に CharacterTimelineData（旧 string[] 形式は移行済み）。#A-5
+    id: string; name: string; data: Record<string, CharacterTimelineData>; deadIcons: string[]; note?: string;
 }
 
 // ▼▼▼ 修正: 'freehand' を正式な型として追加 ▼▼▼
@@ -125,6 +128,8 @@ export interface AppState {
 
     activeFloor: FloorId; setActiveFloor: (floor: FloorId) => void;
     mode: 'create' | 'animate' | 'note'; setMode: (mode: 'create' | 'animate' | 'note') => void;
+    // モード切替を1回の set にまとめる（setMode+setGraphEditMode+setSkullMode の3連発を排除）。#06/30-10
+    enterMode: (mode: 'create' | 'animate' | 'note') => void;
     activeNoteTab: 'overview' | 'preset' | 'character' | 'misc'; setActiveNoteTab: (tab: 'overview' | 'preset' | 'character' | 'misc') => void;
 
     isGraphEditMode: boolean; setGraphEditMode:(isEdit: boolean) => void;
@@ -150,8 +155,12 @@ export interface AppState {
 
     notes: NoteData;
     noteHistory: NoteData[];
+    noteRedoStack: NoteData[]; // やり直し(Redo)用。undo で退避、新規編集でクリア。#refactoring B-2
     saveNoteHistory: () => void;
     undoNote: () => void;
+    redoNote: () => void;
+    // notes 全体を差し替える（履歴を積まない）。アセット移行など内部処理用。#P2
+    replaceNotes: (notes: NoteData) => void;
     updateOverview: (content: string) => void;
     
     addNoteObject: (targetType: NoteTargetType, targetId: string, obj: NoteObject) => void;
@@ -173,110 +182,10 @@ export interface AppState {
     setHasHydrated: (state: boolean) => void;
 }
 
-const DB_NAME = 'mystery-map-db';
-const STORE_NAME = 'app-state';
-
-const openDB = (): Promise<IDBDatabase> => {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = (event) => {
-            const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
-        };
-        request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-        request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
-    });
-};
-
-// persist の IndexedDB 書き込みをまとめる debounce 間隔(ms)
-const PERSIST_DEBOUNCE_MS = 500;
-
-const idbStorage: StateStorage = {
-    getItem: async (name: string): Promise<string | null> => {
-        try {
-            const db = await openDB();
-            const value = await new Promise<string | undefined>((resolve, reject) => {
-                const transaction = db.transaction(STORE_NAME, 'readonly');
-                const store = transaction.objectStore(STORE_NAME);
-                const request = store.get(name);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            });
-            if (value) return value;
-
-            const localValue = localStorage.getItem(name);
-            if (localValue) {
-                await idbStorage.setItem(name, localValue);
-                localStorage.removeItem(name);
-                return localValue;
-            }
-            return null;
-        } catch (e) { return null; }
-    },
-    // ノートのドラッグ/変形・履歴保存など高頻度の setState ごとに、巨大な state を
-    // 毎回 IndexedDB へ書くとカクつく。書き込みをまとめる:
-    //  ・直列化結果が前回と同一なら書かない（noteHistory 等 partialize 除外のみの変更を無視）
-    //  ・異なる場合も PERSIST_DEBOUNCE_MS 待って最後の値を1回だけ書く（連続編集を集約）
-    setItem: (() => {
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        let lastValue: string | null = null;
-        let pendingName: string | null = null;
-        let pendingValue: string | null = null;
-
-        const writeNow = async (): Promise<void> => {
-            timer = null;
-            if (pendingName === null || pendingValue === null) return;
-            const name = pendingName;
-            const value = pendingValue;
-            pendingName = null;
-            pendingValue = null;
-            try {
-                const db = await openDB();
-                await new Promise<void>((resolve, reject) => {
-                    const transaction = db.transaction(STORE_NAME, 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
-                    const request = store.put(value, name);
-                    request.onsuccess = () => resolve();
-                    request.onerror = () => reject(request.error);
-                });
-            } catch {
-                lastValue = null; // 失敗時は次回同じ値でも再試行できるようにする
-            }
-        };
-
-        const flush = () => {
-            if (timer) { clearTimeout(timer); timer = null; }
-            void writeNow();
-        };
-
-        // タブ非表示/離脱時に未書き込みをベストエフォートで保存する
-        if (typeof window !== 'undefined') {
-            window.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'hidden') flush();
-            });
-            window.addEventListener('pagehide', flush);
-        }
-
-        return async (name: string, value: string): Promise<void> => {
-            if (value === lastValue) return; // 内容が同じなら書かない
-            lastValue = value;
-            pendingName = name;
-            pendingValue = value;
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => { void writeNow(); }, PERSIST_DEBOUNCE_MS);
-        };
-    })(),
-    removeItem: async (name: string): Promise<void> => {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.delete(name);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    },
-};
+// persist ストレージ（set() ごとの全量 stringify を排除するカスタム実装。詳細は persistStorage.ts）
+const idbPersist = createIdbPersistStorage<AppState>();
+/** 未書き込みの persist を即時確定させる（バックアップのエクスポート前などに使う）。 */
+export const flushPersistNow = idbPersist.flushNow;
 
 const updateCanvasState = (
     state: AppState,
@@ -374,6 +283,10 @@ export const useAppStore = create<AppState>()(
 
         activeFloor: '1F', setActiveFloor: (floor) => set({ activeFloor: floor }),
         mode: 'create', setMode: (mode) => set({ mode }),
+        // Create 専用モード（どくろ/グラフ編集）は Create 以外へ入るとき必ず解除する。1回の set で完結。
+        enterMode: (mode) => set(mode !== 'create'
+            ? { mode, isGraphEditMode: false, isSkullMode: false }
+            : { mode }),
         activeNoteTab: 'overview', setActiveNoteTab: (tab) => set({ activeNoteTab: tab }),
 
         isGraphEditMode: false, setGraphEditMode: (isEdit) => set({ isGraphEditMode: isEdit }),
@@ -394,18 +307,29 @@ export const useAppStore = create<AppState>()(
             miscPages: []
         },
         noteHistory: [],
-        
+        noteRedoStack: [],
+
         saveNoteHistory: () => {
             const { notes, noteHistory } = get();
             const newHistory = [...noteHistory, notes].slice(-20);
-            set({ noteHistory: newHistory });
+            // 新規編集が入ったら redo 履歴は無効化する
+            set({ noteHistory: newHistory, noteRedoStack: [] });
         },
         undoNote: () => {
-            const { noteHistory } = get();
+            const { noteHistory, notes, noteRedoStack } = get();
             if (noteHistory.length === 0) return;
             const previousNotes = noteHistory[noteHistory.length - 1];
             const newHistory = noteHistory.slice(0, -1);
-            set({ notes: previousNotes, noteHistory: newHistory });
+            // 取り消した現在の状態を redo スタックへ退避
+            set({ notes: previousNotes, noteHistory: newHistory, noteRedoStack: [...noteRedoStack, notes].slice(-20) });
+        },
+        redoNote: () => {
+            const { noteHistory, notes, noteRedoStack } = get();
+            if (noteRedoStack.length === 0) return;
+            const nextNotes = noteRedoStack[noteRedoStack.length - 1];
+            const newRedo = noteRedoStack.slice(0, -1);
+            // やり直す前の状態を undo 履歴へ積む
+            set({ notes: nextNotes, noteRedoStack: newRedo, noteHistory: [...noteHistory, notes].slice(-20) });
         },
 
         saveHistory: () => {
@@ -451,14 +375,14 @@ export const useAppStore = create<AppState>()(
         deleteCharacterAnimation: (presetId, charId) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
-                const newData: Record<string, any> = { ...p.data };
+                const newData: Record<string, CharacterTimelineData> = { ...p.data };
                 delete newData[charId];
                 // 削除したキャラを参照している他キャラの sync 表示が残らないよう、
                 // 各キャラの syncConstraints から charId を除去し、参照が無くなった制約は破棄する。
                 Object.keys(newData).forEach(cid => {
                     const cData = newData[cid];
-                    if (!cData || Array.isArray(cData) || !Array.isArray(cData.syncConstraints)) return;
-                    const cleaned = (cData.syncConstraints as SyncConstraint[])
+                    if (!cData || !Array.isArray(cData.syncConstraints)) return;
+                    const cleaned = cData.syncConstraints
                         .map(sc => ({ ...sc, charIds: sc.charIds.filter(id => id !== charId) }))
                         .filter(sc => sc.charIds.length > 0);
                     if (cleaned.length !== cData.syncConstraints.length) {
@@ -480,8 +404,7 @@ export const useAppStore = create<AppState>()(
         updateTimelineItem: (presetId, charId, updates) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== presetId) return p;
-                let current = p.data[charId]; if (!current) return p;
-                if (Array.isArray(current)) current = { path: current, startTime: 0, duration: Math.max(current.length * 30, 60) };
+                const current = p.data[charId]; if (!current) return p;
                 return { ...p, data: { ...p.data, [charId]: { ...current, ...updates } } };
             })
         })),
@@ -493,6 +416,8 @@ export const useAppStore = create<AppState>()(
                 return { ...p, deadIcons: newDead };
             })
         })),
+
+        replaceNotes: (notes) => set({ notes }),
 
         updateOverview: (content) => set((state) => ({ notes: { ...state.notes, overview: content } })),
 
@@ -607,10 +532,10 @@ export const useAppStore = create<AppState>()(
     }),
     {
         name: 'mystery-map-storage',
-        storage: createJSONStorage(() => idbStorage),
+        storage: idbPersist,
         partialize: (state) =>
             Object.fromEntries(
-                Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== '_hasHydrated' && key !== 'dialog')
+                Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== 'noteRedoStack' && key !== '_hasHydrated' && key !== 'dialog')
             ) as AppState,
         onRehydrateStorage: () => (state) => {
             if (state) {
@@ -619,7 +544,29 @@ export const useAppStore = create<AppState>()(
                 if (defaultPreset && defaultPreset.name === 'Chapter 1') {
                     state.presets = state.presets.map(p => p.id === 'chapter1' ? { ...p, name: 'Episode 1' } : p);
                 }
+                // 旧形式(配列)のタイムラインを CharacterTimelineData に正規化し、data の型を確定させる（#A-5）。
+                // これで各所の Array.isArray 分岐が不要になる。
+                state.presets = (state.presets || []).map(p => ({
+                    ...p,
+                    data: Object.fromEntries(
+                        Object.entries(p.data || {})
+                            .map(([id, raw]) => [id, normalizeTimelineData(raw)] as const)
+                            .filter((e): e is [string, CharacterTimelineData] => e[1] !== null)
+                    ),
+                }));
                 state.setHasHydrated(true);
+                // 旧 data URL 画像を Blob(asset://) へ移行し、その後 未参照アセットを GC（起動時のみ）。#P2
+                // 循環 import 回避のため動的 import。失敗は次回起動で再試行される（自己修復）。
+                void import('./services/assetMigration').then(async ({ migrateDataUrlAssets, sweepOrphanAssets }) => {
+                    try {
+                        await migrateDataUrlAssets();
+                        if (typeof requestIdleCallback === 'function') {
+                            requestIdleCallback(() => { void sweepOrphanAssets(); }, { timeout: 2000 });
+                        } else {
+                            setTimeout(() => { void sweepOrphanAssets(); }, 1000);
+                        }
+                    } catch { /* 移行失敗は次回起動で再試行 */ }
+                });
             }
         }
     }

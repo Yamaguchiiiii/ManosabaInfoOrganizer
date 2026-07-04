@@ -22,6 +22,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
         title: 'ノート（Canvas）',
         items: [
             { keys: ['Mod', 'Z'], desc: '元に戻す（Undo）' },
+            { keys: ['Mod', 'Shift', 'Z'], desc: 'やり直し（Redo・Ctrl+Y も可）' },
             { keys: ['Mod', 'C'], desc: 'コピー' },
             { keys: ['Mod', 'X'], desc: '切り取り' },
             { keys: ['Mod', 'V'], desc: '貼り付け' },

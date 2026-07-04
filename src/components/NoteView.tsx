@@ -4,6 +4,10 @@ import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, 
 import Konva from 'konva';
 import useImage from 'use-image';
 import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } from '../store';
+import { TOUR_TARGETS } from './tutorial/tourTargets';
+import { putAsset, resolveAssetUrl } from '../services/assetStore';
+import { useAssetUrl } from '../hooks/useAssetUrl';
+import { toast } from '../services/toast';
 import '../styles/NoteView.scss';
 
 const HANDWRITING_FONT = '"Yomogi", "Klee One", "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive';
@@ -42,9 +46,17 @@ const COMPACT_SIDE_MIN = 88;
 const CANVAS_BASE_W = 1200;
 const CANVAS_BASE_H = 800;
 
+// asset:// キーにも対応する <img>（サムネイル/ギャラリー用）。静的パス/data: はそのまま表示。
+const AssetImg: React.FC<{ src: string; alt?: string; style?: React.CSSProperties }> = ({ src, alt, style }) => {
+    const url = useAssetUrl(src);
+    return <img src={url || ''} alt={alt} style={style} />;
+};
+
 // --- 画像コンポーネント (メモ化) ---
 const URLImage = React.memo(({ imageObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
-    const [img] = useImage(imageObj.content || '');
+    // content が asset:// なら Blob の object URL を解決してから読み込む（P2）。
+    const resolvedSrc = useAssetUrl(imageObj.content);
+    const [img] = useImage(resolvedSrc || '');
 
     return (
         <KonvaImage
@@ -211,7 +223,9 @@ const ShapeObject = React.memo(({ shapeObj, onSelect, onChange, onContextMenu, o
     );
 });
 
-const getImageSizeFromUrl = (url: string, maxDimension = 500): Promise<{ width: number, height: number }> => {
+// url は静的パス / data: / asset:// のいずれでも可（asset:// は object URL に解決してから計測）。
+const getImageSizeFromUrl = async (url: string, maxDimension = 500): Promise<{ width: number, height: number }> => {
+    const resolved = await resolveAssetUrl(url);
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -223,22 +237,29 @@ const getImageSizeFromUrl = (url: string, maxDimension = 500): Promise<{ width: 
             }
             resolve({ width, height });
         };
-        img.onerror = () => resolve({ width: 200, height: 200 }); 
-        img.src = url;
+        img.onerror = () => resolve({ width: 200, height: 200 });
+        img.src = resolved;
     });
 };
 
+// canvas を PNG Blob 化する（toDataURL の base64 を避け、state に載せない実体を得る）。
+const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
+    new Promise((resolve, reject) =>
+        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'));
+
+// 透明背景をトリミングし、最大500pxへ縮小した PNG Blob を返す（前景でバウンディングボックスを取る）。
 const autocropTransparent = (
-    originalBase64: string,
+    originalBlob: Blob,
+    dataUrl: string,
     imgWidth: number,
     imgHeight: number
-): Promise<{ base64: string; width: number; height: number }> => {
+): Promise<{ blob: Blob; width: number; height: number }> => {
     return new Promise((resolve) => {
         const canvas = document.createElement('canvas');
         canvas.width = imgWidth;
         canvas.height = imgHeight;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { resolve({ base64: originalBase64, width: imgWidth, height: imgHeight }); return; }
+        if (!ctx) { resolve({ blob: originalBlob, width: imgWidth, height: imgHeight }); return; }
         const src = new Image();
         src.onload = () => {
             ctx.drawImage(src, 0, 0);
@@ -256,7 +277,7 @@ const autocropTransparent = (
                 }
             }
             if (maxX < minX || maxY < minY) {
-                resolve({ base64: originalBase64, width: imgWidth, height: imgHeight });
+                resolve({ blob: originalBlob, width: imgWidth, height: imgHeight });
                 return;
             }
             const cropW = maxX - minX + 1;
@@ -270,24 +291,35 @@ const autocropTransparent = (
             let w = cropW, h = cropH;
             if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
             else       { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
-            resolve({ base64: cropCanvas.toDataURL('image/png'), width: w, height: h });
+            // 縮小が必要なら別canvasで縮小してから Blob 化
+            if (w !== cropW || h !== cropH) {
+                const scaled = document.createElement('canvas');
+                scaled.width = w; scaled.height = h;
+                scaled.getContext('2d')!.drawImage(cropCanvas, 0, 0, w, h);
+                canvasToBlob(scaled).then(blob => resolve({ blob, width: w, height: h }))
+                    .catch(() => resolve({ blob: originalBlob, width: imgWidth, height: imgHeight }));
+            } else {
+                canvasToBlob(cropCanvas).then(blob => resolve({ blob, width: w, height: h }))
+                    .catch(() => resolve({ blob: originalBlob, width: imgWidth, height: imgHeight }));
+            }
         };
-        src.onerror = () => resolve({ base64: originalBase64, width: imgWidth, height: imgHeight });
-        src.src = originalBase64;
+        src.onerror = () => resolve({ blob: originalBlob, width: imgWidth, height: imgHeight });
+        src.src = dataUrl;
     });
 };
 
-const processFile = (file: File): Promise<{ base64: string, width: number, height: number }> => {
+// アップロード画像を「autocrop済みPNG Blob + 表示寸法」に変換する（base64は state に載せない）。
+const processFile = (file: File): Promise<{ blob: Blob, width: number, height: number }> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const base64 = e.target?.result as string;
+            const dataUrl = e.target?.result as string;
             const img = new Image();
             img.onload = () => {
-                autocropTransparent(base64, img.width, img.height).then(resolve);
+                autocropTransparent(file, dataUrl, img.width, img.height).then(resolve);
             };
             img.onerror = reject;
-            img.src = base64;
+            img.src = dataUrl;
         };
         reader.onerror = reject;
         reader.readAsDataURL(file);
@@ -301,10 +333,13 @@ export interface CanvasWorkspaceProps {
     // Toolsサイドバーの最上部に差し込むコントロール（プリセット選択/メモ操作/キャラアイコン等）。
     // これによりCanvas上部のトップバーを廃止し、操作をTools上に集約する。#06/28-3:58-3,4,5
     sidebarHeader?: React.ReactNode;
+    // sidebarHeader 下の境界線を描くか（既定 true）。キャラノートは見出しの h3 自身が
+    // border を持つため false にして二重線・位置ずれを防ぐ。#06/30-3
+    sidebarHeaderDivider?: boolean;
     compactMode?: boolean;
 }
 
-export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, compactMode = false }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false }: CanvasWorkspaceProps) => {
     
     const [displayTargetId, setDisplayTargetId] = useState(targetId);
     const [canvasOpacity, setCanvasOpacity] = useState(1);
@@ -337,6 +372,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const removeNoteAsset = useAppStore(state => state.removeNoteAsset);
     const reorderNoteObject = useAppStore(state => state.reorderNoteObject);
     const undoNote = useAppStore(state => state.undoNote);
+    const redoNote = useAppStore(state => state.redoNote);
     const saveNoteHistory = useAppStore(state => state.saveNoteHistory);
 
     const [currentCanvasIndex, setCurrentCanvasIndex] = useState(0);
@@ -522,6 +558,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         const sel = currentCanvasObjects.filter(o => selectedIds.includes(o.id));
         if (sel.length === 0) return;
         setClipboard(sel.map(o => ({ ...o, points: o.points ? [...o.points] : undefined })));
+        toast.info(`${sel.length}件をコピーしました`);
     }, [selectedIds, currentCanvasObjects]);
 
     // クリップボードの内容を現在のキャンバスへ少しずらして貼り付ける（グループ構造も維持）
@@ -547,6 +584,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         });
         addNoteObjects(targetType, displayTargetId, newObjs);
         setSelectedIds(newObjs.map(o => o.id));
+        toast.info(`${newObjs.length}件を貼り付けました`);
     }, [clipboard, currentCanvasIndex, addNoteObjects, targetType, displayTargetId]);
 
     // 選択中オブジェクトを切り取り（クリップボードへ退避してから削除する。属性は維持）
@@ -557,6 +595,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         setClipboard(sel.map(o => ({ ...o, points: o.points ? [...o.points] : undefined })));
         removeNoteObjects(targetType, displayTargetId, selectedIds);
         setSelectedIds([]);
+        toast.info(`${sel.length}件を切り取りました`);
     }, [selectedIds, currentCanvasObjects, removeNoteObjects, targetType, displayTargetId]);
 
     // オブジェクトのドラッグ確定処理（#4: 4ペインをまたぐ移動に対応）。
@@ -633,6 +672,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         run();
     }, []);
 
+    // アンマウント時、間引き中の最終コミットを flush してからタイマーを破棄する（値落ち/リーク防止）。refactoring A-8-1
+    useEffect(() => () => {
+        const r = propCommitRef.current;
+        if (r.timer) { clearTimeout(r.timer); r.timer = null; }
+        if (r.last) { const f = r.last; r.last = null; f(); }
+    }, []);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // IME変換中（日本語入力中）はショートカットを発火させない（半角/全角や変換キーを奪わない）。
@@ -644,9 +690,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             if (e.target !== document.body) return;
             if (editingTextId) return;
 
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+            // Ctrl+Z: 取り消し / Ctrl+Shift+Z・Ctrl+Y: やり直し（Redo）。#refactoring B-2
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 undoNote();
+                setSelectedIds([]);
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
+                e.preventDefault();
+                redoNote();
                 setSelectedIds([]);
                 return;
             }
@@ -706,7 +759,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, clipboard, handleCopySelected, handlePasteClipboard, handleCutSelected]);
+    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, redoNote, clipboard, handleCopySelected, handlePasteClipboard, handleCutSelected]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -740,9 +793,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const { base64 } = await processFile(e.target.files[0]);
-            addNoteAsset(targetType, displayTargetId, base64);
-            startPlacement('image', base64);
+            // base64 を state に載せず、Blob を IDB に保存して asset:// キーだけを扱う（P2）
+            const { blob } = await processFile(e.target.files[0]);
+            const key = await putAsset(blob);
+            addNoteAsset(targetType, displayTargetId, key);
+            startPlacement('image', key);
         }
     };
 
@@ -750,14 +805,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         e.preventDefault();
         const files = e.dataTransfer.files;
         if (files && files.length > 0 && files[0].type.startsWith('image/')) {
-            const { base64, width, height } = await processFile(files[0]);
-            addNoteAsset(targetType, displayTargetId, base64);
+            const { blob, width, height } = await processFile(files[0]);
+            const key = await putAsset(blob);
+            addNoteAsset(targetType, displayTargetId, key);
             addNoteObject(targetType, displayTargetId, {
                 id: `img_${Date.now()}`,
                 type: 'image',
                 x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY,
                 width, height,
-                content: base64,
+                content: key,
                 rotation: 0, scaleX: 1, scaleY: 1,
                 keepRatio: true,
                 canvasIndex: currentCanvasIndex
@@ -1089,7 +1145,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 </label>
                 <input type="color"
                     value={selectedObject.fill || '#000000'}
-                    onChange={e => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fill: e.target.value }, true)}
+                    onChange={e => {
+                        // ドラッグ中の連続 onChange を間引く（コンテキストメニュー側と統一）。#06/30-4, refactoring A-8-2
+                        const val = e.target.value;
+                        const id = selectedIds[0];
+                        commitThrottled(() => updateNoteObject(targetType, displayTargetId, id, { fill: val }, true));
+                    }}
                     onBlur={() => saveNoteHistory()}
                     title="Text Color"
                     style={{ width: '28px', height: '28px', border: 'none', cursor: 'pointer' }}
@@ -1303,7 +1364,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     onClick={() => { startPlacement('image', src); setShowImageGallery(false); }}
                                     style={{ cursor: 'pointer', aspectRatio: '1 / 1', background: '#222', border: '1px solid #444', borderRadius: '6px', overflow: 'hidden' }}
                                 >
-                                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    <AssetImg src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 </div>
                             ))}
                         </div>
@@ -1342,7 +1403,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             {!compactMode && (
                 <div className="char-sidebar">
                     {sidebarHeader && (
-                        <div className="sidebar-header" style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="sidebar-header" style={{ marginBottom: '10px', ...(sidebarHeaderDivider ? { paddingBottom: '10px', borderBottom: '1px solid #333' } : {}), display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {sidebarHeader}
                         </div>
                     )}
@@ -1480,7 +1541,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     setAssetContextMenu({ index: idx, x: e.clientX, y: e.clientY });
                                 }}
                             >
-                                <img src={asset} alt={`asset-${idx}`} />
+                                <AssetImg src={asset} alt={`asset-${idx}`} />
                             </div>
                         ))}
                         {/* ToolsのImageで追加した画像(assets)はここに入る。空なら明示する。#06/28-3:58-2 */}
@@ -2260,9 +2321,12 @@ export const NoteView: React.FC = React.memo(() => {
                     <CanvasWorkspace
                         targetType="character"
                         targetId={selectedChar}
+                        sidebarHeaderDivider={false}
                         sidebarHeader={
-                            <>
-                                <div style={{ fontSize: '0.8rem', color: '#aaa' }}>Character</div>
+                            // h3 にすることで .char-sidebar h3 の太字+border-bottom が適用され、
+                            // 境界線が「Character の文字」と「アイコン」の間に入る（#06/30-3）
+                            <div data-tour={TOUR_TARGETS.noteCharacterPicker}>
+                                <h3 style={{ marginTop: 0 }}>Character</h3>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(36px, 1fr))', gap: '5px' }}>
                                     {ICON_FILES.map((icon, idx) => (
                                         <div
@@ -2282,7 +2346,7 @@ export const NoteView: React.FC = React.memo(() => {
                                         </div>
                                     ))}
                                 </div>
-                            </>
+                            </div>
                         }
                     />
                 )}
@@ -2333,9 +2397,9 @@ export const NoteView: React.FC = React.memo(() => {
                                                     const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
                                                     if (page) { setRenamingPageId(page.id); setRenameInputValue(page.title); }
                                                 }}
-                                                style={{ flex: 1, background: '#444', border: '1px solid #555', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                style={{ flex: 1, background: '#444', border: '1px solid #555', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                 title="名前を変更"
-                                            >✏️ 改名</button>
+                                            >✏️ Rename</button>
                                             <button
                                                 onClick={async () => {
                                                     if (await showConfirm("このノートを削除しますか？")) {
@@ -2343,9 +2407,9 @@ export const NoteView: React.FC = React.memo(() => {
                                                         setActualMiscPageId(null);
                                                     }
                                                 }}
-                                                style={{ flex: 1, background: '#ef4444', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                style={{ flex: 1, background: '#ef4444', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                 title="削除"
-                                            >🗑️ 削除</button>
+                                            >🗑️ Delete</button>
                                         </div>
                                     )}
                                 </>

@@ -148,3 +148,167 @@
 2. チュートリアルはこのアプリ(Edit Map Graphを除く)すべての機能について説明して．
 3. Canvas上に配置されたテキストオブジェクトの内容を編集しようと異なる文字を入力して，枠外を押すと，入力した文字ではなく編集前の文字に戻ってしまいます．
 4. Canvas上に配置されたテキストオブジェクトの編集は，enterで内容を確定，shift+enterで改行を行えるようにして．
+
+# 06/30
+
+1. 少し私の方でコードをいじってタイトル部分にロゴ画像を入れるようにしたり，loading map data...の表示の上にロゴ画像を表示するようにしたら，チュートリアルでサイドバーがハイライトされなくなった．
+2. チュートリアルはより詳細に作成する．具体的には現在の内容に次のhands-on形式の内容を加えて．
+   - Createページ
+     Timeline:横のプリセットについての説明を行う．キャラクターの経路を作成し，キャラクターAとBの合流syncを行う．どくろマークボタンで1体キャラクターを死亡させる．
+   - Animateページ
+     どくろマークを押したキャラクターの監房名に横線が入って死んでいることを表示していることを明示したい．
+     事件ノートをハイライトして，ここでAnimationを見ながらノートにメモできることを示し，実際に画像一覧からキャラクターを配置させ，Noteページの事件ノートに移り，Noteページの事件ノートとAnimateページのCanvasは共有されていることを示したい．
+   - Noteページ
+     事件ノートでは，Tools上のEpisodeのボックスを選択するとプリセットを切り替えられることを説明する．
+     キャラクターページにて，各機能(キャラクターImageの配置，4ペイン表示，4ペイン表示での編集(ペインをまたいで移動できることも操作させて教える)，ctrl+z，グループ化，切り取り貼り付け，画像の追加ができImagesに追加できることを示す（実際にはImageをクリックさせず説明だけ）)のhands-on形式のチュートリアルを行う．キャラクターページではTools上のCharacterからどのキャラクターのノートを開くかを選択できることを実際にクリックさせて教える．
+
+3. キャラクターノートにて，Tools上のCharacterという文字がToolsなどと同じ太字なおどの設定がされていないので合わせて．加えて，CharacterアイコンとToolsの間にborderが入ってしまっているのでCharacterアイコンとCharacterという文字の間にborderを入れるよう修正して
+4. Canvas上のオブジェクトの編集でカラーピッカーを使用しようピッカーをドラッグするとframe dropする
+   4,368.9 ms62.4 %
+   4,442.9 ms63.5 %
+   updateNoteObject
+   store.ts:511:27
+   246.3 ms3.5 %
+   267.0 ms3.8 %
+   saveNoteHistory
+   store.ts:398:26
+   1,017.1 ms14.5 %
+   1,017.1 ms14.5 %
+   lastValue
+   store.ts:235:41
+5. Canvas上の画像オブジェクトを移動させる際にframe dropが発生する
+   1,776.7 ms28.8 %
+   1,829.1 ms29.7 %
+   updateNoteObject
+   store.ts:511:27
+   1,213.8 ms19.7 %
+   1,318.4 ms21.4 %
+   saveNoteHistory
+   store.ts:398:26
+   2,079.7 ms33.7 %
+   2,079.7 ms33.7 %
+   lastValue
+   store.ts:235:41
+   271.7 ms4.4 %
+   2,351.4 ms38.1 %
+   writeNow
+   store.ts:226:26
+   168.0 ms2.7 %
+   207.3 ms3.4 %
+   exports.jsxDEV
+   react_jsx-dev-runtime.js?v=3ac20606:239:32
+6. Canvas上のオブジェクトの追加，移動，確定（選択解除），選択操作をする際にframe dropが発生する，
+   2,733.5 ms22.1 %
+   2,977.5 ms24.0 %
+   saveNoteHistory
+   store.ts:398:26
+   1,754.4 ms14.2 %
+   1,862.2 ms15.0 %
+   updateNoteObject
+   store.ts:511:27
+   613.3 ms4.9 %
+   682.0 ms5.5 %
+   removeNoteObjects
+   store.ts:532:28
+   551.0 ms4.4 %
+   581.3 ms4.7 %
+   addNoteObject
+   store.ts:499:24
+   4,562.0 ms36.8 %
+   4,562.0 ms36.8 %
+   lastValue
+   store.ts:235:41
+   648.5 ms5.2 %
+   5,211.7 ms42.0 %
+   writeNow
+   store.ts:226:26
+7. Canvas上のオブジェクトのコピーペースト，削除操作をする際にFrame dropが発生する
+   1,500.2 ms17.8 %
+   1,625.5 ms19.3 %
+   saveNoteHistory
+   store.ts:398:26
+   1,370.9 ms16.3 %
+   1,403.3 ms16.7 %
+   updateNoteObject
+   store.ts:511:27
+   954.8 ms11.4 %
+   993.0 ms11.8 %
+   addNoteObjects
+   store.ts:504:25
+   319.7 ms3.8 %
+   335.1 ms4.0 %
+   removeNoteObjects
+   store.ts:532:28
+   2,366.0 ms28.1 %
+   2,366.0 ms28.1 %
+   lastValue
+   store.ts:235:41
+   391.3 ms4.7 %
+   exports.jsxDEV
+   react_jsx-dev-runtime.js?v=3ac20606:239:32
+8. ページ遷移時に読み込み終了まで暗転する処理を行っているが，これをリロード時に出るLoading map image...+ロゴ画像の表示を行うようにする．その際，表示するテキストは「Loading ...」
+9. Createページのサイドバー上のICONS上のFLOORという階層選択部分は，4ペインにしたため不要になったので削除して．
+10. ページ遷移に時間がかかりすぎです．
+    - Animateページへの遷移（約5秒）
+      581.7 ms19.2 %
+      645.3 ms21.3 %
+      setSidebarWidth
+      store.ts:383:45
+      304.4 ms10.1 %
+      347.1 ms11.5 %
+      setSkullMode
+      store.ts:380:43
+      269.5 ms8.9 %
+      291.2 ms9.6 %
+      setGraphEditMode
+      store.ts:379:51
+      250.5 ms8.3 %
+      252.9 ms8.4 %
+      setMode
+      store.ts:376:34
+      527.3 ms17.4 %
+      527.3 ms17.4 %
+      lastValue
+      store.ts:235:41
+    - Noteページへの遷移（約3秒）
+      304.6 ms17.2 %
+      353.1 ms19.9 %
+      setSkullMode
+      store.ts:380:43
+      263.1 ms14.8 %
+      285.0 ms16.0 %
+      setGraphEditMode
+      store.ts:379:51
+      249.5 ms14.0 %
+      250.5 ms14.1 %
+      setMode
+      store.ts:376:34
+      496.4 ms27.9 %
+      496.4 ms27.9 %
+      lastValue
+      store.ts:235:41
+    - Createページへの遷移（約4秒）
+      534.8 ms21.4 %
+      572.4 ms22.9 %
+      setSidebarWidth
+      store.ts:383:45
+      325.6 ms13.0 %
+      353.0 ms14.1 %
+      setActiveFloor
+      store.ts:375:44
+      260.3 ms10.4 %
+      260.8 ms10.4 %
+      setMode
+      store.ts:376:34
+      515.5 ms20.6 %
+      515.5 ms20.6 %
+      lastValue
+      store.ts:235:41
+      168.5 ms6.7 %
+      179.9 ms7.2 %
+      exports.jsxDEV
+      react_jsx-dev-runtime.js?v=3ac20606:239:32
+
+# 07/04
+
+1. Loading...というページ遷移時や読み込み時のオーバーレイは，フェードインとフェードアウトを行うようにして．

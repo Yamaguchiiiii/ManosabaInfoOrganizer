@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { useAppStore, usePlaybackStore, ICON_FILES, MapNode, CharacterTimelineData } from '../store';
-import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity, resolveStartTimes, computeAnchors, TimeAnchor } from '../utils/animationUtils';
+import { precomputePath, PrecomputedPath, calculateRawPositionCached, getCollisionOffsets, PositionWithVelocity, resolveStartTimes, computeAnchors, TimeAnchor, normalizeTimelineData } from '../utils/animationUtils';
 
 export const FLOOR_IDS = ['1F', '2F', 'B1'] as const;
 export type AnimFloorId = typeof FLOOR_IDS[number];
@@ -15,16 +15,6 @@ const LOOP_DELAY_FRAMES = 60;
 const ZUSTAND_WRITE_INTERVAL = 4;
 // この差を超えたらユーザーのシーク操作とみなし内部 timeRef を同期する
 const SEEK_THRESHOLD = 10;
-
-function toCharacterTimelineData(raw: unknown): CharacterTimelineData | null {
-    if (Array.isArray(raw) && raw.length > 0) {
-        return { path: raw as string[], startTime: 0, duration: raw.length * 30 };
-    }
-    if (raw !== null && typeof raw === 'object' && !Array.isArray(raw) && 'path' in raw) {
-        return raw as CharacterTimelineData;
-    }
-    return null;
-}
 
 type ActivePosition = PositionWithVelocity & { isFinished: boolean };
 
@@ -73,7 +63,7 @@ export const useAnimationPositions = (
         const charDataList: { icon: string; charData: CharacterTimelineData }[] = [];
         let minStart = Infinity;
         ICON_FILES.forEach(icon => {
-            const base = toCharacterTimelineData(data[icon]);
+            const base = normalizeTimelineData(data[icon]);
             if (!base) return;
             const startTime = resolvedStarts[icon] ?? base.startTime ?? 0;
             const charData: CharacterTimelineData = { ...base, startTime };

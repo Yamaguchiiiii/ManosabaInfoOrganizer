@@ -1,6 +1,13 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Image as KonvaImage, Group, Circle, Line, Rect } from 'react-konva';
 import useImage from 'use-image';
+
+// ノード描画コンポーネント共通の props（Group の全 props ＋ 選択/経路ハイライト）。
+// ...props は Konva Group にそのまま渡る（onClick 等のイベントも型付きで受け取れる）。
+type NodeVisualProps = {
+    isSelected?: boolean;
+    isPath?: boolean;
+} & React.ComponentProps<typeof Group>;
 
 // ▼▼▼ 新しいモダンカラーパレットの定義 ▼▼▼
 export const THEME_COLORS = {
@@ -35,9 +42,9 @@ export const MapImage = ({ src, onLoad }: { src: string, onLoad?: (w: number, h:
 };
 
 // ▼▼▼ RoomNode (修正版: モダンなハイライト) ▼▼▼
-export const RoomNode = ({ 
-  x, y, isSelected, isPath, opacity, ...props 
-}: any) => {
+export const RoomNode = ({
+  x, y, isSelected, isPath, opacity, ...props
+}: NodeVisualProps) => {
   const size = 18; 
   const colors = THEME_COLORS.room;
 
@@ -73,9 +80,9 @@ export const RoomNode = ({
 };
 
 // ▼▼▼ PassNode (isPath対応) ▼▼▼
-export const PassNode = ({ 
-  x, y, isSelected, isPath, opacity, ...props 
-}: any) => {
+export const PassNode = ({
+  x, y, isSelected, isPath, opacity, ...props
+}: NodeVisualProps) => {
   const colors = THEME_COLORS.pass;
   const currentStroke = isSelected ? THEME_COLORS.selected.stroke 
                       : isPath ? THEME_COLORS.path.stroke 
@@ -103,9 +110,9 @@ export const PassNode = ({
 };
 
 // ▼▼▼ StairNode (isPath対応) ▼▼▼
-export const StairNode = ({ 
-  x, y, isSelected, isPath, opacity, ...props 
-}: any) => {
+export const StairNode = ({
+  x, y, isSelected, isPath, opacity, ...props
+}: NodeVisualProps) => {
   const colors = THEME_COLORS.stair;
   const currentStroke = isSelected ? THEME_COLORS.selected.stroke 
                       : isPath ? THEME_COLORS.path.stroke 

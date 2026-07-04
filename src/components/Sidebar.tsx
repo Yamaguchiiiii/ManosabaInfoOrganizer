@@ -1,19 +1,19 @@
 import React from 'react';
-import { useAppStore, FloorId, ICON_FILES } from '../store';
+import { useAppStore, ICON_FILES } from '../store';
 import { useSidebarResizer } from '../hooks/useSidebarResizer';
+import { TOUR_TARGETS } from './tutorial/tourTargets';
+import { SaveStatusIndicator } from './common/SaveStatusIndicator';
 
 interface SidebarProps {
   selectedIcons: string[];
   onIconSelect: (icon: string, isShift: boolean) => void;
   onModeChange: (mode: 'create' | 'animate' | 'note') => void;
-  onFloorChange: (floor: FloorId) => void;
 }
 
 // ▼ 修正: 必要な状態だけを個別に取得 ▼
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
     selectedIcons, onIconSelect, onModeChange
 }) => {
-  // onFloorChange / activeFloor は FLOOR セクション廃止により未使用（#06/28-6:04-6）
   const mode = useAppStore(state => state.mode);
   const isGraphEditMode = useAppStore(state => state.isGraphEditMode);
   const setGraphEditMode = useAppStore(state => state.setGraphEditMode);
@@ -49,67 +49,75 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   return (
     <div className="sidebar" style={{ width: sidebarWidth }}>
       <div className="sidebar-content">
-        <div style={{ marginBottom: '20px', padding: '10px', borderBottom: '1px solid #444', fontWeight: 'bold', color: '#fff', fontSize: '1.1rem' }}>
-            サイト名(仮)
+        <div style={{ marginBottom: '20px', padding: '10px 0px 10px 0px', borderBottom: '1px solid #444', fontWeight: 'bold', color: '#fff', fontSize: '1.1rem' }}>
+            <img src="./logo.png" alt="Logo" style={{
+            width: '100%',
+            height: 'auto',
+            display: 'block'
+        }}></img>
         </div>
 
-        <div data-tour="sidebar-pages">
-        <div className="section-title" style={{ marginTop: 0 }}>PAGE</div>
+        <div style={{ minHeight: '16px', marginTop: '-12px', marginBottom: '4px', display: 'flex', justifyContent: 'flex-end' }}>
+            <SaveStatusIndicator />
+        </div>
 
-        <div
-            className={`menu-item ${mode === 'create' ? 'active' : ''}`}
-            onClick={() => onModeChange('create')}
-        >
-            Create
-        </div>
-        
-        <div 
-            className={`menu-item ${mode === 'animate' ? 'active' : ''}`} 
-            onClick={() => onModeChange('animate')}
-        >
-            Animate
-        </div>
-        
-        <div className="menu-tree-wrapper">
-            <div 
-                className={`menu-item ${mode === 'note' ? 'active' : ''}`} 
-                onClick={() => onModeChange('note')}
+        <div data-tour={TOUR_TARGETS.sidebarPages}>
+            <div className="section-title" style={{ marginTop: 0 }}>PAGE</div>
+
+            <div
+                className={`menu-item ${mode === 'create' ? 'active' : ''}`}
+                onClick={() => onModeChange('create')}
             >
-                Note
+                Create
             </div>
 
-            {mode === 'note' && (
-                <div className="sub-menu-container" data-tour="note-tabs">
-                    <div 
-                        className={`sub-menu-item ${activeNoteTab === 'overview' ? 'active' : ''}`} 
-                        onClick={(e) => { e.stopPropagation(); setActiveNoteTab('overview'); }}
-                    >
-                        全体ノート
-                    </div>
-                    <div 
-                        className={`sub-menu-item ${activeNoteTab === 'preset' ? 'active' : ''}`} 
-                        onClick={(e) => { e.stopPropagation(); setActiveNoteTab('preset'); }}
-                    >
-                        事件ノート
-                    </div>
-                    <div 
-                        className={`sub-menu-item ${activeNoteTab === 'character' ? 'active' : ''}`} 
-                        onClick={(e) => { e.stopPropagation(); setActiveNoteTab('character'); }}
-                    >
-                        キャラクターノート
-                    </div>
-                    <div 
-                        className={`sub-menu-item ${activeNoteTab === 'misc' ? 'active' : ''}`} 
-                        onClick={(e) => { e.stopPropagation(); setActiveNoteTab('misc'); }}
-                    >
-                        メモ
-                    </div>
+            <div
+                className={`menu-item ${mode === 'animate' ? 'active' : ''}`}
+                onClick={() => onModeChange('animate')}
+            >
+                Animate
+            </div>
+
+            <div className="menu-tree-wrapper">
+                <div
+                    className={`menu-item ${mode === 'note' ? 'active' : ''}`}
+                    onClick={() => onModeChange('note')}
+                >
+                    Note
                 </div>
-            )}
-        </div>
+
+                {mode === 'note' && (
+                    <div className="sub-menu-container" data-tour={TOUR_TARGETS.noteTabs}>
+                        <div
+                            className={`sub-menu-item ${activeNoteTab === 'overview' ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); setActiveNoteTab('overview'); }}
+                        >
+                            全体ノート
+                        </div>
+                        <div
+                            className={`sub-menu-item ${activeNoteTab === 'preset' ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); setActiveNoteTab('preset'); }}
+                        >
+                            事件ノート
+                        </div>
+                        <div
+                            className={`sub-menu-item ${activeNoteTab === 'character' ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); setActiveNoteTab('character'); }}
+                        >
+                            キャラクターノート
+                        </div>
+                        <div
+                            className={`sub-menu-item ${activeNoteTab === 'misc' ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); setActiveNoteTab('misc'); }}
+                        >
+                            メモ
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
 
-        {/* #06/28-6:04-6: 4ペイン表示で全フロアが同時に見えるため FLOOR セクションは廃止 */}
+        {/* #06/28-6:04-6, #06/30-9: 4ペイン表示で全フロアが同時に見えるため FLOOR セクションは廃止 */}
 
         {mode !== 'note' && (
             <>
@@ -136,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                     )}
                 </div>
 
-                <div className="icon-grid" data-tour="sidebar-icons">
+                <div className="icon-grid" data-tour={TOUR_TARGETS.sidebarIcons}>
                 {ICON_FILES.map((fileName, index) => {
                     const isSelected = selectedIcons.includes(fileName);
                     const isDead = deadIcons.includes(fileName);

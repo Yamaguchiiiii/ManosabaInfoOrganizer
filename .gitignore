@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# sass compiled output (import は .scss のみ)
+src/styles/*.css
+src/styles/*.css.map

@@ -6,6 +6,8 @@ import { CreateView } from './components/CreateView';
 import { AnimateView } from './components/AnimateView';
 import { NoteView } from './components/NoteView';
 import { DialogHost } from './components/common/DialogHost';
+import { LoadingScreen } from './components/common/LoadingScreen';
+import { ToastHost } from './components/common/ToastHost';
 import { TutorialRoot } from './components/tutorial/TutorialRoot';
 import { runNavigationGuard } from './services/navigationGuard';
 import './styles/App.scss';
@@ -15,15 +17,14 @@ function App() {
     // ▼ 修正: 必要な状態だけを個別に取得し、不要な再レンダリングを防止 ▼
     const _hasHydrated = useAppStore(state => state._hasHydrated);
     const mode = useAppStore(state => state.mode);
-    const setMode = useAppStore(state => state.setMode);
-    const setSkullMode = useAppStore(state => state.setSkullMode);
+    const enterMode = useAppStore(state => state.enterMode);
     const activeFloor = useAppStore(state => state.activeFloor);
     const setActiveFloor = useAppStore(state => state.setActiveFloor);
-    const setGraphEditMode = useAppStore(state => state.setGraphEditMode);
     const sidebarWidth = useAppStore(state => state.sidebarWidth);
 
     const [selectedIcons, setSelectedIcons] = useState<string[]>([]);
-    const [viewOpacity, setViewOpacity] = useState(1);
+    // #06/30-8: ページ遷移中はロゴ+「Loading ...」オーバーレイを表示する（旧: workspace の黒フェード）
+    const [isTransitioning, setIsTransitioning] = useState(false);
 
     useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
@@ -36,15 +37,7 @@ function App() {
     }, []);
 
     if (!_hasHydrated) {
-        return (
-            <div style={{ 
-                display: 'flex', justifyContent: 'center', alignItems: 'center', 
-                height: '100vh', width: '100vw', backgroundColor: '#1e1e1e', 
-                color: '#ccc', fontSize: '1.2rem', fontFamily: 'monospace' 
-            }}>
-                Loading map data...
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     const handleIconSelect = async (icon: string, isShiftPressed: boolean) => {
@@ -67,28 +60,28 @@ function App() {
 
     const clearSelection = () => setSelectedIcons([]);
 
+    const MIN_OVERLAY_MS = 250; // チラつき防止の最低表示時間
+
     const handleTransition = (action: () => void) => {
-        setViewOpacity(0);
-        setTimeout(() => {
+        setIsTransitioning(true);
+        const shownAt = performance.now();
+        // オーバーレイを1フレーム描画してから重い処理（enterMode→ビュー再マウント）を実行する
+        requestAnimationFrame(() => {
             action();
-            setTimeout(() => {
-                setViewOpacity(1);
-            }, 50)
-        }, 300)
-    }
+            // 新ビューの初回描画が終わった次フレームで、最低表示時間を満たしてから閉じる
+            requestAnimationFrame(() => {
+                const wait = Math.max(0, MIN_OVERLAY_MS - (performance.now() - shownAt));
+                setTimeout(() => setIsTransitioning(false), wait);
+            });
+        });
+    };
 
     const changeModeWithTransition = async (newMode: 'create' | 'animate' | 'note') => {
         if (mode === newMode) return;
         // 未保存の経路があればガードで確認（中止ならモード切替しない）
         if (!(await runNavigationGuard())) return;
-        handleTransition(() => {
-            setMode(newMode);
-            if (newMode === 'animate' || newMode === 'note'){
-                setGraphEditMode(false);
-                // 死亡設定モード(どくろ)はCreate専用なので、離脱時に必ず解除する
-                setSkullMode(false);
-            }
-        });
+        // enterMode が mode 切替と Create 専用モード解除を1回の set で行う（#06/30-10）
+        handleTransition(() => enterMode(newMode));
     };
 
     const changeFloorWithTransition = (newFloor: FloorId) => {
@@ -103,25 +96,21 @@ function App() {
             className="app-container" 
             style={{ '--sidebar-width': `${sidebarWidth}px`, '--scale-factor': sidebarWidth / 250 } as React.CSSProperties}
         >
-            <Sidebar 
+            <Sidebar
                 selectedIcons={selectedIcons}
                 onIconSelect={handleIconSelect}
                 onModeChange={changeModeWithTransition}
-                onFloorChange={changeFloorWithTransition}
             />
 
             <div className="main-content">
                 {mode !== 'animate' && mode !== 'note' && (
-                    <TopBar 
+                    <TopBar
                         selectedIcons={selectedIcons}
                         onIconSelect={handleIconSelect}
                     />
                 )}
 
-                <div 
-                    className="workspace"
-                    style={{ opacity: viewOpacity, transition: 'opacity 0.3s ease-in-out' }}
-                >
+                <div className="workspace">
                     {mode === 'create' ? (
                         <CreateView 
                             onFloorChange={changeFloorWithTransition}
@@ -137,7 +126,10 @@ function App() {
                 </div>
             </div>
 
+            {isTransitioning && <LoadingScreen overlay />}
+
             <DialogHost />
+            <ToastHost />
             <TutorialRoot />
         </div>
     );

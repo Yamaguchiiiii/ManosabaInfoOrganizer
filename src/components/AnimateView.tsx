@@ -11,6 +11,7 @@ import { useAppStore, usePlaybackStore, PRISON_POSITIONS, ICON_FILES, MapNode } 
 import { MIN_SIDEBAR_WIDTH } from '../hooks/useSidebarResizer';
 import { useAnimationPositions, AnimFloorId } from '../hooks/useAnimationPositions';
 import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
+import { TOUR_TARGETS } from './tutorial/tourTargets';
 
 const ICON_SIZE = 80;
 const HALF_SIZE = ICON_SIZE / 2;
@@ -109,7 +110,8 @@ export const AnimateView = () => {
   }, [isDraggingTimeline]);
 
   useEffect(() => {
-    setSidebarWidth(MIN_SIDEBAR_WIDTH);
+    // 同値なら set しない（無駄な persist 起動と Sidebar 再レンダリングを避ける）。#06/30-10, refactoring A-8-4
+    if (useAppStore.getState().sidebarWidth !== MIN_SIDEBAR_WIDTH) setSidebarWidth(MIN_SIDEBAR_WIDTH);
   }, [setSidebarWidth]);
 
   // Space でアニメーションの再生/一時停止をトグルする（入力欄にフォーカス中は無効）。
@@ -184,7 +186,7 @@ export const AnimateView = () => {
       {timelinePos && createPortal(
         <div
           ref={toolbarRef}
-          data-tour="animate-playback"
+          data-tour={TOUR_TARGETS.animatePlayback}
           style={{
             position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
             width: '480px', maxWidth: '92vw',
