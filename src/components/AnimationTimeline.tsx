@@ -34,12 +34,15 @@ export const AnimationTimeline: React.FC = () => {
         return () => window.removeEventListener('pointerdown', handlePointerDown, true);
     }, [setIsPlaying]);
 
-    const maxDuration = useMemo(() => {
-        if (!activePreset || !activePreset.data) return 300;
+    // 全体尺 + シークバーに重ねる sync マーカー（誰がいつ合流/すれ違うか）を同時に算出する。
+    const { maxDuration, syncMarkers } = useMemo(() => {
+        const empty = { maxDuration: 300, syncMarkers: [] as { t: number; label: string }[] };
+        if (!activePreset || !activePreset.data) return empty;
 
         // Animate と同じく、開始条件(startRef)解決＋合流アンカーで各キャラの開始/終了時刻を求める。
         const resolvedStarts = resolveStartTimes(activePreset.data, nodes);
         const spans: { start: number; end: number }[] = [];
+        const rawMarkers: { time: number; label: string }[] = [];
         Object.entries(activePreset.data).forEach(([id, raw]) => {
             const base = normalizeTimelineData(raw);
             if (!base) return;
@@ -48,14 +51,22 @@ export const AnimationTimeline: React.FC = () => {
             const anchors = computeAnchors(charData, cached);
             if (anchors.length === 0) return;
             spans.push({ start: anchors[0].time, end: anchors[anchors.length - 1].time });
+            (base.syncConstraints || []).forEach(sc => rawMarkers.push({ time: sc.meetingTime, label: sc.waypointName }));
         });
-        if (spans.length === 0) return 300;
+        if (spans.length === 0) return empty;
 
         const minStart = Math.min(...spans.map(s => s.start));
         const offset = (Number.isFinite(minStart) && minStart > 0) ? minStart : 0;
         const max = Math.max(...spans.map(s => s.end - offset));
+        const maxDur = Math.max(max + 60, 300);
 
-        return Math.max(max + 60, 300);
+        // オフセット補正し、尺の範囲内のマーカーのみ（時刻順）
+        const markers = rawMarkers
+            .map(m => ({ t: m.time - offset, label: m.label }))
+            .filter(m => m.t >= 0 && m.t <= maxDur)
+            .sort((a, b) => a.t - b.t);
+
+        return { maxDuration: maxDur, syncMarkers: markers };
     }, [activePreset, nodes]);
 
     const formatTime = (frames: number) => {
@@ -129,14 +140,28 @@ export const AnimationTimeline: React.FC = () => {
                         {formatTime(displayTime)}
                     </div>
 
-                    <input
-                        type="range"
-                        min="0"
-                        max={maxDuration}
-                        value={displayTime}
-                        onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
-                        style={{ flex: 1, cursor: 'pointer' }}
-                    />
+                    <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <input
+                            type="range"
+                            min="0"
+                            max={maxDuration}
+                            value={displayTime}
+                            onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+                            style={{ width: '100%', cursor: 'pointer' }}
+                        />
+                        {/* sync マーカー: 合流/すれ違い時刻に金色の目盛りを重ねる（クリックは奪わない） */}
+                        {syncMarkers.map((m, i) => (
+                            <div
+                                key={i}
+                                title={`${m.label} で合流`}
+                                style={{
+                                    position: 'absolute', left: `${(m.t / maxDuration) * 100}%`,
+                                    top: 0, bottom: 0, width: 2, transform: 'translateX(-1px)',
+                                    background: 'var(--gold, #d4a94f)', borderRadius: 1, pointerEvents: 'none',
+                                }}
+                            />
+                        ))}
+                    </div>
 
                     <div style={{ color: '#888', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
                         {formatTime(maxDuration)}

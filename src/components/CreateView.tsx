@@ -17,6 +17,7 @@ import { MergeModal, MergeCandidate } from './modals/MergeModal';
 import { setNavigationGuard } from '../services/navigationGuard';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 import { formatCharName } from '../utils/charName';
+import { toast } from '../services/toast';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -689,6 +690,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
       else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
       setConnectingNodeId(null); setIsEditing(false);
+      toast.success(selectedIcons.length > 1 ? `${selectedIcons.length}体の経路を保存しました` : '経路を保存しました');
   };
 
   // #06/28-14:10-1: 保存を要求し、完了したら true を解決する。
@@ -960,6 +962,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
             isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
             highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
             waypoints={waypoints}
+            suggestionTargetIndex={suggestionTargetIndex}
             startRef={startRef} setStartRef={setStartRef}
             showBeforeStart={showBeforeStart} setShowBeforeStart={setShowBeforeStart}
             startRefCharOptions={startRefCharOptions} startRefNodeOptions={startRefNodeOptions}

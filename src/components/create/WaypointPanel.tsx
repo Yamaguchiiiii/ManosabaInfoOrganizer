@@ -23,6 +23,8 @@ interface WaypointPanelProps {
     startRefCharOptions: { id: string; name: string }[];
     startRefNodeOptions: { nodeId: string; occurrence: number; label: string }[];
     waypoints: Waypoint[];
+    // 現在地点入力のターゲット（この行を --focus で強調してターゲット迷子を防ぐ）。null=なし
+    suggestionTargetIndex: number | null;
     handleWaypointChange: (index: number, field: keyof Waypoint, value: string | number) => void;
     setSuggestionTargetIndex: (index: number) => void;
     handleSyncTime: (id: string, name: string, waypointIndex?: number) => void;
@@ -39,7 +41,7 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
     isGraphEditMode, selectedIcons, highlightedPath, savedPathData, isEditing,
     startRef, setStartRef, showBeforeStart, setShowBeforeStart,
     startRefCharOptions, startRefNodeOptions,
-    waypoints, handleWaypointChange, setSuggestionTargetIndex,
+    waypoints, suggestionTargetIndex, handleWaypointChange, setSuggestionTargetIndex,
     handleSyncTime, handleRemoveWaypoint, handleAddWaypoint,
     handleSavePath, handleEditPath, handleDeletePath,
     syncConstraints, onRemoveSyncConstraint
@@ -135,7 +137,12 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                     onChange={(e) => handleWaypointChange(index, 'name', e.target.value)}
                                     onFocus={() => setSuggestionTargetIndex(index)}
                                     placeholder={index === 0 ? "Start..." : (index === waypoints.length - 1 ? "Goal..." : "Via...")}
-                                    style={{ flex: 1, background: '#444', border: '1px solid #555', color: 'white', padding: '4px', borderRadius: '4px', fontSize: '0.9rem' }}
+                                    style={{
+                                        flex: 1, background: '#444', color: 'white', padding: '4px', borderRadius: '4px', fontSize: '0.9rem',
+                                        // ターゲット中の行を強調（地点をクリックするとこの行に入る）
+                                        border: index === suggestionTargetIndex ? '1px solid var(--focus, #66b3ff)' : '1px solid #555',
+                                        boxShadow: index === suggestionTargetIndex ? '0 0 0 2px rgba(102,179,255,0.25)' : 'none',
+                                    }}
                                 />
                                 {/* Fixed-width right zone so all rows have the same total width */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '3px', width: '80px', justifyContent: 'flex-end' }}>
@@ -217,8 +224,8 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                 <img key={icon} src={`./icon/${icon}`} alt="" style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px solid #10b981', objectFit: 'cover', marginLeft: i > 0 ? '-15px' : 0 }} />
                             ))}
                         </div>
-                        <button onClick={handleEditPath} style={{ backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>Edit</button>
-                        <button onClick={handleDeletePath} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>Delete</button>
+                        <button onClick={handleEditPath} style={{ backgroundColor: 'var(--warning, #f59e0b)', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>Edit</button>
+                        <button onClick={handleDeletePath} style={{ backgroundColor: 'var(--danger, #ef4444)', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>Delete</button>
                     </div>
                 </>
             ) : (
@@ -233,12 +240,12 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                             )) : <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px dashed #888', display:'flex', alignItems:'center', justifyContent:'center', color:'#888' }}>?</div>}
                         </div>
                         <button onClick={handleSavePath} disabled={highlightedPath.length === 0}
-                            style={{ backgroundColor: highlightedPath.length > 0 ? '#007acc' : '#555', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: highlightedPath.length > 0 ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '0.85rem' }}
+                            style={{ backgroundColor: highlightedPath.length > 0 ? 'var(--accent, #7c5cff)' : 'var(--surface-4, #555)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: highlightedPath.length > 0 ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '0.85rem' }}
                         >
                             {selectedIcons.length > 1 ? `Save to ${selectedIcons.length}` : "Save Path"}
                         </button>
                         <button onClick={handleDeletePath}
-                            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                            style={{ backgroundColor: 'var(--danger, #ef4444)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
                         >
                             Delete
                         </button>

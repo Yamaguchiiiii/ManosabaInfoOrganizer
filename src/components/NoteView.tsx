@@ -1454,6 +1454,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                 </div>
                             </div>
                         )}
+                        {/* 選択中のオブジェクトに対する操作をひとまとめに（縦長で迷子になるのを防ぐ）。ui.md §5.3 */}
+                        {selectedIds.length > 0 && (
+                            <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #333', fontSize: '0.72rem', fontWeight: 'bold', color: '#888', letterSpacing: '0.04em' }}>
+                                選択中（{selectedIds.length}）
+                            </div>
+                        )}
                         {selectedIds.length === 1 && selectedObject?.type === 'image' && (
                             <div style={{ marginTop: '10px' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.8rem', color: '#ccc' }}>
@@ -1514,7 +1520,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         <button
                             onClick={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
                             disabled={selectedIds.length === 0}
-                            style={{ marginTop: '10px', background: selectedIds.length === 0 ? '#444' : '#ef4444', color: selectedIds.length === 0 ? '#888' : 'white', fontSize: '1rem', padding: '5px' }}
+                            style={{ marginTop: '10px', background: selectedIds.length === 0 ? 'var(--surface-4, #444)' : 'var(--danger, #ef4444)', color: selectedIds.length === 0 ? '#888' : 'white', fontSize: '1rem', padding: '5px' }}
                         >
                             Delete Selected
                         </button>
@@ -2369,7 +2375,7 @@ export const NoteView: React.FC = React.memo(() => {
                                         </select>
                                         <button
                                             onClick={() => addMiscPage("New Page")}
-                                            style={{ background: '#007acc', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+                                            style={{ background: 'var(--accent, #7c5cff)', border: 'none', color: 'white', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
                                             title="メモを追加"
                                         >+</button>
                                     </div>
@@ -2420,7 +2426,7 @@ export const NoteView: React.FC = React.memo(() => {
                             <div style={{ color: '#666', fontSize: '1.2rem' }}>No misc notes available.</div>
                             <button
                                 onClick={() => addMiscPage("New Page")}
-                                style={{ background: '#007acc', border: 'none', color: 'white', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+                                style={{ background: 'var(--accent, #7c5cff)', border: 'none', color: 'white', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
                             >
                                 Create New Note
                             </button>

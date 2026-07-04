@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../../store';
 
+// 主アクション=アクセント(紫)、破壊的=danger、既定=surface。デザイントークン参照（ui.md）。
 const VARIANT_BG: Record<string, string> = {
-    primary: '#007acc',
-    danger: '#ef4444',
-    default: '#444',
+    primary: 'var(--accent, #7c5cff)',
+    danger: 'var(--danger, #ef4444)',
+    default: 'var(--surface-4, #444)',
 };
 
 /**
@@ -50,9 +51,9 @@ export const DialogHost: React.FC = () => {
             <div
                 onClick={e => e.stopPropagation()}
                 style={{
-                    background: '#1e1e1e', border: '1px solid #444', borderRadius: '8px',
+                    background: 'var(--surface-1, #1e1e1e)', border: '1px solid var(--border-default, #444)', borderRadius: '8px',
                     padding: '20px', minWidth: '320px', maxWidth: '90vw',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.6)', color: '#e0e0e0',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.6)', color: 'var(--text-primary, #e0e0e0)',
                 }}
             >
                 {dialog.title && (

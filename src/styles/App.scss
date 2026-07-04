@@ -1,13 +1,13 @@
 // src/App.scss
 @use './tokens';  // デザイントークン(:root CSS変数)。既存$変数は当面据え置き、新規UIはトークン参照。
 
-// 変数定義
-$bg-dark: #1e1e1e;
-$bg-sidebar: #252526;
-$text-main: #cccccc;
-$accent-color: #007acc;
-$border-color: #3e3e42;
-$hover-color: #3e3e42;
+// 変数定義（値はトークンへ委譲。SCSSの color 関数を使わない箇所は CSS 変数を参照する）
+$bg-dark: var(--surface-1);
+$bg-sidebar: var(--surface-2);
+$text-main: var(--text-secondary);
+$accent-color: var(--focus-strong);  // 選択/アクティブは既存の青(--focus-strong)を維持
+$border-color: var(--border-default);
+$hover-color: var(--surface-4);
 $active-bg: #37373d;
 
 // 定数
