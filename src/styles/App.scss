@@ -341,10 +341,73 @@ body {
       position: relative;
       background-color: #111;
       overflow: hidden;
-      
+
       .konvajs-content {
-        background-color: #111; 
+        background-color: #111;
       }
+    }
+  }
+}
+
+// ===== モバイルシェル（smartphone.md M0）=====
+.app-container.mobile { display: block; }
+
+.mobile-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh; // モバイルブラウザのURLバー可変分を吸収
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--surface-1);
+
+  .mobile-appbar {
+    height: 44px;
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-default);
+    user-select: none;
+
+    .appbar-menu {
+      background: transparent; border: 1px solid #555; border-radius: 6px;
+      color: #ccc; font-size: 1.15rem; cursor: pointer; padding: 4px 11px; line-height: 1;
+      min-height: 34px;
+    }
+    .appbar-title { font-weight: bold; color: #ddd; font-size: 0.95rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .appbar-right { flex-shrink: 0; }
+  }
+
+  .mobile-workspace {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #111;
+    .konvajs-content { background: #111; }
+  }
+
+  .mobile-tabbar {
+    flex-shrink: 0;
+    display: flex;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-default);
+    padding-bottom: env(safe-area-inset-bottom);
+    user-select: none;
+
+    .tab {
+      flex: 1;
+      background: transparent; border: none; cursor: pointer;
+      color: var(--text-secondary);
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 8px 0 10px;
+      min-height: 56px;
+
+      .tab-icon { font-size: 1.3rem; line-height: 1; }
+      .tab-label { font-size: 0.68rem; }
+
+      &.active { color: #fff; .tab-icon { filter: drop-shadow(0 0 6px var(--accent, #7c5cff)); } }
+      &:disabled { opacity: 0.6; }
     }
   }
 }

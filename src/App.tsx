@@ -10,6 +10,8 @@ import { DialogHost } from './components/common/DialogHost';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { ToastHost } from './components/common/ToastHost';
 import { TutorialRoot } from './components/tutorial/TutorialRoot';
+import { MobileShell } from './components/mobile/MobileShell';
+import { useViewport } from './hooks/useViewport';
 import { runNavigationGuard } from './services/navigationGuard';
 import './styles/App.scss';
 import './styles/Modal.scss';
@@ -23,6 +25,7 @@ function App() {
     const setActiveFloor = useAppStore(state => state.setActiveFloor);
     const sidebarWidth = useAppStore(state => state.sidebarWidth);
     const contextPanelCollapsed = useAppStore(state => state.contextPanelCollapsed);
+    const viewport = useViewport();
 
     const [selectedIcons, setSelectedIcons] = useState<string[]>([]);
     // #06/30-8: ページ遷移中はロゴ+「Loading ...」オーバーレイを表示する（旧: workspace の黒フェード）
@@ -93,9 +96,48 @@ function App() {
         })
     }
 
+    // 現在のビュー本体（デスクトップ/モバイルで共通に再利用する）
+    const viewElement = mode === 'create' ? (
+        <CreateView
+            onFloorChange={changeFloorWithTransition}
+            selectedIcons={selectedIcons}
+            onIconSelect={handleIconSelect}
+            onClearSelection={clearSelection}
+        />
+    ) : mode === 'animate' ? (
+        <AnimateView />
+    ) : (
+        <NoteView />
+    );
+
+    const overlays = (
+        <>
+            {isTransitioning && <LoadingScreen overlay />}
+            <DialogHost />
+            <ToastHost />
+            <TutorialRoot />
+        </>
+    );
+
+    // モバイル: 下タブ+上部バーのモバイルシェルで既存ビューを包む（smartphone.md M0）
+    if (viewport === 'mobile') {
+        return (
+            <div className="app-container mobile">
+                <MobileShell
+                    selectedIcons={selectedIcons}
+                    onIconSelect={handleIconSelect}
+                    onModeChange={changeModeWithTransition}
+                >
+                    {viewElement}
+                </MobileShell>
+                {overlays}
+            </div>
+        );
+    }
+
     return (
-        <div 
-            className="app-container" 
+        <div
+            className="app-container"
             style={{ '--sidebar-width': `${sidebarWidth}px`, '--scale-factor': sidebarWidth / 250 } as React.CSSProperties}
         >
             <NavRail onModeChange={changeModeWithTransition} />
@@ -114,26 +156,11 @@ function App() {
                 />
 
                 <div className="workspace">
-                    {mode === 'create' ? (
-                        <CreateView 
-                            onFloorChange={changeFloorWithTransition}
-                            selectedIcons={selectedIcons}
-                            onIconSelect={handleIconSelect}
-                            onClearSelection={clearSelection}
-                        />
-                    ) : mode === 'animate' ? (
-                        <AnimateView />
-                    ) : (
-                        <NoteView />
-                    )}
+                    {viewElement}
                 </div>
             </div>
 
-            {isTransitioning && <LoadingScreen overlay />}
-
-            <DialogHost />
-            <ToastHost />
-            <TutorialRoot />
+            {overlays}
         </div>
     );
 }
