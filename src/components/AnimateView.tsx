@@ -10,6 +10,7 @@ import '../styles/AnimateView.scss';
 import { useAppStore, usePlaybackStore, PRISON_POSITIONS, ICON_FILES, MapNode } from '../store';
 import { useAnimationPositions, AnimFloorId } from '../hooks/useAnimationPositions';
 import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
+import { useViewport } from '../hooks/useViewport';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 
 const ICON_SIZE = 80;
@@ -43,6 +44,10 @@ export const AnimateView = () => {
 
   const activePreset = presets.find(p => p.id === activePresetId);
   const deadIcons = activePreset?.deadIcons || [];
+
+  const isMobile = useViewport() === 'mobile';
+  // モバイルは1フロアずつ表示（4ペインは狭すぎるため）。#smartphone.md M2
+  const [mobileFloor, setMobileFloor] = useState<AnimFloorId>('1F');
 
   const nodesMapRef = useRef<Record<string, MapNode>>({});
   useEffect(() => {
@@ -139,6 +144,38 @@ export const AnimateView = () => {
           return <MovingCharIcon key={nodeKey} ref={setRef} icon={icon} x={0} y={0} />;
       });
   };
+
+  // モバイル: 単一フロア + フロア切替セグメント + 下部固定の再生バー（smartphone.md M2）
+  if (isMobile) {
+    return (
+      <div className="animate-mobile">
+        <div className="floor-segment">
+          {(['2F', '1F', 'B1'] as AnimFloorId[]).map(f => (
+            <button
+              key={f}
+              className={mobileFloor === f ? 'active' : ''}
+              onClick={() => setMobileFloor(f)}
+            >{f}</button>
+          ))}
+        </div>
+        <div className="animate-mobile-map">
+          <ReadOnlyMapView floorId={mobileFloor} fitContainer={true}>
+            {mobileFloor === 'B1' && deadIcons.map(icon => {
+              const pos = PRISON_POSITIONS[icon];
+              if (!pos) return null;
+              return (
+                <Line key={icon} points={[0, 0, pos.w, 0]} x={pos.x} y={pos.y} rotation={pos.angle || -5} stroke="black" strokeWidth={5} lineCap="round" />
+              );
+            })}
+            {renderAllCharsForFloor(mobileFloor)}
+          </ReadOnlyMapView>
+        </div>
+        <div className="animate-mobile-playbar" data-tour={TOUR_TARGETS.animatePlayback}>
+          <AnimationTimeline />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-view-container" ref={gridRef} style={gridStyle}>

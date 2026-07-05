@@ -9,8 +9,11 @@ export const useTutorial = () => {
     const [tourOpen, setTourOpen] = useState(false);
 
     // 初回のみ、少し待ってからツアーを自動開始する。
+    // ただしモバイル幅では自動起動しない（ツアーはデスクトップUI(NavRail/ICONS等)を指すため、
+    // モバイルでは対象が存在せずハイライトできない。ヘルプからは手動で開ける）。
     useEffect(() => {
         if (tutorialSeen) return;
+        if (window.innerWidth < 768) return;
         const t = setTimeout(() => setTourOpen(true), 600);
         return () => clearTimeout(t);
         // 初回マウント時の判定のみ

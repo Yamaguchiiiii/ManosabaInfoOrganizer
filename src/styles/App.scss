@@ -411,3 +411,55 @@ body {
     }
   }
 }
+
+// ===== モバイルの Animate（単一フロア + 下部再生バー）smartphone.md M2 =====
+.animate-mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #111;
+
+  .floor-segment {
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-default);
+
+    button {
+      flex: 1;
+      background: var(--surface-3);
+      border: 1px solid #555;
+      color: var(--text-secondary);
+      border-radius: 6px;
+      padding: 8px 0;
+      font-size: 0.9rem;
+      cursor: pointer;
+      min-height: 36px;
+
+      &.active {
+        background: rgba(124, 92, 255, 0.15);
+        border-color: var(--accent);
+        color: #fff;
+      }
+    }
+  }
+
+  .animate-mobile-map {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .animate-mobile-playbar {
+    flex-shrink: 0;
+    background: #222;
+    border-top: 1px solid #444;
+    max-height: 42vh;
+    overflow-y: auto;
+  }
+}
