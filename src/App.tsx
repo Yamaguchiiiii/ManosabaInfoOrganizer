@@ -14,6 +14,7 @@ import { TutorialRoot } from './components/tutorial/TutorialRoot';
 import { MobileShell } from './components/mobile/MobileShell';
 import { useViewport } from './hooks/useViewport';
 import { runNavigationGuard } from './services/navigationGuard';
+import { checkStorageHealth } from './services/storageHealth';
 import './styles/App.scss';
 import './styles/Modal.scss';
 
@@ -41,6 +42,11 @@ function App() {
             document.removeEventListener('contextmenu', handleContextMenu);
         };
     }, []);
+
+    // ストレージ永続化の要求＋容量チェック（E2）。ハイドレーション後に1回だけ。
+    useEffect(() => {
+        if (_hasHydrated) void checkStorageHealth();
+    }, [_hasHydrated]);
 
     if (!_hasHydrated) {
         return <LoadingScreen />;

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line, Group } from 'react-konva';
 import Konva from 'konva';
 import useImage from 'use-image';
 import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } from '../store';
@@ -57,7 +57,34 @@ const AssetImg: React.FC<{ src: string; alt?: string; style?: React.CSSPropertie
 const URLImage = React.memo(({ imageObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
     // content が asset:// なら Blob の object URL を解決してから読み込む（P2）。
     const resolvedSrc = useAssetUrl(imageObj.content);
-    const [img] = useImage(resolvedSrc || '');
+    const [img, status] = useImage(resolvedSrc || '');
+
+    // 読み込み失敗時は「見えないが存在する」を避け、破線プレースホルダを表示（E5）。
+    // オブジェクト自体は保持（選択・移動・削除は可能）＝データを壊さない。
+    if (status === 'failed') {
+        const w = imageObj.width || 100;
+        const h = imageObj.height || 100;
+        return (
+            <Group
+                id={imageObj.id}
+                name="note-object"
+                x={imageObj.x}
+                y={imageObj.y}
+                rotation={imageObj.rotation}
+                scaleX={imageObj.scaleX}
+                scaleY={imageObj.scaleY}
+                draggable={!isDrawingMode}
+                onClick={onSelect}
+                onTap={onSelect}
+                onContextMenu={onContextMenu}
+                onDragMove={onDragMove}
+                onDragEnd={onDragEnd ?? ((e: any) => onChange({ x: e.target.x(), y: e.target.y() }))}
+            >
+                <Rect width={w} height={h} fill="#3a3a3a" stroke="#f59e0b" strokeWidth={1} dash={[6, 4]} cornerRadius={4} />
+                <Text text={'⚠\n画像を\n読み込めません'} width={w} height={h} align="center" verticalAlign="middle" fontSize={Math.max(9, Math.min(13, w / 9))} fill="#f59e0b" listening={false} />
+            </Group>
+        );
+    }
 
     return (
         <KonvaImage
