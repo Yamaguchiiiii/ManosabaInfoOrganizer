@@ -8,6 +8,7 @@
 //   スライスを直接ミューテートすると参照が変わらず変更が persist されない。直接変更は禁止。
 
 import { PersistStorage, StorageValue } from 'zustand/middleware';
+import { notifyPersistWrote } from './services/persistCoordinator';
 
 const DB_NAME = 'mystery-map-db';
 const STORE_NAME = 'app-state';
@@ -117,6 +118,7 @@ export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
             await idbPutString(name, str);
             lastWritten = value;
             notifyPhase('saved');
+            notifyPersistWrote(); // 他タブ/インスタンスへ「保存した」ことを通知（E1 競合検知）
         } catch {
             pending = pending ?? { name, value }; // 失敗時は次回同じ値でも再試行できるようにする
             notifyPhase('error');

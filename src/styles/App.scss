@@ -58,6 +58,10 @@ body {
   overflow: hidden;
 }
 
+// キャンバス上のタッチをブラウザのスクロール/ダブルタップズームに奪われないようにする。
+// （モバイルのキャンバス操作の前提。デスクトップのマウス操作には影響しない）smartphone.md E4
+.konvajs-content { touch-action: none; }
+
 .app-container {
   display: flex;
   height: 100vh;

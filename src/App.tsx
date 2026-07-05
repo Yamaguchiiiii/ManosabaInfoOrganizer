@@ -9,6 +9,7 @@ import { NoteView } from './components/NoteView';
 import { DialogHost } from './components/common/DialogHost';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { ToastHost } from './components/common/ToastHost';
+import { ConflictBanner } from './components/common/ConflictBanner';
 import { TutorialRoot } from './components/tutorial/TutorialRoot';
 import { MobileShell } from './components/mobile/MobileShell';
 import { useViewport } from './hooks/useViewport';
@@ -115,6 +116,7 @@ function App() {
             {isTransitioning && <LoadingScreen overlay />}
             <DialogHost />
             <ToastHost />
+            <ConflictBanner />
             <TutorialRoot />
         </>
     );
