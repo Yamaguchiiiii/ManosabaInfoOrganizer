@@ -12,6 +12,7 @@ import { WaypointPanel, SyncConstraint } from './create/WaypointPanel';
 import { MapObjectLayer } from './create/MapObjectLayer';
 import { useWaypointPath } from '../hooks/useWaypointPath';
 import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
+import { useViewport } from '../hooks/useViewport';
 import { AdSlot } from './AdSlot';
 import { MergeModal, MergeCandidate } from './modals/MergeModal';
 import { setNavigationGuard } from '../services/navigationGuard';
@@ -926,37 +927,63 @@ export const CreateView: React.FC<CreateViewProps> = ({
       updateNode(nodeId, { x: e.target.x(), y: e.target.y() });
   }, [isGraphEditMode, saveHistory, updateNode]);
 
+  const isMobile = useViewport() === 'mobile';
+  // FloorPane に渡す共通 props（デスクトップの4ペインとモバイルの単一ペインで共有）
+  const floorPaneCommon = {
+      nodes, nodeMap, edges, isGraphEditMode, mode,
+      displaySegments, displayPath, connectingNodeId, hoveredNodeId,
+      waypoints, dynamicEdgeRef,
+      onStageClick: handleStageClick,
+      onStageMouseMove: handleStageMouseMove,
+      onNodeClick: handleNodeClick,
+      onNodeMouseEnter: handleNodeMouseEnter,
+      onNodeMouseLeave: handleNodeMouseLeave,
+      onNodeDragMove: handleNodeDragMove,
+      onNodeDragEnd: handleNodeDragEnd,
+      onEdgeContextMenu: handleEdgeContextMenu,
+  };
+
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', overflow: 'hidden', backgroundColor: '#111' }}>
       <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
         {/* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
             ホバーされたペインのフロアを編集対象(activeFloor)とする。右下はハウス広告枠。#06/28-3:58-7 */}
-        <div ref={gridRef} data-tour={TOUR_TARGETS.createMaps} style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
-            {(['2F', '1F', 'B1'] as FloorId[]).map((fl, i) => (
-                <FloorPane
-                    key={fl}
-                    floorId={fl}
-                    label={`Map ${i + 1} (${fl})`}
-                    isActive={activeFloor === fl}
-                    onHover={setActiveFloor}
-                    nodes={nodes} nodeMap={nodeMap} edges={edges}
-                    isGraphEditMode={isGraphEditMode} mode={mode}
-                    displaySegments={displaySegments} displayPath={displayPath}
-                    connectingNodeId={connectingNodeId} hoveredNodeId={hoveredNodeId}
-                    waypoints={waypoints} dynamicEdgeRef={dynamicEdgeRef}
-                    onStageClick={handleStageClick}
-                    onStageMouseMove={handleStageMouseMove}
-                    onNodeClick={handleNodeClick}
-                    onNodeMouseEnter={handleNodeMouseEnter}
-                    onNodeMouseLeave={handleNodeMouseLeave}
-                    onNodeDragMove={handleNodeDragMove}
-                    onNodeDragEnd={handleNodeDragEnd}
-                    onEdgeContextMenu={handleEdgeContextMenu}
-                />
-            ))}
-            {/* 右下: 広告枠。Web版はAdSense、デスクトップ/未設定時はハウス枠にフォールバック。 */}
-            <AdSlot />
-        </div>
+        {isMobile ? (
+            // モバイル: 4ペインをやめ、単一フロア + フロア切替セグメント（smartphone.md M3）
+            <div data-tour={TOUR_TARGETS.createMaps} style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}>
+                <div className="floor-segment">
+                    {(['2F', '1F', 'B1'] as FloorId[]).map(f => (
+                        <button key={f} className={activeFloor === f ? 'active' : ''} onClick={() => setActiveFloor(f)}>{f}</button>
+                    ))}
+                </div>
+                <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                    <FloorPane
+                        {...floorPaneCommon}
+                        floorId={activeFloor}
+                        label={`Map (${activeFloor})`}
+                        isActive={true}
+                        onHover={setActiveFloor}
+                    />
+                </div>
+            </div>
+        ) : (
+            /* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
+               ホバーされたペインのフロアを編集対象(activeFloor)とする。右下はハウス広告枠。#06/28-3:58-7 */
+            <div ref={gridRef} data-tour={TOUR_TARGETS.createMaps} style={{ position: 'absolute', inset: 0, display: 'grid', ...gridStyle, gap: 4, padding: 4, boxSizing: 'border-box' }}>
+                {(['2F', '1F', 'B1'] as FloorId[]).map((fl, i) => (
+                    <FloorPane
+                        {...floorPaneCommon}
+                        key={fl}
+                        floorId={fl}
+                        label={`Map ${i + 1} (${fl})`}
+                        isActive={activeFloor === fl}
+                        onHover={setActiveFloor}
+                    />
+                ))}
+                {/* 右下: 広告枠。Web版はAdSense、デスクトップ/未設定時はハウス枠にフォールバック。 */}
+                <AdSlot />
+            </div>
+        )}
 
         <WaypointPanel
             isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
