@@ -26,6 +26,11 @@ export const DUPLICATES_PER_SEC = MOVEMENT_SPEED_PX_PER_SEC / WAIT_VIRTUAL_DISTA
 
 export const TARGET_FPS = 60;
 
+// ノートキャンバスの論理サイズ等（NoteView に散在していたマジックナンバーを集約）。#A-8-6
+// W×H: 事件ノートの基準範囲(3:2)。CHAR_LOGICAL_H: キャラノートの立ち絵配置の基準高さ。
+// COMPACT_SIDE_MIN: compact 時の左ツールストリップ最小幅(px)。
+export const NOTE_CANVAS = { W: 1200, H: 800, CHAR_LOGICAL_H: 600, COMPACT_SIDE_MIN: 88 } as const;
+
 // ▼▼▼ デフォルトのマップデータ ▼▼▼
 export const INITIAL_NODES: MapNode[] = [
   { "id": "kn0qnry8z", "x": 76.22735100419263, "y": 454.06394928405825, "floor": "1F", "type": "room", "name": "湖方面" },

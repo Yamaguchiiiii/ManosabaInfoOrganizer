@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Image as KonvaImage, Group, Circle, Line, Rect } from 'react-konva';
-import useImage from 'use-image';
+import { useCachedImage } from '../../services/imageCache';
 
 // ノード描画コンポーネント共通の props（Group の全 props ＋ 選択/経路ハイライト）。
 // ...props は Konva Group にそのまま渡る（onClick 等のイベントも型付きで受け取れる）。
@@ -33,8 +33,9 @@ export const THEME_COLORS = {
 
 
 // マップ画像表示コンポーネント。読み込んだ画像の自然サイズを onLoad で通知できる。
+// モジュールキャッシュ利用でページ遷移/ペイン再マウント時の再デコードを避ける（A-7）。
 export const MapImage = ({ src, onLoad }: { src: string, onLoad?: (w: number, h: number) => void }) => {
-  const [image] = useImage(src);
+  const image = useCachedImage(src);
   useEffect(() => {
     if (image && onLoad) onLoad(image.width, image.height);
   }, [image, onLoad]);

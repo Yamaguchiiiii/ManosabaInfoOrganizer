@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Stage, Layer, Line, Group, Text, Circle, Image as KonvaImage } from 'react-konva';
-import useImage from 'use-image';
+import { Stage, Layer, Line, Group, Text, Circle } from 'react-konva';
 import { useAppStore, FloorId } from '../store';
-import { StairNode } from './common/MapElements';
+import { StairNode, MapImage } from './common/MapElements';
 import { useStageZoom } from '../hooks/useStageZoom';
 
 interface ReadOnlyMapViewProps {
@@ -10,18 +9,6 @@ interface ReadOnlyMapViewProps {
   fitContainer?: boolean;
   children?: React.ReactNode;
 }
-
-const MapImage = ({ src, onLoad }: { src: string, onLoad?: (width: number, height: number) => void }) => {
-  const [image] = useImage(src);
-  
-  useEffect(() => {
-    if (image && onLoad) {
-      onLoad(image.width, image.height);
-    }
-  }, [image, onLoad]);
-
-  return <KonvaImage image={image} />;
-};
 
 export const ReadOnlyMapView: React.FC<ReadOnlyMapViewProps> = ({ 
     floorId, fitContainer = false, children 

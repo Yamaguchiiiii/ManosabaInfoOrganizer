@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Line, Image as KonvaImage, Group } from 'react-konva';
 import Konva from 'konva';
-import useImage from 'use-image';
+import { useCachedImage } from '../services/imageCache';
 import { ReadOnlyMapView } from './ReadOnlyMapView';
 import { AnimationTimeline } from './AnimationTimeline';
 import { NotesPanel } from './NotesPanel';
@@ -18,7 +18,7 @@ const HALF_SIZE = ICON_SIZE / 2;
 
 const MovingCharIcon = React.memo(React.forwardRef<Konva.Group, { icon: string, x: number, y: number }>(
     ({ icon, x, y }, ref) => {
-        const [image] = useImage(`./icon/${icon}`);
+        const image = useCachedImage(`./icon/${icon}`);
         return (
             // 画像2枚重ね＋shadowBlur(高コスト)は避け、1枚＋白縁ストロークのみ。
             <Group ref={ref} x={x} y={y}>

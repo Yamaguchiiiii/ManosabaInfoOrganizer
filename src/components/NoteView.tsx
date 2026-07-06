@@ -4,6 +4,7 @@ import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, 
 import Konva from 'konva';
 import useImage from 'use-image';
 import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } from '../store';
+import { NOTE_CANVAS } from '../constants';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 import { putAsset, resolveAssetUrl } from '../services/assetStore';
 import { useAssetUrl } from '../hooks/useAssetUrl';
@@ -41,12 +42,10 @@ const applyChaikin = (points: number[], iterations: number): number[] => {
 // 画像パレット/ギャラリーから配置できるようにするための一覧。
 const CHARACTER_PORTRAITS = ICON_FILES.map(icon => `./character/${icon}`);
 
-// compact(Animate)で Canvas 左に置くツールバーの最小幅(px)。テキストボタンが収まる幅を確保。
-// 実際の幅は 3:2フィットで生じる左の余白に合わせてレスポンシブに広がる。
-const COMPACT_SIDE_MIN = 88;
-// 論理キャンバスの基準サイズ(3:2)。オブジェクト未配置時のフォールバック表示に使う。
-const CANVAS_BASE_W = 1200;
-const CANVAS_BASE_H = 800;
+// 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
+const COMPACT_SIDE_MIN = NOTE_CANVAS.COMPACT_SIDE_MIN;
+const CANVAS_BASE_W = NOTE_CANVAS.W;
+const CANVAS_BASE_H = NOTE_CANVAS.H;
 
 // asset:// キーにも対応する <img>（サムネイル/ギャラリー用）。静的パス/data: はそのまま表示。
 const AssetImg: React.FC<{ src: string; alt?: string; style?: React.CSSProperties }> = ({ src, alt, style }) => {
@@ -1725,8 +1724,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
                         // compact/非compact 共通の論理キャンバスサイズ (1200×800)
                         // ズームやウィンドウリサイズでも論理座標系が変わらないよう scale で吸収する
-                        const CANVAS_BASE_WIDTH = 1200;
-                        const CANVAS_BASE_HEIGHT = 800;
+                        const CANVAS_BASE_WIDTH = CANVAS_BASE_W;
+                        const CANVAS_BASE_HEIGHT = CANVAS_BASE_H;
                         // 単一表示・4ペイン表示とも「ステージ(=セル)いっぱいにフィット」で統一する。
                         // stageWidth/stageHeight は単一表示ならコンテナ、グリッドなら各セルの実寸。
                         // コンテナ/セルは width/height 100% ＝物理サイズ一定なので、ブラウザの Ctrl+/− ズームで
@@ -2377,8 +2376,8 @@ export const NoteView: React.FC = React.memo(() => {
         const defaultImgSrc = `./character/${selectedChar}`;
         addNoteAsset('character', selectedChar, defaultImgSrc);
         getImageSizeFromUrl(defaultImgSrc, 800).then(size => {
-            // キャンバス論理高さ600を基準に左下に上半身が見える位置（下半分がキャンバス外）
-            const canvasLogicalHeight = 600;
+            // キャンバス論理高さを基準に左下に上半身が見える位置（下半分がキャンバス外）
+            const canvasLogicalHeight = NOTE_CANVAS.CHAR_LOGICAL_H;
             addNoteObject('character', selectedChar, {
                 id: `default_char_${Date.now()}`,
                 type: 'image',
