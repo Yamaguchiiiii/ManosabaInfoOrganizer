@@ -9,6 +9,7 @@ import { putAsset, resolveAssetUrl } from '../services/assetStore';
 import { useAssetUrl } from '../hooks/useAssetUrl';
 import { useViewport } from '../hooks/useViewport';
 import { toast } from '../services/toast';
+import { downloadDataUrl } from '../utils/download';
 import '../styles/NoteView.scss';
 
 const HANDWRITING_FONT = '"Yomogi", "Klee One", "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive';
@@ -616,6 +617,51 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         setSelectedIds(newObjs.map(o => o.id));
         toast.info(`${newObjs.length}件を貼り付けました`);
     }, [clipboard, currentCanvasIndex, addNoteObjects, targetType, displayTargetId]);
+
+    // 現在のキャンバスを PNG として書き出す（B-4）。事件ノート(preset)は論理1200×800を常に
+    // 2400×1600 で出力（ズーム非依存）。それ以外は表示範囲を2倍解像度で出力。
+    // 選択枠(Transformer/インジケータ)は一時非表示にし、紙面(方眼)背景は toDataURL に写らない
+    // CSS 背景なので一時的に Konva 背景Rectを敷いてから出力する。
+    const handleExportPng = useCallback(() => {
+        const stage = stageRefs.current[currentCanvasIndex];
+        const layer = stage?.getLayers()[0];
+        if (!stage || !layer) return;
+        const s = layer.scaleX() || 1;
+        const rangeFit = targetType === 'preset';
+
+        // 選択枠(Transformer/インジケータ)を一時非表示にして描画物だけを出力する
+        const excluded = stage.find('.__export_exclude');
+        excluded.forEach(n => n.visible(false));
+        layer.batchDraw();
+        let transparentUrl: string;
+        try {
+            transparentUrl = rangeFit
+                ? stage.toDataURL({ pixelRatio: 2 / s, mimeType: 'image/png' })
+                : stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+        } finally {
+            excluded.forEach(n => n.visible(true));
+            layer.batchDraw();
+        }
+
+        // 紙面(方眼色)背景は CSS 背景で toDataURL に写らないため、2D canvas で合成する
+        // （react-konva と別インスタンスの new Konva.* は使わない）。
+        const fileName = `manosaba-note-${targetType}-${Date.now()}.png`;
+        const img = new Image();
+        img.onload = () => {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            const ctx = c.getContext('2d');
+            if (!ctx) { downloadDataUrl(transparentUrl, fileName); toast.success('PNGを書き出しました'); return; }
+            ctx.fillStyle = '#ECD2B3';
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0);
+            downloadDataUrl(c.toDataURL('image/png'), fileName);
+            toast.success('PNGを書き出しました');
+        };
+        img.onerror = () => { downloadDataUrl(transparentUrl, fileName); toast.success('PNGを書き出しました'); };
+        img.src = transparentUrl;
+    }, [currentCanvasIndex, targetType]);
 
     // 選択中オブジェクトを切り取り（クリップボードへ退避してから削除する。属性は維持）
     const handleCutSelected = useCallback(() => {
@@ -1285,6 +1331,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         >
                             削除
                         </button>
+                        <button title="このキャンバスをPNGで書き出す" onClick={handleExportPng} style={toolTextBtnStyle(false)}>📷 PNG</button>
                     </div>
                     {(placementMode?.type as string) === 'freehand' && (
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', borderTop: '1px solid #444', marginTop: '4px', paddingTop: '6px', flexWrap: 'wrap' }}>
@@ -1560,6 +1607,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                             style={{ marginTop: '10px', background: selectedIds.length === 0 ? 'var(--surface-4, #444)' : 'var(--danger, #ef4444)', color: selectedIds.length === 0 ? '#888' : 'white', fontSize: '1rem', padding: '5px' }}
                         >
                             Delete Selected
+                        </button>
+                        <button
+                            onClick={handleExportPng}
+                            title="このキャンバスをPNGで書き出す"
+                            style={{ marginTop: '6px', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '5px', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                            📷 PNG書き出し
                         </button>
                     </div>
                     <h3>Images</h3>
@@ -1863,6 +1917,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             .map(o => (
                                                 <Rect
                                                     key={`sel_indicator_${o.id}`}
+                                                    name="__export_exclude"
                                                     x={(o.x ?? 0) - 2}
                                                     y={(o.y ?? 0) - 2}
                                                     width={(o.width || 150) + 4}
@@ -1924,6 +1979,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             return (
                                                 <Transformer
                                                     ref={(el) => { trRefs.current[index] = el; }}
+                                                    name="__export_exclude"
                                                     boundBoxFunc={(oldBox, newBox) => {
                                                         if (newBox.width < 5 || newBox.height < 5) return oldBox;
                                                         return newBox;
