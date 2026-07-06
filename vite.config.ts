@@ -10,6 +10,9 @@ const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  // konva を単一インスタンスに束ねる（"Several Konva instances detected" 警告の解消）。
+  // 直接 import の konva と react-konva 同梱の konva が別実体になるのを防ぐ。
+  resolve: { dedupe: ["konva", "react-konva"] },
   plugins: [
     react(),
     ...(isTauri ? [] : [VitePWA({
