@@ -19,6 +19,7 @@ import { setNavigationGuard } from '../services/navigationGuard';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 import { formatCharName } from '../utils/charName';
 import { toast } from '../services/toast';
+import { validatePresetSync } from '../utils/syncValidation';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -691,7 +692,20 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (selectedIcons.length === 1) saveCharacterAnimation(activePresetId, selectedIcons[0], displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
       else saveBatchCharacterAnimations(activePresetId, selectedIcons, displayPath, validWp, startTime, syncConstraints, startRef, showBeforeStart);
       setConnectingNodeId(null); setIsEditing(false);
-      toast.success(selectedIcons.length > 1 ? `${selectedIcons.length}体の経路を保存しました` : '経路を保存しました');
+
+      // 保存後の sync 整合性チェック（B-5）。矛盾は無警告フォールバックされるため人間に提示する。
+      const savedName = selectedIcons.length > 1 ? `${selectedIcons.length}体の経路を保存しました` : '経路を保存しました';
+      const updated = useAppStore.getState().presets.find(p => p.id === activePresetId)?.data;
+      const issues = updated ? validatePresetSync(updated, nodes) : [];
+      const errors = issues.filter(i => i.level === 'error');
+      const warns = issues.filter(i => i.level === 'warn');
+      if (errors.length > 0) {
+          showAlert(`${savedName}。\nただし sync 設定に問題があります:\n\n` + [...errors, ...warns].map(i => '• ' + i.message).join('\n'), 'sync 警告');
+      } else if (warns.length > 0) {
+          toast.info(`${savedName}（sync 警告 ${warns.length}件）`);
+      } else {
+          toast.success(savedName);
+      }
   };
 
   // #06/28-14:10-1: 保存を要求し、完了したら true を解決する。
