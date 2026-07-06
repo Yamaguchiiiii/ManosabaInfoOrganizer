@@ -1,6 +1,8 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useAppStore, usePlaybackStore } from '../store';
 import { resolveStartTimes, normalizeTimelineData, precomputePath, computeAnchors } from '../utils/animationUtils';
+import { detectEncounters, Encounter } from '../utils/encounterDetection';
+import { formatCharName } from '../utils/charName';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
@@ -34,9 +36,9 @@ export const AnimationTimeline: React.FC = () => {
         return () => window.removeEventListener('pointerdown', handlePointerDown, true);
     }, [setIsPlaying]);
 
-    // 全体尺 + シークバーに重ねる sync マーカー（誰がいつ合流/すれ違うか）を同時に算出する。
-    const { maxDuration, syncMarkers } = useMemo(() => {
-        const empty = { maxDuration: 300, syncMarkers: [] as { t: number; label: string }[] };
+    // 全体尺 + sync マーカー + 遭遇（同室）を同時に算出する（オフセット補正済み）。
+    const { maxDuration, syncMarkers, encounters } = useMemo(() => {
+        const empty = { maxDuration: 300, syncMarkers: [] as { t: number; label: string }[], encounters: [] as Encounter[] };
         if (!activePreset || !activePreset.data) return empty;
 
         // Animate と同じく、開始条件(startRef)解決＋合流アンカーで各キャラの開始/終了時刻を求める。
@@ -60,14 +62,20 @@ export const AnimationTimeline: React.FC = () => {
         const max = Math.max(...spans.map(s => s.end - offset));
         const maxDur = Math.max(max + 60, 300);
 
-        // オフセット補正し、尺の範囲内のマーカーのみ（時刻順）
         const markers = rawMarkers
             .map(m => ({ t: m.time - offset, label: m.label }))
             .filter(m => m.t >= 0 && m.t <= maxDur)
             .sort((a, b) => a.t - b.t);
 
-        return { maxDuration: maxDur, syncMarkers: markers };
+        // 遭遇（同室）: オフセット補正して尺内のものだけ
+        const enc = detectEncounters(activePreset.data, nodes, resolvedStarts)
+            .map(e => ({ ...e, start: e.start - offset, end: e.end - offset }))
+            .filter(e => e.end >= 0 && e.start <= maxDur);
+
+        return { maxDuration: maxDur, syncMarkers: markers, encounters: enc };
     }, [activePreset, nodes]);
+
+    const [showEncounters, setShowEncounters] = useState(false);
 
     const formatTime = (frames: number) => {
         const seconds = Math.floor(frames / 30);
@@ -134,6 +142,21 @@ export const AnimationTimeline: React.FC = () => {
                     {isPlaying ? 'Pause' : 'Play'}
                 </button>
 
+                {/* 遭遇（同室）ログのトグル。件数を表示し、クリックで一覧を開く。B-6 */}
+                {encounters.length > 0 && (
+                    <button
+                        onClick={() => setShowEncounters(v => !v)}
+                        title="同じ部屋に居合わせた組み合わせ"
+                        style={{
+                            background: showEncounters ? 'rgba(20,180,180,0.25)' : '#333',
+                            border: '1px solid #178c8c', borderRadius: '4px', color: '#5fd0d0',
+                            padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem',
+                        }}
+                    >
+                        ⚇ 遭遇 {encounters.length}
+                    </button>
+                )}
+
                 {/* 2行目: 現在の再生時間 | 再生バー | アニメーション全体の時間（幅100%で折り返す） */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
                     <div style={{ color: '#ccc', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
@@ -161,6 +184,44 @@ export const AnimationTimeline: React.FC = () => {
                                 }}
                             />
                         ))}
+                        {/* 遭遇（同室）帯: バー下端にシアンのティック（クリックは奪わない・一覧から時刻へジャンプ） */}
+                        {encounters.map((e, i) => (
+                            <div
+                                key={i}
+                                title={`${e.nodeName}: ${e.charIds.map(formatCharName).join('・')}`}
+                                style={{
+                                    position: 'absolute', left: `${(Math.max(0, e.start) / maxDuration) * 100}%`,
+                                    bottom: -2, height: 4, borderRadius: 2, pointerEvents: 'none',
+                                    width: `${Math.max(2, ((Math.min(e.end, maxDuration) - Math.max(0, e.start)) / maxDuration) * 100)}%`,
+                                    background: '#2fd0d0', opacity: 0.7,
+                                }}
+                            />
+                        ))}
+
+                        {/* 遭遇ログ一覧（トグル）。クリックでその時刻へジャンプ。 */}
+                        {showEncounters && (
+                            <div style={{
+                                position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0,
+                                maxHeight: '160px', overflowY: 'auto', background: '#1c1c1c',
+                                border: '1px solid #178c8c', borderRadius: '6px', padding: '6px', zIndex: 50,
+                                boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+                            }}>
+                                {encounters.map((e, i) => (
+                                    <div
+                                        key={i}
+                                        onClick={() => { setCurrentTime(Math.max(0, e.start)); setShowEncounters(false); }}
+                                        style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.78rem', color: '#ddd' }}
+                                        onMouseEnter={ev => (ev.currentTarget.style.background = '#2a2a2a')}
+                                        onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
+                                    >
+                                        <span style={{ color: '#5fd0d0', flexShrink: 0 }}>{formatTime(Math.max(0, e.start))}</span>
+                                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            <b>{e.nodeName}</b>: {e.charIds.map(formatCharName).join('・')}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ color: '#888', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
