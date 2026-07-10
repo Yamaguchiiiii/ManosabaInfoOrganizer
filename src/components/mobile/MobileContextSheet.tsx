@@ -29,6 +29,8 @@ export const MobileContextSheet: React.FC<MobileContextSheetProps> = ({ open, on
   const setGraphEditMode = useAppStore(s => s.setGraphEditMode);
   const selectedIcons = useAppStore(s => s.selectedIcons);
   const selectIcon = useAppStore(s => s.selectIcon);
+  const noteCharIndex = useAppStore(s => s.noteCharIndex);
+  const setNoteCharIndex = useAppStore(s => s.setNoteCharIndex);
 
   const activePreset = presets.find(p => p.id === activePresetId);
   const deadIcons = activePreset?.deadIcons || [];
@@ -43,22 +45,44 @@ export const MobileContextSheet: React.FC<MobileContextSheetProps> = ({ open, on
   return (
     <BottomSheet open={open} onClose={onClose} title={mode === 'note' ? 'ノート' : 'キャラクター'} height="half">
       {mode === 'note' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {NOTE_TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => { setActiveNoteTab(t.id); onClose(); }}
-              style={{
-                textAlign: 'left', padding: '12px 14px', borderRadius: 8, cursor: 'pointer',
-                background: activeNoteTab === t.id ? 'rgba(124,92,255,0.15)' : 'var(--surface-3, #2f2f33)',
-                border: activeNoteTab === t.id ? '1px solid var(--accent, #7c5cff)' : '1px solid transparent',
-                color: activeNoteTab === t.id ? '#fff' : '#ccc', fontSize: '0.95rem',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {NOTE_TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => { setActiveNoteTab(t.id); if (t.id !== 'character') onClose(); }}
+                style={{
+                  textAlign: 'left', padding: '12px 14px', borderRadius: 8, cursor: 'pointer',
+                  background: activeNoteTab === t.id ? 'rgba(124,92,255,0.15)' : 'var(--surface-3, #2f2f33)',
+                  border: activeNoteTab === t.id ? '1px solid var(--accent, #7c5cff)' : '1px solid transparent',
+                  color: activeNoteTab === t.id ? '#fff' : '#ccc', fontSize: '0.95rem',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {activeNoteTab === 'character' && (
+            <>
+              <div style={{ margin: '14px 0 8px', fontSize: '0.8rem', fontWeight: 'bold', color: '#888' }}>キャラクター</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                {ICON_FILES.map((icon, idx) => (
+                  <div
+                    key={icon}
+                    onClick={() => { setNoteCharIndex(idx); onClose(); }}
+                    style={{
+                      aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: '#333', cursor: 'pointer',
+                      border: noteCharIndex === idx ? '2px solid var(--focus, #66b3ff)' : '2px solid transparent',
+                    }}
+                  >
+                    <img src={`./icon/${icon}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
       ) : (
         <>
           {mode === 'create' && (

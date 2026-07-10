@@ -11,6 +11,7 @@ import { useAssetUrl } from '../hooks/useAssetUrl';
 import { useViewport } from '../hooks/useViewport';
 import { toast } from '../services/toast';
 import { downloadDataUrl } from '../utils/download';
+import { formatCharName } from '../utils/charName';
 import '../styles/NoteView.scss';
 
 const HANDWRITING_FONT = '"Yomogi", "Klee One", "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive';
@@ -2295,12 +2296,14 @@ export const NoteView: React.FC = React.memo(() => {
     const renameMiscPage = useAppStore(state => state.renameMiscPage);
     const deleteMiscPage = useAppStore(state => state.deleteMiscPage);
     const showConfirm = useAppStore(state => state.showConfirm);
+    const setMobileSheetOpen = useAppStore(state => state.setMobileSheetOpen);
     const isMobile = useViewport() === 'mobile';
 
     const [displayTab, setDisplayTab] = useState(activeNoteTab);
     const [opacity, setOpacity] = useState(1);
 
-    const [actualCharIndex, setActualCharIndex] = useState(0);
+    const actualCharIndex = useAppStore(state => state.noteCharIndex);
+    const setActualCharIndex = useAppStore(state => state.setNoteCharIndex);
     const [actualMiscPageId, setActualMiscPageId] = useState<string | null>(null);
     const [actualPresetId, setActualPresetId] = useState<string | null>(null);
     const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
@@ -2322,16 +2325,16 @@ export const NoteView: React.FC = React.memo(() => {
             if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
             if (activeNoteTab === 'character' && e.target === document.body) {
                 if (e.key.toLowerCase() === 'a' || e.key === 'ArrowLeft') {
-                    setActualCharIndex(prev => (prev - 1 + ICON_FILES.length) % ICON_FILES.length);
+                    setActualCharIndex((actualCharIndex - 1 + ICON_FILES.length) % ICON_FILES.length);
                 }
                 if (e.key.toLowerCase() === 'd' || e.key === 'ArrowRight') {
-                    setActualCharIndex(prev => (prev + 1) % ICON_FILES.length);
+                    setActualCharIndex((actualCharIndex + 1) % ICON_FILES.length);
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeNoteTab]);
+    }, [activeNoteTab, actualCharIndex, setActualCharIndex]);
 
     useEffect(() => {
         if (!actualPresetId && activePresetId) {
@@ -2345,7 +2348,7 @@ export const NoteView: React.FC = React.memo(() => {
         }
     }, [activeNoteTab, notes.miscPages, actualMiscPageId]);
 
-    const selectedChar = ICON_FILES[actualCharIndex];
+    const selectedChar = ICON_FILES[Math.min(actualCharIndex, ICON_FILES.length - 1)];
     const initializedCharsRef = useRef<Set<string>>(new Set());
 
     const addNoteAsset = useAppStore(state => state.addNoteAsset);
@@ -2430,21 +2433,14 @@ export const NoteView: React.FC = React.memo(() => {
                         sidebarHeaderDivider={false}
                         compactMode={isMobile}
                         headerBar={isMobile ? (
-                            // モバイル: キャラ選択を横スクロールの丸アイコン列で（smartphone.md M1）
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                                {ICON_FILES.map((icon, idx) => (
-                                    <img
-                                        key={icon}
-                                        src={`./icon/${icon}`}
-                                        alt=""
-                                        onClick={() => setActualCharIndex(idx)}
-                                        style={{
-                                            width: '34px', height: '34px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, cursor: 'pointer',
-                                            border: actualCharIndex === idx ? '2px solid var(--focus, #66b3ff)' : '2px solid transparent',
-                                            opacity: actualCharIndex === idx ? 1 : 0.55,
-                                        }}
-                                    />
-                                ))}
+                            // モバイル: 見切れていた横スクロール15個をやめ、現在キャラ+名前+変更ボタンに（20.md #07/04-7）
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <img src={`./icon/${selectedChar}`} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--focus, #66b3ff)' }} />
+                                <span style={{ color: '#ddd', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{formatCharName(selectedChar)}</span>
+                                <button onClick={() => setMobileSheetOpen(true)}
+                                    style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 36 }}>
+                                    変更
+                                </button>
                             </div>
                         ) : undefined}
                         sidebarHeader={

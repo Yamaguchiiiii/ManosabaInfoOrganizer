@@ -30,6 +30,9 @@ export interface UiSlice {
     selectIcon: (icon: string, multi: boolean) => Promise<void>;
     clearIconSelection: () => void;
 
+    // キャラクターノートで開いているキャラ（ICON_FILES の index）。20.md #07/04-7（persist＝前回開いていたキャラを記憶）
+    noteCharIndex: number; setNoteCharIndex: (i: number) => void;
+
     // モバイルの文脈シート（下から出すシート）の開閉（R1・旧 MobileShell ローカル state。persist除外）
     mobileSheetOpen: boolean; setMobileSheetOpen: (v: boolean) => void;
 
@@ -99,6 +102,8 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     },
 
     mobileSheetOpen: false, setMobileSheetOpen: (v) => set({ mobileSheetOpen: v }),
+
+    noteCharIndex: 0, setNoteCharIndex: (i) => set({ noteCharIndex: i }),
 
     _hasHydrated: false,
     setHasHydrated: (state) => set({ _hasHydrated: state }),
