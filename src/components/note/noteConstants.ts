@@ -1,6 +1,18 @@
-import { ICON_FILES } from '../../store';
+import { ICON_FILES, NoteObjectType } from '../../store';
 
 export const HANDWRITING_FONT = '"Yomogi", "Klee One", "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive';
+
+export type ExtendedNoteObjectType = NoteObjectType | 'freehand';
+
+export type FreehandSettings = {
+    color: string;
+    strokeWidth: number;
+    lineStyle: 'pen' | 'marker';
+    stabilization: number;
+};
+
+// 配置待機モード。data は画像配置時のみ使う（asset://キー or 静的パス）。R8: any禁止のためstringに限定。
+export type PlacementMode = { type: ExtendedNoteObjectType; data?: string } | null;
 
 // フリーハンド線を滑らかにする（Chaikin's corner-cutting algorithm）。
 export const applyChaikin = (points: number[], iterations: number): number[] => {
