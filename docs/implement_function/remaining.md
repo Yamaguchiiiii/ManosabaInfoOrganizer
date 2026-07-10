@@ -51,8 +51,7 @@
 | **A-3 selectedIcons の store 移管**（現状は App ローカル state を props drilling） | ⬜ 🟢 未（中・smartphone M0 の推奨先行と同一） |
 | **A-4 巨大ファイル分割**（NoteView 2,368行 / CreateView を小コンポーネント+hooks へ） | ⬜ 🟢 未（大） |
 | A-5 残: NoteView 内部の Konva イベント `any` 約16箇所（内部 config builder。A-4 分割時に対応推奨） | ⬜ 🟢 未（小） |
-| A-7 画像のモジュールキャッシュ（`imageCache.ts`、遷移の再デコード排除） | ⬜ 🟢 未（小〜中） |
-| A-8-6 NOTE_CANVAS 定数の集約（`constants.ts`へ） | ⬜ 🟢 未（小） |
+| ~~A-7 画像のモジュールキャッシュ~~ ✅ / ~~A-8-6 NOTE_CANVAS 定数集約~~ ✅ | ✅ 実装済 |
 
 ---
 
@@ -61,8 +60,8 @@
 refactoring.md の追加機能 B-1〜B-7 はすべて実装済み。残りは主に保守性リファクタと大型UI。
 
 **この環境で検証できる🟢:**
-1. A-7（画像キャッシュ）/ A-8-6（定数集約）/ A-5残（Konva any） — 小さな最適化
-2. A-2 → A-3 → A-4（store分割 / selectedIcons移管 / 巨大ファイル分割）— 保守性の土台（大）
+1. A-5残（Konva any 約16・A-4分割時に対応推奨） — 小
+2. **A-2 → A-3 → A-4**（store分割 / selectedIcons移管 / 巨大ファイル分割）— 保守性の土台（大）
 3. ui.md P1 コンポーネント化 / P3 残 / 19.md #2 hands-on チュートリアル（大・視覚レビュー前提）
 
 **🔴 実機必要:** タッチ ピンチズーム / E3 / E4完全版 / PWAアイコン最適化

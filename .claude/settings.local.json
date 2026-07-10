@@ -24,7 +24,27 @@
       "Bash(npm -v)",
       "Bash(echo \"npm: $\\(npm -v 2>&1\\)\")",
       "Bash(node_modules/.bin/tsc -v)",
-      "Bash(echo \"ts: installed \\($\\(node_modules/.bin/tsc -v 2>&1\\)\\)\")"
+      "Bash(echo \"ts: installed \\($\\(node_modules/.bin/tsc -v 2>&1\\)\\)\")",
+      "Bash(git ls-tree *)",
+      "Bash(grep -n \"変更ファイル\\\\|store.ts\\\\` \\\\||---|---|\" docs/resolve_error/12.md)",
+      "Bash(grep -n \"CreateView.tsx\\\\` \\\\|\" docs/resolve_error/12.md)",
+      "Bash(git commit *)",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(echo \"committed: $?\")",
+      "Bash(awk -F: '$1>1280 && $1<1300')",
+      "Bash(awk '/partialize/{found=1} found{print NR\": \"$0} found && /}/{c++; if\\(c>2\\) exit}' src/store.ts)",
+      "Bash(grep -n \"setStartTime\\(0\\)\\\\|setStartTime\\(currentData\\\\|setStartRef\\\\|setShowBeforeStart\\\\|const handleEditPath\\\\|setWaypoints\\(\\\\[{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }\\\\]\\)\" src/components/CreateView.tsx)",
+      "Bash(cd /d/Develop/ManosabaInfoOrganizer *)",
+      "Bash(npm view *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/vite/package.json'\\).version\\)\")",
+      "Bash(npm i *)",
+      "Bash(npx vitest *)",
+      "Bash(grep -nE \"\\(darken|lighten|rgba|mix|adjust\\)\\\\\\(\\\\s*\\\\\\\\\\\\$\\(bg-dark|bg-sidebar|text-main|accent-color|border-color|hover-color\\)\" src/styles/App.scss)",
+      "Bash(git restore *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:1420/src/components/AnimateView.tsx\")",
+      "Bash(echo \"latest: $\\(npm view vite-plugin-pwa version 2>/dev/null\\)\")",
+      "Bash(echo \"peer vite: $\\(npm view vite-plugin-pwa@latest peerDependencies.vite 2>/dev/null\\)\")",
+      "Bash(node -e \"const s=require\\('fs'\\).statSync\\('public/logo.png'\\); console.log\\('logo.png bytes:', s.size\\)\")"
     ]
   }
 }
