@@ -18,6 +18,7 @@ import { CompactToolbar } from './note/CompactToolbar';
 import { ShapeContextMenu, ShapeContextMenuState } from './note/ShapeContextMenu';
 import { NoteToolsSidebar } from './note/NoteToolsSidebar';
 import { useNoteClipboard } from '../hooks/useNoteClipboard';
+import { useNoteKeyboard } from '../hooks/useNoteKeyboard';
 import '../styles/NoteView.scss';
 
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
@@ -414,87 +415,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         if (r.last) { const f = r.last; r.last = null; f(); }
     }, []);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // IME変換中（日本語入力中）はショートカットを発火させない（半角/全角や変換キーを奪わない）。
-            if (e.isComposing || e.keyCode === 229) return;
-            if (e.key === 'Escape') {
-                setPlacementMode(null);
-                return;
-            }
-            if (e.target !== document.body) return;
-            if (editingTextId) return;
-
-            // Ctrl+Z: 取り消し / Ctrl+Shift+Z・Ctrl+Y: やり直し（Redo）。#refactoring B-2
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-                e.preventDefault();
-                undoNote();
-                setSelectedIds([]);
-                return;
-            }
-            if ((e.ctrlKey || e.metaKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
-                e.preventDefault();
-                redoNote();
-                setSelectedIds([]);
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
-                e.preventDefault();
-                if (selectedIds.length < 2) return;
-                const newGroupId = `group_${Date.now()}`;
-                updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
-                e.preventDefault();
-                if (selectedIds.length === 0) return;
-                updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
-                setSelectedIds([]);
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-                if (selectedIds.length === 0) return;
-                e.preventDefault();
-                handleCopySelected();
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
-                if (selectedIds.length === 0) return;
-                e.preventDefault();
-                handleCutSelected();
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                if (clipboard.length === 0) return;
-                e.preventDefault();
-                handlePasteClipboard();
-                return;
-            }
-
-            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
-                removeNoteObjects(targetType, displayTargetId, selectedIds);
-                setSelectedIds([]);
-            }
-
-            if (!placementMode && !shapeContextMenu && !isDrawingRef.current) {
-                if (e.key.toLowerCase() === 'w' || e.key === 'ArrowUp') {
-                    setCurrentCanvasIndex(prev => (prev - 1 + 4) % 4);
-                    setSelectedIds([]);
-                }
-                if (e.key.toLowerCase() === 's' || e.key === 'ArrowDown') {
-                    setCurrentCanvasIndex(prev => (prev + 1) % 4);
-                    setSelectedIds([]);
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, redoNote, clipboard, handleCopySelected, handlePasteClipboard, handleCutSelected]);
+    useNoteKeyboard({
+        editingTextId, setPlacementMode, undoNote, redoNote,
+        selectedIds, setSelectedIds, updateNoteObjects, removeNoteObjects, targetType, displayTargetId,
+        handleCopySelected, handleCutSelected, handlePasteClipboard, clipboard,
+        placementMode, shapeContextMenu, isDrawingRef, setCurrentCanvasIndex,
+    });
 
     useEffect(() => {
         const timer = setTimeout(() => {
