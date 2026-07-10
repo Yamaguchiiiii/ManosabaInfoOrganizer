@@ -26,7 +26,20 @@ export const openDB = (): Promise<IDBDatabase> => {
             if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
             if (!db.objectStoreNames.contains(ASSET_STORE)) db.createObjectStore(ASSET_STORE);
         };
-        request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
+        // revise No.5: 旧バージョン接続を持つ別タブが生きたままDB_VERSIONを上げると、
+        // このopenはblockedのまま保留され続け新タブが永久Loadingになる。理由をバナーで示す。
+        request.onblocked = () => {
+            void import('../services/appBanner').then(m => m.showAppBanner({
+                message: 'データベースの更新が他のタブにブロックされています。このアプリを開いている他のタブ/ウィンドウを閉じてください。',
+            }));
+        };
+        request.onsuccess = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            // 将来のバージョンアップ時、自分が旧接続側なら自動で手放す（相手のblocked回避）
+            db.onversionchange = () => db.close();
+            void import('../services/appBanner').then(m => m.hideAppBanner());
+            resolve(db);
+        };
         request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
     });
 };
@@ -90,10 +103,17 @@ export interface IdbPersistStorage<S> extends PersistStorage<S> {
     flushNow: () => Promise<void>;
 }
 
+// 多タブ競合検知用のリビジョンキー（revise No.20 第1段）。書き込み毎に+1し、
+// 自分が最後に読んだ/書いた値とIDB上の値がズレていたら「他タブが書いた後」と判断して保存を止める。
+// バックアップのインポート（idbPutString直呼び）でも rev を進める必要があるため export する。
+export const REV_KEY = 'mystery-map-storage:rev';
+
 export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
     let pending: { name: string; value: StorageValue<S> } | null = null;
     let lastWritten: StorageValue<S> | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let knownRev = 0;
+    let writeHeld = false; // 競合検知で保存停止中（リロードまで解除しない）
 
     // トップレベルキーの参照比較。partialize は毎回新オブジェクトを返すが、変更のなかった
     // スライス（notes/presets/nodes…）は同一参照のままなので「全キー同一参照」なら何もしない。
@@ -115,6 +135,22 @@ export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
         notifyPhase('saving');
         try {
             const str = JSON.stringify(value); // ← 唯一の stringify 地点（最大1回/500ms・アイドル時）
+            // revise No.20: 他タブが自分の知らないrevまで書き進めていたら、last-write-winsで
+            // 相手の変更を踏み潰さないよう保存を停止する（リロードで再開するまで解除しない）。
+            const currentRev = Number(await idbGetString(REV_KEY)) || 0;
+            if (currentRev !== knownRev) {
+                writeHeld = true;
+                pending = { name, value }; // 破棄しない（リロードまで保持）
+                notifyPhase('error');
+                void import('../services/appBanner').then(m => m.showAppBanner({
+                    message: '別のタブがデータを更新したため、上書き防止のためこのタブの保存を停止しました。',
+                    actionLabel: '再読み込みして再開',
+                    onAction: () => location.reload(),
+                }));
+                return;
+            }
+            knownRev = currentRev + 1;
+            await idbPutString(REV_KEY, String(knownRev));
             await idbPutString(name, str);
             lastWritten = value;
             notifyPhase('saved');
@@ -127,6 +163,8 @@ export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
 
     const schedule = () => {
         if (timer) clearTimeout(timer);
+        // revise No.8: タブが隠れている間はdebounce/idleを待たず即書きする（バックグラウンド closure に強くする）
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') { void writeNow(); return; }
         timer = setTimeout(() => {
             if (typeof requestIdleCallback === 'function') {
                 requestIdleCallback(() => { void writeNow(); }, { timeout: 1000 });
@@ -147,15 +185,18 @@ export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
             if (document.visibilityState === 'hidden') void flushNow();
         });
         window.addEventListener('pagehide', () => { void flushNow(); });
+        window.addEventListener('beforeunload', () => { void flushNow(); }); // revise No.8
     }
 
     return {
         getItem: async (name) => {
             const str = await idbGetString(name);
+            knownRev = Number(await idbGetString(REV_KEY)) || 0;
             if (!str) return null;
             try { return JSON.parse(str) as StorageValue<S>; } catch { return null; }
         },
         setItem: (name, value) => {
+            if (writeHeld) return; // revise No.20: 競合検知後は再読み込みまで書き込みを止める
             if (!changed(pending?.value ?? lastWritten, value)) return; // 参照比較のみ・stringify しない
             notifyPhase('pending');
             pending = { name, value };

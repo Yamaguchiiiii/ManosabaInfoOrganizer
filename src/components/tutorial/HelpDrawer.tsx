@@ -118,6 +118,7 @@ const BackupSection: React.FC = () => {
             <div style={{ fontWeight: 'bold', color: '#66b3ff', marginBottom: 6 }}>バックアップ</div>
             <div style={{ fontSize: '0.78rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 }}>
                 すべてのノート・経路・プリセットを1つのファイルに保存/復元します。ブラウザのデータ削除に備えて時々書き出しておくと安全です。
+                保存状態が「…変更あり」のままタブを閉じると直前の編集が保存されないことがあります。
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleExport} disabled={busy} style={backupBtn}>⬇ エクスポート</button>

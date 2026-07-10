@@ -4,7 +4,7 @@
 // 実装は Web 標準（Blob + <a download> / <input type=file>）のみ。Tauri(WebView2) でもそのまま動く。
 // ネイティブのファイルダイアログ（@tauri-apps/plugin-dialog/fs）はより良い UX の将来拡張として保留。
 import { flushPersistNow } from '../store';
-import { idbGetString, idbPutString } from '../store/persistStorage';
+import { idbGetString, idbPutString, REV_KEY } from '../store/persistStorage';
 import { listAssetKeys, getAssetBlob, putAssetAtKey } from './assetStore';
 
 const STORAGE_KEY = 'mystery-map-storage';
@@ -90,6 +90,9 @@ export const importBackupFromText = async (text: string): Promise<void> => {
             try { await putAssetAtKey(key, await dataUrlToBlob(dataUrl)); } catch { /* 個別失敗は許容 */ }
         }
     }
+    // revise No.20: rev も進めておく（他タブがインポート前のrevで書き込もうとしたら弾かれる）
+    const currentRev = Number(await idbGetString(REV_KEY)) || 0;
+    await idbPutString(REV_KEY, String(currentRev + 1));
     await idbPutString(STORAGE_KEY, parsed.payload);
     // rehydrate 経路（migrate 含む）に確実に乗せるため、書き戻し後はリロードするのが最も安全。
     location.reload();

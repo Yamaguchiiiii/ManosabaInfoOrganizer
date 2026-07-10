@@ -51,19 +51,22 @@ export const useAppStore = create<AppState>()(
                             .filter((e): e is [string, CharacterTimelineData] => e[1] !== null)
                     ),
                 }));
-                state.setHasHydrated(true);
                 // 旧 data URL 画像を Blob(asset://) へ移行し、その後 未参照アセットを GC（起動時のみ）。#P2
                 // 循環 import 回避のため動的 import。失敗は次回起動で再試行される（自己修復）。
+                // revise No.3: UI解放(setHasHydrated)は移行完了後に行う。移行は起動時点のnotesスナップショットを
+                // replaceNotes()で全置換するため、先にUIを解放するとその間のユーザー編集が巻き戻ってしまう。
+                // _hasHydrated=falseの間はLoadingScreenが出続け、note系アクションは既存ガードで弾かれるため
+                // 「編集→移行に上書きされる」という競合が構造的に起きなくなる。
                 void import('../services/assetMigration').then(async ({ migrateDataUrlAssets, sweepOrphanAssets }) => {
-                    try {
-                        await migrateDataUrlAssets();
-                        if (typeof requestIdleCallback === 'function') {
-                            requestIdleCallback(() => { void sweepOrphanAssets(); }, { timeout: 2000 });
-                        } else {
-                            setTimeout(() => { void sweepOrphanAssets(); }, 1000);
-                        }
-                    } catch { /* 移行失敗は次回起動で再試行 */ }
-                });
+                    try { await migrateDataUrlAssets(); }
+                    catch { /* 移行失敗は次回起動で再試行（べき等） */ }
+                    finally { state.setHasHydrated(true); }
+                    if (typeof requestIdleCallback === 'function') {
+                        requestIdleCallback(() => { void sweepOrphanAssets(); }, { timeout: 2000 });
+                    } else {
+                        setTimeout(() => { void sweepOrphanAssets(); }, 1000);
+                    }
+                }).catch(() => state.setHasHydrated(true)); // 動的import自体の失敗でも必ず解放
             }
         }
     }

@@ -40,14 +40,17 @@ export interface UiSlice {
     setHasHydrated: (state: boolean) => void;
 }
 
-// ダイアログの Promise resolver はモジュールスコープに保持する（永続化対象外にするため）
+// ダイアログの Promise resolver はモジュールスコープに保持する（永続化対象外にするため）。
+// revise No.7: 表示中に別のshowDialogが来たら強制差し替え(旧resolverを''で解決)していたため、
+// 並行するshowConfirmの先行側がユーザー操作なしでfalse扱いになっていた。直列キュー化で解消する。
+interface PendingDialog { req: DialogRequest; resolve: (v: string) => void; }
 let dialogResolver: ((value: string) => void) | null = null;
+const dialogQueue: PendingDialog[] = [];
 
 export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     dialog: null,
     showDialog: (req) => new Promise<string>((resolve) => {
-        // 既存ダイアログが残っていれば空文字でクローズしてから差し替える
-        if (dialogResolver) { const prev = dialogResolver; dialogResolver = null; prev(''); }
+        if (dialogResolver) { dialogQueue.push({ req, resolve }); return; } // 表示中→待機
         dialogResolver = resolve;
         set({ dialog: req });
     }),
@@ -64,8 +67,14 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     }).then(v => v === 'ok'),
     closeDialog: (value) => {
         const r = dialogResolver;
-        dialogResolver = null;
-        set({ dialog: null });
+        const next = dialogQueue.shift();
+        if (next) {
+            dialogResolver = next.resolve;
+            set({ dialog: next.req }); // 続けて次を表示
+        } else {
+            dialogResolver = null;
+            set({ dialog: null });
+        }
         if (r) r(value);
     },
 

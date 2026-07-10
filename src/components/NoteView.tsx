@@ -903,19 +903,27 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
+        if (!(e.target.files && e.target.files[0])) return;
+        try {
             // base64 を state に載せず、Blob を IDB に保存して asset:// キーだけを扱う（P2）
             const { blob } = await processFile(e.target.files[0]);
             const key = await putAsset(blob);
             addNoteAsset(targetType, displayTargetId, key);
             startPlacement('image', key);
+        } catch {
+            // revise No.4: QuotaExceededError 等で無反応+unhandled rejectionになるのを防ぐ
+            toast.error('画像を保存できませんでした（空き容量不足の可能性）。ヘルプからバックアップの書き出しをおすすめします。');
+            void import('../services/storageHealth').then(m => m.checkStorageHealth());
+        } finally {
+            e.target.value = ''; // 同じファイルの再選択を可能に
         }
     };
 
     const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         const files = e.dataTransfer.files;
-        if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+        if (!(files && files.length > 0 && files[0].type.startsWith('image/'))) return;
+        try {
             const { blob, width, height } = await processFile(files[0]);
             const key = await putAsset(blob);
             addNoteAsset(targetType, displayTargetId, key);
@@ -929,6 +937,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 keepRatio: true,
                 canvasIndex: currentCanvasIndex
             });
+        } catch {
+            toast.error('画像を保存できませんでした（空き容量不足の可能性）。ヘルプからバックアップの書き出しをおすすめします。');
+            void import('../services/storageHealth').then(m => m.checkStorageHealth());
         }
     };
 
