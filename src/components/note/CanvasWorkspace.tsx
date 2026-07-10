@@ -24,6 +24,29 @@ const COMPACT_SIDE_MIN = NOTE_CANVAS.COMPACT_SIDE_MIN;
 const CANVAS_BASE_W = NOTE_CANVAS.W;
 const CANVAS_BASE_H = NOTE_CANVAS.H;
 
+// ドラッグ描画確定前の一時形状データ（R8: any禁止のため NoteObject 準拠 + 内部専用フィールドのみに限定）。
+interface DrawingShapeInfo {
+    id?: string;
+    type: ExtendedNoteObjectType;
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+    points?: number[];
+    fill?: string;
+    stroke?: string;
+    strokeWidth?: number;
+    rotation?: number;
+    scaleX?: number;
+    scaleY?: number;
+    lineStyle?: 'normal' | 'marker' | 'pen';
+    canvasIndex?: number;
+    content?: string;
+    // rect/circle/triangle のドラッグ開始点（確定時の位置計算に使う内部専用フィールド）
+    _startX?: number;
+    _startY?: number;
+}
+
 export interface CanvasWorkspaceProps {
     targetType: NoteTargetType;
     targetId: string;
@@ -124,8 +147,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const [selectionRect, setSelectionRect] = useState({ startX: 0, startY: 0, w: 0, h: 0, visible: false, canvasIndex: 0 });
 
     const isDrawingRef = useRef(false);
-    const drawingShapeInfoRef = useRef<any>(null);
-    const drawingNodeRef = useRef<any>(null);
+    // ドラッグ描画中(rect/circle/triangle/line/arrow/curve/freehand)の一時形状データ。
+    // 確定前のみ存在し、種別ごとに使うフィールドが異なるため NoteObject に準じた任意項目を持つ。
+    const drawingShapeInfoRef = useRef<DrawingShapeInfo | null>(null);
+    // 上記に対応する、描画中プレビュー用の Konva ノード（Line/Rect/Arrow のいずれか）。
+    const drawingNodeRef = useRef<Konva.Shape | null>(null);
     // 各ペインの Konva.Stage 参照。ブラウザズーム時に pixelRatio を再適用して画質劣化(#6)を防ぐ。
     const stageRefs = useRef<(Konva.Stage | null)[]>([null, null, null, null]);
 
@@ -307,7 +333,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // オブジェクトのドラッグ確定処理（#4: 4ペインをまたぐ移動に対応）。
     // グリッド編集中に別ペイン上でドロップされたら、対象（グループなら全メンバー）を
     // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
-    const handleObjectDragEnd = useCallback((e: any, obj: NoteObject, sourceIndex: number, _scale: number) => {
+    const handleObjectDragEnd = useCallback((e: Konva.KonvaEventObject<DragEvent>, obj: NoteObject, sourceIndex: number, _scale: number) => {
         const evt: MouseEvent | undefined = e?.evt;
         const rawX = e.target.x();
         const rawY = e.target.y();
@@ -566,20 +592,22 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             }
 
             if (!drawingNodeRef.current) return;
+            // freehand/line/arrow/curve/curve_arrow はいずれも Konva.Line(Arrowも継承) が描画中ノード。
+            const lineNode = drawingNodeRef.current as Konva.Line;
             const dx = logicalPos.x - drawingShapeInfoRef.current.x;
             const dy = logicalPos.y - drawingShapeInfoRef.current.y;
 
             if (type === 'freehand') {
                 drawingShapeInfoRef.current.points?.push(dx, dy);
-                drawingNodeRef.current.points(drawingShapeInfoRef.current.points);
-                drawingNodeRef.current.getLayer()?.batchDraw();
+                lineNode.points(drawingShapeInfoRef.current.points ?? []);
+                lineNode.getLayer()?.batchDraw();
             } else {
                 let newPoints = [0, 0, dx, dy];
                 if (['curve', 'curve_arrow'].includes(type)) {
                     newPoints = [0, 0, dx / 2, dy / 2 - 50, dx, dy];
                 }
-                drawingNodeRef.current.points(newPoints);
-                drawingNodeRef.current.getLayer()?.batchDraw();
+                lineNode.points(newPoints);
+                lineNode.getLayer()?.batchDraw();
                 drawingShapeInfoRef.current.points = newPoints;
             }
             return;
@@ -1107,7 +1135,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
                                             // グループドラッグ: ドラッグ中に同グループの他メンバーを追従させる
                                             const groupDragHandlers = obj.groupId ? {
-                                                onDragMove: (e: any) => {
+                                                onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
                                                     const dx = e.target.x() - (obj.x ?? 0);
                                                     const dy = e.target.y() - (obj.y ?? 0);
                                                     const stage = stageRefs.current[index];
@@ -1129,8 +1157,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 isDrawingMode,
                                                 ...groupDragHandlers,
                                                 // ドラッグ確定はグループ/単体ともに統一ハンドラへ（#4 ペイン跨ぎ移動対応）
-                                                onDragEnd: (e: any) => handleObjectDragEnd(e, obj, index, scale),
-                                                onSelect: (e: any) => {
+                                                onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleObjectDragEnd(e, obj, index, scale),
+                                                onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
 
                                                     if (isGridMode && isGridEditMode && !isCurrent) {
@@ -1166,7 +1194,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                     setEditingTextId(obj.id);
                                                     setSelectedIds([]);
                                                 },
-                                                onContextMenu: (e: any) => {
+                                                onContextMenu: (e: Konva.KonvaEventObject<PointerEvent>) => {
                                                     if (isGridMode && !isGridEditMode && !isCurrent) return;
                                                     if (isGridMode && isGridEditMode && !isCurrent) setCurrentCanvasIndex(index);
 
@@ -1202,7 +1230,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                         {drawingActive && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index && (
                                             (drawingShapeInfoRef.current.type as string) === 'freehand' ? (
                                                 <Line
-                                                    ref={drawingNodeRef}
+                                                    ref={(node) => { drawingNodeRef.current = node; }}
                                                     x={drawingShapeInfoRef.current.x}
                                                     y={drawingShapeInfoRef.current.y}
                                                     points={drawingShapeInfoRef.current.points || []}
@@ -1215,7 +1243,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 />
                                             ) : (['rect', 'circle', 'triangle', 'image'].includes(drawingShapeInfoRef.current.type as string)) ? (
                                                 <Rect
-                                                    ref={drawingNodeRef}
+                                                    ref={(node) => { drawingNodeRef.current = node; }}
                                                     x={drawingShapeInfoRef.current.x}
                                                     y={drawingShapeInfoRef.current.y}
                                                     width={drawingShapeInfoRef.current.width || 0}
@@ -1228,7 +1256,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 />
                                             ) : (
                                                 <Arrow
-                                                    ref={drawingNodeRef}
+                                                    ref={(node) => { drawingNodeRef.current = node; }}
                                                     x={drawingShapeInfoRef.current.x}
                                                     y={drawingShapeInfoRef.current.y}
                                                     points={drawingShapeInfoRef.current.points || []}

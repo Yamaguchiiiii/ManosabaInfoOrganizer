@@ -35,7 +35,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
         
         <div style={{ marginBottom: '15px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>Type:</label>
-          <select value={type} onChange={(e) => setType(e.target.value as any)} style={{ width: '100%', padding: '5px' }}>
+          <select value={type} onChange={(e) => setType(e.target.value as MapNode['type'])} style={{ width: '100%', padding: '5px' }}>
             <option value="pass">Pass (通路)</option>
             <option value="room">Room (部屋)</option>
             <option value="stair">Stair (階段)</option>
