@@ -14,6 +14,7 @@ import { ImageGalleryWindow } from './ImageGalleryWindow';
 import { CompactToolbar } from './CompactToolbar';
 import { ShapeContextMenu, ShapeContextMenuState } from './ShapeContextMenu';
 import { NoteToolsSidebar } from './NoteToolsSidebar';
+import { SelectionContextBar } from './SelectionContextBar';
 import { useNoteClipboard } from '../../hooks/useNoteClipboard';
 import { useNoteKeyboard } from '../../hooks/useNoteKeyboard';
 import { useTextEditing } from '../../hooks/useTextEditing';
@@ -795,6 +796,45 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         updateNoteObjects(targetType, displayTargetId, sorted.map((o, i) => ({ id: o.id, attrs: { y: sorted[0].y + step * i } })));
     };
 
+    // U3: 選択中オブジェクトの一括操作。CompactToolbar/NoteToolsSidebar/SelectionContextBar の
+    // 3箇所で同じ挙動を共有するため、名前付き関数として一本化する（従来は各呼び出し側に同一ロジックを複製していた）。
+    const handleReorderSelected = (dir: 'front' | 'up' | 'down' | 'back') => {
+        reorderNoteObject(targetType, displayTargetId, selectedIds[0], dir);
+        saveNoteHistory();
+    };
+    const handleToggleKeepRatioSelected = (checked: boolean) => {
+        updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: checked }, true);
+        saveNoteHistory();
+    };
+    const handleGroupSelected = () => {
+        const newGroupId = `group_${Date.now()}`;
+        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
+        saveNoteHistory();
+    };
+    const handleUngroupSelected = () => {
+        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
+        setSelectedIds([]);
+        saveNoteHistory();
+    };
+    const handleDeleteSelected = () => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); };
+
+    // U3: SelectionContextBar の「色」「線幅」代表値と一括変更。text は fill、図形/線系は stroke を
+    // 色として扱う（image は対象外）。ドラッグ中の間引きは ShapeContextMenu と同じ commitThrottled を使う。
+    const colorTargets = currentCanvasObjects.filter(o => selectedIds.includes(o.id) && o.type !== 'image');
+    const widthTargets = currentCanvasObjects.filter(o => selectedIds.includes(o.id) && o.type !== 'image' && o.type !== 'text');
+    const selectionColorValue = colorTargets.length === 0 ? null : ((colorTargets[0].type === 'text' ? colorTargets[0].fill : colorTargets[0].stroke) || '#000000');
+    const selectionWidthValue = widthTargets.length === 0 ? null : (widthTargets[0].strokeWidth ?? 3);
+    const handleSelectionColorChange = (val: string) => {
+        if (colorTargets.length === 0) return;
+        commitThrottled(() => updateNoteObjects(targetType, displayTargetId, colorTargets.map(o => ({
+            id: o.id, attrs: o.type === 'text' ? { fill: val } : { stroke: val }
+        })), true));
+    };
+    const handleSelectionWidthChange = (val: number) => {
+        if (widthTargets.length === 0) return;
+        commitThrottled(() => updateNoteObjects(targetType, displayTargetId, widthTargets.map(o => ({ id: o.id, attrs: { strokeWidth: val } })), true));
+    };
+
     const getNodeScreenPosition = (id: string): { x: number; y: number; width: number } | null => {
         for (const tr of trRefs.current) {
             if (!tr) continue;
@@ -910,27 +950,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     onCut={handleCutSelected}
                     onPaste={handlePasteClipboard}
                     clipboardEmpty={clipboard.length === 0}
-                    onDelete={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
+                    onDelete={handleDeleteSelected}
                     onExportPng={handleExportPng}
                     freehandSettings={freehandSettings}
                     onFreehandSettingsChange={setFreehandSettings}
                     selectedObject={selectedObject}
-                    onToggleKeepRatio={(checked) => {
-                        updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: checked }, true);
-                        saveNoteHistory();
-                    }}
-                    onReorder={(dir) => { reorderNoteObject(targetType, displayTargetId, selectedIds[0], dir); saveNoteHistory(); }}
+                    onToggleKeepRatio={handleToggleKeepRatioSelected}
+                    onReorder={handleReorderSelected}
                     selectedGroupId={selectedGroupId}
-                    onGroup={() => {
-                        const newGroupId = `group_${Date.now()}`;
-                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
-                        saveNoteHistory();
-                    }}
-                    onUngroup={() => {
-                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
-                        setSelectedIds([]);
-                        saveNoteHistory();
-                    }}
+                    onGroup={handleGroupSelected}
+                    onUngroup={handleUngroupSelected}
                     toolBtnStyle={toolBtnStyle}
                     toolTextBtnStyle={toolTextBtnStyle}
                 />
@@ -995,27 +1024,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     onToggleSnap={() => setSnapOn(v => !v)}
                     selectedIds={selectedIds}
                     selectedObject={selectedObject}
-                    onToggleKeepRatio={(checked) => {
-                        updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: checked }, true);
-                        saveNoteHistory();
-                    }}
-                    onReorder={(dir) => { reorderNoteObject(targetType, displayTargetId, selectedIds[0], dir); saveNoteHistory(); }}
+                    onToggleKeepRatio={handleToggleKeepRatioSelected}
+                    onReorder={handleReorderSelected}
                     selectedGroupId={selectedGroupId}
-                    onGroup={() => {
-                        const newGroupId = `group_${Date.now()}`;
-                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
-                        saveNoteHistory();
-                    }}
-                    onUngroup={() => {
-                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
-                        setSelectedIds([]);
-                        saveNoteHistory();
-                    }}
+                    onGroup={handleGroupSelected}
+                    onUngroup={handleUngroupSelected}
                     onAlignLeft={handleAlignLeft}
                     onAlignTop={handleAlignTop}
                     onDistributeHorizontal={handleDistributeHorizontal}
                     onDistributeVertical={handleDistributeVertical}
-                    onDeleteSelected={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
+                    onDeleteSelected={handleDeleteSelected}
                     onExportPng={handleExportPng}
                     portraitPalette={portraitPalette}
                     assets={assets}
@@ -1046,6 +1064,29 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     gridRow: '1 / -1'
                 }}
             >
+                {/* U3: 選択中オブジェクトの操作バー。desktopはキャンバス上端に重ねる(overlay・レイアウト
+                    は動かさない)、compactはheaderBar直下の通常フロー(折り返し表示)で高さ36px分押し下げる。 */}
+                {selectedIds.length > 0 && (
+                    <div style={compactMode ? { flexShrink: 0 } : { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 }}>
+                        <SelectionContextBar
+                            count={selectedIds.length}
+                            colorValue={selectionColorValue}
+                            onColorChange={handleSelectionColorChange}
+                            onColorCommit={() => saveNoteHistory()}
+                            widthValue={selectionWidthValue}
+                            onWidthChange={handleSelectionWidthChange}
+                            onWidthCommit={() => saveNoteHistory()}
+                            canReorder={selectedIds.length === 1 && !!selectedObject}
+                            onReorderBack={() => handleReorderSelected('down')}
+                            onReorderFront={() => handleReorderSelected('up')}
+                            canGroup={selectedIds.length >= 2}
+                            onGroup={handleGroupSelected}
+                            canUngroup={!!selectedGroupId}
+                            onUngroup={handleUngroupSelected}
+                            onDelete={handleDeleteSelected}
+                        />
+                    </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%', flex: 1, minHeight: 0 }}>
                 {/* compact: 左にCanvas操作ツールバーを常設（単一表示でも4ペインでも）。#06/28-14:10-5 */}
                 {compactMode && compactToolbarW > 4 && (
@@ -1443,54 +1484,35 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 </div>
                 </div>
 
-                <div style={{ position: 'absolute', bottom: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-
-                    {isGridMode && (
-                        <div
-                            onClick={() => setIsGridEditMode(!isGridEditMode)}
-                            style={{
-                                backgroundColor: 'rgba(30, 30, 30, 0.8)', padding: '6px', borderRadius: '8px',
-                                cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center',
-                                width: '36px', height: '36px',
-                                border: isGridEditMode ? '2px solid #007acc' : '1px solid #444',
-                                boxShadow: isGridEditMode ? '0 0 8px rgba(0, 122, 204, 0.6)' : '0 4px 6px rgba(0,0,0,0.3)',
-                                boxSizing: 'border-box',
-                                color: isGridEditMode ? '#66b3ff' : '#aaa',
-                                fontSize: '1.2rem',
-                                transition: 'all 0.2s'
-                            }}
-                            title="Grid Edit Mode (Edit all canvases in 4-pane view)"
-                        >
-                            ✏️
-                        </div>
-                    )}
-
-                    <div
-                        onClick={() => {
-                            const nextMode = !isGridMode;
-                            setIsGridMode(nextMode);
-                            if (!nextMode) setIsGridEditMode(false);
-                        }}
-                        style={{
-                            backgroundColor: 'rgba(30, 30, 30, 0.8)', padding: '6px', borderRadius: '8px',
-                            cursor: 'pointer', display: 'flex', flexWrap: 'wrap', width: '36px', height: '36px',
-                            gap: '2px', border: '1px solid #444', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', boxSizing: 'border-box',
-                        }}
-                        title="Toggle 2x2 Grid Mode"
-                    >
-                        {[0,1,2,3].map(i => (
-                            <div
-                                key={i}
+                {/* U3: 旧「4ペイン切替」「グリッド編集」の絵文字トグル2つを1つのセグメント操作に統合。
+                    isGridMode/isGridEditMode の3状態(単一/4面/編集)を1箇所で切り替えられるようにする。 */}
+                <div style={{
+                    position: 'absolute', bottom: '20px', right: '20px', zIndex: 1000,
+                    display: 'flex', backgroundColor: 'rgba(30, 30, 30, 0.85)', borderRadius: '8px',
+                    padding: '3px', gap: '2px', border: '1px solid #444', boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                }}>
+                    {([
+                        { key: 'single', label: '1面', title: '単一表示', onSelect: () => { setIsGridMode(false); setIsGridEditMode(false); } },
+                        { key: 'grid', label: '4面', title: '4ペイン表示', onSelect: () => { setIsGridMode(true); setIsGridEditMode(false); } },
+                        { key: 'edit', label: '編集', title: '4ペインをまとめて編集', onSelect: () => { setIsGridMode(true); setIsGridEditMode(true); } },
+                    ] as const).map(seg => {
+                        const active = seg.key === 'single' ? !isGridMode : seg.key === 'grid' ? (isGridMode && !isGridEditMode) : (isGridMode && isGridEditMode);
+                        return (
+                            <button
+                                key={seg.key}
+                                onClick={seg.onSelect}
+                                title={seg.title}
                                 style={{
-                                    width: 'calc(50% - 1px)', height: 'calc(50% - 1px)',
-                                    backgroundColor: isGridMode
-                                        ? (currentCanvasIndex === i ? '#007acc' : '#ccc')
-                                        : (currentCanvasIndex === i ? '#007acc' : '#555'),
-                                    borderRadius: '2px'
+                                    background: active ? '#007acc' : 'transparent',
+                                    border: 'none', color: active ? '#fff' : '#aaa',
+                                    borderRadius: '5px', padding: '6px 10px', fontSize: '0.78rem', cursor: 'pointer',
+                                    fontWeight: active ? 'bold' : 'normal', minHeight: '30px',
                                 }}
-                            />
-                        ))}
-                    </div>
+                            >
+                                {seg.label}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {shapeContextMenu && (
