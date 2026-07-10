@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { setPersistPhaseListener, PersistPhase } from '../persistStorage';
+import { setPersistPhaseListener, PersistPhase } from '../store/persistStorage';
 
 // 保存状態インジケータ（refactoring B-3）。persist の書き込みフェーズを購読して UI に見せる。
 // persist 本体（永続化対象ストア）とは分離した軽量ストア（これ自体は永続化しない）。

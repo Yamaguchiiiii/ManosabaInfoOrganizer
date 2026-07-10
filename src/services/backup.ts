@@ -4,7 +4,7 @@
 // 実装は Web 標準（Blob + <a download> / <input type=file>）のみ。Tauri(WebView2) でもそのまま動く。
 // ネイティブのファイルダイアログ（@tauri-apps/plugin-dialog/fs）はより良い UX の将来拡張として保留。
 import { flushPersistNow } from '../store';
-import { idbGetString, idbPutString } from '../persistStorage';
+import { idbGetString, idbPutString } from '../store/persistStorage';
 import { listAssetKeys, getAssetBlob, putAssetAtKey } from './assetStore';
 
 const STORAGE_KEY = 'mystery-map-storage';

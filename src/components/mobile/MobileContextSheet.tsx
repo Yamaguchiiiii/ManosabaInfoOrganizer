@@ -5,8 +5,6 @@ import { BottomSheet } from './BottomSheet';
 interface MobileContextSheetProps {
   open: boolean;
   onClose: () => void;
-  selectedIcons: string[];
-  onIconSelect: (icon: string, isShift: boolean) => void;
 }
 
 const NOTE_TABS: { id: 'overview' | 'preset' | 'character' | 'misc'; label: string }[] = [
@@ -18,7 +16,7 @@ const NOTE_TABS: { id: 'overview' | 'preset' | 'character' | 'misc'; label: stri
 
 // モバイルの文脈シート（smartphone.md M0）。デスクトップの ContextPanel 相当を下から出す。
 // Note=ノート種別、Create/Animate=キャラ一覧(+Createはどくろ/Edit Map Graph)。
-export const MobileContextSheet: React.FC<MobileContextSheetProps> = ({ open, onClose, selectedIcons, onIconSelect }) => {
+export const MobileContextSheet: React.FC<MobileContextSheetProps> = ({ open, onClose }) => {
   const mode = useAppStore(s => s.mode);
   const activeNoteTab = useAppStore(s => s.activeNoteTab);
   const setActiveNoteTab = useAppStore(s => s.setActiveNoteTab);
@@ -29,6 +27,8 @@ export const MobileContextSheet: React.FC<MobileContextSheetProps> = ({ open, on
   const setSkullMode = useAppStore(s => s.setSkullMode);
   const isGraphEditMode = useAppStore(s => s.isGraphEditMode);
   const setGraphEditMode = useAppStore(s => s.setGraphEditMode);
+  const selectedIcons = useAppStore(s => s.selectedIcons);
+  const selectIcon = useAppStore(s => s.selectIcon);
 
   const activePreset = presets.find(p => p.id === activePresetId);
   const deadIcons = activePreset?.deadIcons || [];
@@ -36,7 +36,7 @@ export const MobileContextSheet: React.FC<MobileContextSheetProps> = ({ open, on
   const handleIcon = (icon: string) => {
     if (isSkullMode && mode === 'create') { toggleDeadIcon(icon); return; }
     if (deadIcons.includes(icon)) return;
-    onIconSelect(icon, false); // モバイルは単一選択（Shift 無し）
+    void selectIcon(icon, false); // モバイルは単一選択（Shift 無し）
     onClose();
   };
 

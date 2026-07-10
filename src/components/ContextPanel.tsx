@@ -6,11 +6,6 @@ import { usePresetEvents } from '../hooks/usePresetEvents';
 import { EventList } from './common/EventList';
 import { formatCharName } from '../utils/charName';
 
-interface ContextPanelProps {
-  selectedIcons: string[];
-  onIconSelect: (icon: string, isShift: boolean) => void;
-}
-
 const NOTE_TABS: { id: 'overview' | 'preset' | 'character' | 'misc'; label: string }[] = [
   { id: 'overview', label: '全体ノート' },
   { id: 'preset', label: '事件ノート' },
@@ -20,8 +15,10 @@ const NOTE_TABS: { id: 'overview' | 'preset' | 'character' | 'misc'; label: stri
 
 // 文脈パネル（旧サイドバー本体）。ui.md P2。ページ切替は NavRail へ移設し、ここは
 // 「そのページで扱う対象」を出す: Create/Animate=キャラ一覧(ICONS)、Note=ノート種別。
-export const ContextPanel: React.FC<ContextPanelProps> = React.memo(({ selectedIcons, onIconSelect }) => {
+export const ContextPanel: React.FC = React.memo(() => {
   const mode = useAppStore(s => s.mode);
+  const selectedIcons = useAppStore(s => s.selectedIcons);
+  const selectIcon = useAppStore(s => s.selectIcon);
   const isGraphEditMode = useAppStore(s => s.isGraphEditMode);
   const setGraphEditMode = useAppStore(s => s.setGraphEditMode);
   const sidebarWidth = useAppStore(s => s.sidebarWidth);
@@ -52,12 +49,12 @@ export const ContextPanel: React.FC<ContextPanelProps> = React.memo(({ selectedI
     if (isSkullMode && mode === 'create') {
       toggleDeadIcon(icon);
       if (selectedIcons.includes(icon) && !deadIcons.includes(icon)) {
-        onIconSelect(icon, true);
+        void selectIcon(icon, true);
       }
       return;
     }
     if (deadIcons.includes(icon)) return;
-    onIconSelect(icon, e.shiftKey);
+    void selectIcon(icon, e.shiftKey);
   };
 
   return (

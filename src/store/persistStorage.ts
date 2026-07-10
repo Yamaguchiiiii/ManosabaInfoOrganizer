@@ -8,7 +8,7 @@
 //   スライスを直接ミューテートすると参照が変わらず変更が persist されない。直接変更は禁止。
 
 import { PersistStorage, StorageValue } from 'zustand/middleware';
-import { notifyPersistWrote } from './services/persistCoordinator';
+import { notifyPersistWrote } from '../services/persistCoordinator';
 
 const DB_NAME = 'mystery-map-db';
 const STORE_NAME = 'app-state';

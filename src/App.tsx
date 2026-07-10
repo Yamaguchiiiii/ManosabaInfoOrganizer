@@ -29,7 +29,6 @@ function App() {
     const contextPanelCollapsed = useAppStore(state => state.contextPanelCollapsed);
     const viewport = useViewport();
 
-    const [selectedIcons, setSelectedIcons] = useState<string[]>([]);
     // #06/30-8: ページ遷移中はロゴ+「Loading ...」オーバーレイを表示する（旧: workspace の黒フェード）
     const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -53,26 +52,6 @@ function App() {
     if (!_hasHydrated) {
         return <LoadingScreen />;
     }
-
-    const handleIconSelect = async (icon: string, isShiftPressed: boolean) => {
-        if (isShiftPressed) {
-            setSelectedIcons(prev => {
-                if (prev.includes(icon)) {
-                    return prev.filter(i => i !== icon);
-                } else {
-                    return [...prev, icon];
-                }
-            });
-            return;
-        }
-        // 同じキャラの再選択は遷移扱いしない
-        if (selectedIcons.length === 1 && selectedIcons[0] === icon) return;
-        // 単一キャラへ切替: 未保存の経路があればガードで確認（中止ならキャンセル）
-        if (!(await runNavigationGuard())) return;
-        setSelectedIcons([icon]);
-    };
-
-    const clearSelection = () => setSelectedIcons([]);
 
     const MIN_OVERLAY_MS = 250; // チラつき防止の最低表示時間
 
@@ -109,9 +88,6 @@ function App() {
     const viewElement = mode === 'create' ? (
         <CreateView
             onFloorChange={changeFloorWithTransition}
-            selectedIcons={selectedIcons}
-            onIconSelect={handleIconSelect}
-            onClearSelection={clearSelection}
         />
     ) : mode === 'animate' ? (
         <AnimateView />
@@ -134,8 +110,6 @@ function App() {
         return (
             <div className="app-container mobile">
                 <MobileShell
-                    selectedIcons={selectedIcons}
-                    onIconSelect={handleIconSelect}
                     onModeChange={changeModeWithTransition}
                 >
                     {viewElement}
@@ -153,17 +127,11 @@ function App() {
             <NavRail onModeChange={changeModeWithTransition} />
 
             {!contextPanelCollapsed && (
-                <ContextPanel
-                    selectedIcons={selectedIcons}
-                    onIconSelect={handleIconSelect}
-                />
+                <ContextPanel />
             )}
 
             <div className="main-content">
-                <ContextBar
-                    selectedIcons={selectedIcons}
-                    onIconSelect={handleIconSelect}
-                />
+                <ContextBar />
 
                 <div className="workspace">
                     {viewElement}

@@ -3,24 +3,21 @@ import { useAppStore, ICON_FILES } from '../store';
 import { PresetSelector } from './common/PresetSelector';
 import { SaveStatusIndicator } from './common/SaveStatusIndicator';
 
-interface ContextBarProps {
-  selectedIcons: string[];
-  onIconSelect: (icon: string, isShift: boolean) => void;
-}
-
 const NOTE_TAB_LABELS: Record<string, string> = {
   overview: '全体ノート', preset: '事件ノート', character: 'キャラクターノート', misc: 'メモ',
 };
 
 // 全ビュー共通の上部バー（ui.md P2, 旧 TopBar を吸収）。
 // 左=パネル開閉+ビュー名パンくず、中央=Createのキャラ進捗チップ+プリセット、右=保存状態。
-export const ContextBar: React.FC<ContextBarProps> = ({ selectedIcons, onIconSelect }) => {
+export const ContextBar: React.FC = () => {
   const mode = useAppStore(s => s.mode);
   const activeNoteTab = useAppStore(s => s.activeNoteTab);
   const collapsed = useAppStore(s => s.contextPanelCollapsed);
   const setCollapsed = useAppStore(s => s.setContextPanelCollapsed);
   const presets = useAppStore(s => s.presets);
   const activePresetId = useAppStore(s => s.activePresetId);
+  const selectedIcons = useAppStore(s => s.selectedIcons);
+  const selectIcon = useAppStore(s => s.selectIcon);
   const activePreset = presets.find(p => p.id === activePresetId) || presets[0];
 
   const breadcrumb = mode === 'create' ? 'Create'
@@ -36,7 +33,7 @@ export const ContextBar: React.FC<ContextBarProps> = ({ selectedIcons, onIconSel
     <img
       src={`./icon/${icon}`}
       alt="char"
-      onClick={(e) => onIconSelect(icon, e.shiftKey)}
+      onClick={(e) => void selectIcon(icon, e.shiftKey)}
       style={{
         width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover',
         border: isSelected ? '2px solid rgba(255,255,255,0.75)' : '2px solid transparent',

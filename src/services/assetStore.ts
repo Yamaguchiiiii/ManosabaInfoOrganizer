@@ -4,7 +4,7 @@
 //
 // 静的パス（'./character/xxx.png' 等）と data:（旧データ）は asset:// ではないので、
 // resolveAssetUrl はそれらをそのまま返す（表示側は分岐不要）。
-import { openDB, ASSET_STORE } from '../persistStorage';
+import { openDB, ASSET_STORE } from '../store/persistStorage';
 
 const PREFIX = 'asset://';
 

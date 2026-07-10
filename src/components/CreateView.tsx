@@ -179,22 +179,20 @@ const FloorPane: React.FC<FloorPaneProps> = ({
 
 interface CreateViewProps {
     onFloorChange: (floor: FloorId) => void;
-    selectedIcons: string[];
-    onIconSelect: (icon: string, isShift: boolean) => void;
-    onClearSelection: () => void;
 }
 
-export const CreateView: React.FC<CreateViewProps> = ({ 
-    onFloorChange, selectedIcons, onIconSelect, onClearSelection 
+export const CreateView: React.FC<CreateViewProps> = ({
+    onFloorChange
 }) => {
-  const { 
+  const {
     activeFloor, setActiveFloor, mode, isGraphEditMode, nodes, edges,
     addNode, updateNode, removeNode, addEdge, removeEdge,
     undo, saveHistory, setSidebarWidth,
     saveCharacterAnimation, saveBatchCharacterAnimations, deleteCharacterAnimation,
     activePresetId, presets, addPresetEvent,
     showConfirm, showAlert, showDialog,
-    isSkullMode, setSkullMode
+    isSkullMode, setSkullMode,
+    selectedIcons, selectIcon, clearIconSelection,
   } = useAppStore();
 
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
@@ -787,7 +785,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (pendingSaveResolveRef.current) { pendingSaveResolveRef.current(true); pendingSaveResolveRef.current = null; }
   };
 
-  const handleCharSelect = (icon: string) => { onIconSelect(icon, false); setIsCharModalOpen(false); setIsMultiSelectMode(false); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints, startRef, showBeforeStart); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
+  const handleCharSelect = (icon: string) => { void selectIcon(icon, false); setIsCharModalOpen(false); setIsMultiSelectMode(false); saveCharacterAnimation(activePresetId, icon, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints, startRef, showBeforeStart); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
   const handleMultiSelect = (icons: string[]) => { setIsCharModalOpen(false); setIsMultiSelectMode(false); if(icons.length) saveBatchCharacterAnimations(activePresetId, icons, displayPath, waypoints.filter(w=>w.id), startTime, syncConstraints, startRef, showBeforeStart); setConnectingNodeId(null); setIsEditing(false); resolvePendingSave(); };
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, floorOverride?: FloorId) => {
@@ -810,7 +808,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
             setWaypoints([{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }]);
             setIsEditing(false);
             setConnectingNodeId(null);
-            onClearSelection();
+            clearIconSelection();
             return;
         }
     }
@@ -822,7 +820,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
     const stage = e.target.getStage();
     const pointer = stage?.getRelativePointerPosition();
     if (pointer) addNode({ id: generateId(), x: pointer.x, y: pointer.y, floor, type: 'pass' });
-  }, [isGraphEditMode, suggestionTargetIndex, activeFloor, addNode, selectedIcons.length, onClearSelection, connectingNodeId, isSkullMode, setSkullMode]);
+  }, [isGraphEditMode, suggestionTargetIndex, activeFloor, addNode, selectedIcons.length, clearIconSelection, connectingNodeId, isSkullMode, setSkullMode]);
 
   const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
       if (!isGraphEditMode || !connectingNodeId || !dynamicEdgeRef.current) return;
