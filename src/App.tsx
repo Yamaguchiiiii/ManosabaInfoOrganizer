@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FloorId, useAppStore } from './store';
 import { NavRail } from './components/NavRail';
 import { ContextPanel } from './components/ContextPanel';
@@ -30,7 +30,11 @@ function App() {
     const viewport = useViewport();
 
     // #06/30-8: ページ遷移中はロゴ+「Loading ...」オーバーレイを表示する（旧: workspace の黒フェード）
-    const [isTransitioning, setIsTransitioning] = useState(false);
+    // 20.md #1: hidden→visible→leaving→hidden の3状態でフェードイン/アウトさせる
+    type OverlayPhase = 'hidden' | 'visible' | 'leaving';
+    const [overlayPhase, setOverlayPhase] = useState<OverlayPhase>('hidden');
+    // revise No.6: 連打での二重遷移とフェードの競合を防ぐガード
+    const transitionBusyRef = useRef(false);
 
     useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
@@ -54,9 +58,11 @@ function App() {
     }
 
     const MIN_OVERLAY_MS = 250; // チラつき防止の最低表示時間
+    const FADE_MS = 200;        // LoadingScreen の 180ms + マージン
 
     const handleTransition = (action: () => void) => {
-        setIsTransitioning(true);
+        transitionBusyRef.current = true;
+        setOverlayPhase('visible');
         const shownAt = performance.now();
         // オーバーレイを1フレーム描画してから重い処理（enterMode→ビュー再マウント）を実行する
         requestAnimationFrame(() => {
@@ -64,21 +70,29 @@ function App() {
             // 新ビューの初回描画が終わった次フレームで、最低表示時間を満たしてから閉じる
             requestAnimationFrame(() => {
                 const wait = Math.max(0, MIN_OVERLAY_MS - (performance.now() - shownAt));
-                setTimeout(() => setIsTransitioning(false), wait);
+                setTimeout(() => {
+                    setOverlayPhase('leaving');
+                    setTimeout(() => {
+                        setOverlayPhase('hidden');
+                        transitionBusyRef.current = false;
+                    }, FADE_MS);
+                }, wait);
             });
         });
     };
 
     const changeModeWithTransition = async (newMode: 'create' | 'animate' | 'note') => {
-        if (mode === newMode) return;
+        if (mode === newMode || transitionBusyRef.current) return;
         // 未保存の経路があればガードで確認（中止ならモード切替しない）
         if (!(await runNavigationGuard())) return;
+        // ガード確認中に連打された場合の二重遷移も防ぐ
+        if (transitionBusyRef.current) return;
         // enterMode が mode 切替と Create 専用モード解除を1回の set で行う（#06/30-10）
         handleTransition(() => enterMode(newMode));
     };
 
     const changeFloorWithTransition = (newFloor: FloorId) => {
-        if (activeFloor === newFloor) return;
+        if (activeFloor === newFloor || transitionBusyRef.current) return;
         handleTransition(() => {
             setActiveFloor(newFloor);
         })
@@ -97,7 +111,7 @@ function App() {
 
     const overlays = (
         <>
-            {isTransitioning && <LoadingScreen overlay />}
+            {overlayPhase !== 'hidden' && <LoadingScreen overlay visible={overlayPhase === 'visible'} />}
             <DialogHost />
             <ToastHost />
             <ConflictBanner />
