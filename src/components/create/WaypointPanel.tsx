@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Waypoint, SyncConstraint, StartRef } from '../../store';
 import { SEGMENT_COLORS } from '../../utils/mapDrawUtils';
 
@@ -35,6 +35,8 @@ interface WaypointPanelProps {
     handleDeletePath: () => void;
     syncConstraints: SyncConstraint[];
     onRemoveSyncConstraint: (index: number) => void;
+    // モバイル/縦1x4では floating がマップに被るため、下部の折りたたみバーに切り替える（20.md #5）
+    variant?: 'floating' | 'bottom';
 }
 
 export const WaypointPanel: React.FC<WaypointPanelProps> = ({
@@ -44,25 +46,46 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
     waypoints, suggestionTargetIndex, handleWaypointChange, setSuggestionTargetIndex,
     handleSyncTime, handleRemoveWaypoint, handleAddWaypoint,
     handleSavePath, handleEditPath, handleDeletePath,
-    syncConstraints, onRemoveSyncConstraint
+    syncConstraints, onRemoveSyncConstraint, variant = 'floating'
 }) => {
+    const [collapsed, setCollapsed] = useState(variant === 'bottom'); // bottom は既定折りたたみ
+
     if (isGraphEditMode) return null;
     if (selectedIcons.length === 0 && highlightedPath.length === 0) return null;
 
-    return (
-        <div style={{
+    const rootStyle: React.CSSProperties = variant === 'bottom'
+        ? {
+            position: 'absolute', left: 8, right: 8, bottom: 8, maxWidth: 'none',
+            backgroundColor: 'rgba(30, 30, 30, 0.95)', padding: '15px', borderRadius: '8px',
+            border: savedPathData ? '1px solid #10b981' : '1px solid #007acc',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', zIndex: 100,
+            maxHeight: collapsed ? undefined : '45vh', overflowY: 'auto',
+        }
+        : {
             position: 'absolute', bottom: '30px', right: '30px', left: 'auto', transform: 'none',
             backgroundColor: 'rgba(30, 30, 30, 0.95)', padding: '15px', borderRadius: '8px',
             border: savedPathData ? '1px solid #10b981' : '1px solid #007acc',
             boxShadow: '0 4px 20px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', zIndex: 100, minWidth: '240px', maxWidth: '300px'
-        }}>
+        };
+
+    return (
+        <div style={rootStyle}>
             <style>{`
-                input[type=number]::-webkit-inner-spin-button, 
+                input[type=number]::-webkit-inner-spin-button,
                 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
                 input[type=number] { -moz-appearance: textfield; }
             `}</style>
 
-            {(!savedPathData || isEditing) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                <button onClick={() => setCollapsed(v => !v)}
+                    style={{ background: 'none', border: '1px solid #555', color: '#ccc', borderRadius: '4px', width: '22px', height: '22px', cursor: 'pointer', fontSize: '0.75rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >{collapsed ? '▸' : '▾'}</button>
+                <span style={{ fontSize: '0.8rem', color: '#ccc', flex: 1 }}>
+                    経路 {waypoints.filter(w => w.id).length}地点{syncConstraints.length > 0 && ` / sync ${syncConstraints.length}`}
+                </span>
+            </div>
+
+            {!collapsed && (!savedPathData || isEditing) && (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '300px', overflowY: 'auto' }}>
                     {/* 開始条件（数値delayの代替）: 「基準キャラが地点に到達後 +N」 */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid #444' }}>

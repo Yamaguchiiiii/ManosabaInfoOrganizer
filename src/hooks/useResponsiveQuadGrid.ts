@@ -9,6 +9,12 @@ export interface QuadGridStyle {
     gridTemplateRows: string;
 }
 
+export interface QuadGridResult {
+    gridStyle: QuadGridStyle;
+    // 縦1x4レイアウト（ペイン幅=画面幅）かどうか。floating UI がマップに被る判定に使う（20.md #5）
+    isSingleColumn: boolean;
+}
+
 const LAYOUTS = {
     grid:    { gridTemplateColumns: '1fr 1fr',         gridTemplateRows: '1fr 1fr' },          // 2x2
     column:  { gridTemplateColumns: '1fr',             gridTemplateRows: '1fr 1fr 1fr 1fr' },  // 縦積み(1列x4行)
@@ -20,7 +26,7 @@ const LAYOUTS = {
  * 2x2 / 縦1x4 / 横4x1 のどれで並べるとマップが最大表示になるかを判定し、
  * grid-template を返す。各レイアウトでのセル内マップ高さ(= min(cellW/aspect, cellH))を比較する。
  */
-export const useResponsiveQuadGrid = (ref: RefObject<HTMLElement | null>): QuadGridStyle => {
+export const useResponsiveQuadGrid = (ref: RefObject<HTMLElement | null>): QuadGridResult => {
     const [style, setStyle] = useState<QuadGridStyle>(LAYOUTS.grid);
 
     useEffect(() => {
@@ -52,5 +58,5 @@ export const useResponsiveQuadGrid = (ref: RefObject<HTMLElement | null>): QuadG
         return () => obs.disconnect();
     }, [ref]);
 
-    return style;
+    return { gridStyle: style, isSingleColumn: style.gridTemplateColumns === '1fr' };
 };

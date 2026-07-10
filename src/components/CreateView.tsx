@@ -208,7 +208,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   // #06/28-3:58-8: ウィンドウサイズに応じて 2x2 / 縦1x4 / 横4x1 をマップ最大化で切替
   const gridRef = useRef<HTMLDivElement>(null);
-  const gridStyle = useResponsiveQuadGrid(gridRef);
+  const { gridStyle, isSingleColumn } = useResponsiveQuadGrid(gridRef);
 
   const [isCharModalOpen, setIsCharModalOpen] = useState(false);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -1027,6 +1027,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
             handleEditPath={handleEditPath} handleDeletePath={handleDeletePath}
             syncConstraints={syncConstraints}
             onRemoveSyncConstraint={handleRemoveSyncConstraint}
+            variant={isMobile || isSingleColumn ? 'bottom' : 'floating'}
         />
       </div>
 
