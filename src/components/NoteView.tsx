@@ -405,6 +405,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const undoNote = useAppStore(state => state.undoNote);
     const redoNote = useAppStore(state => state.redoNote);
     const saveNoteHistory = useAppStore(state => state.saveNoteHistory);
+    const showDialog = useAppStore(state => state.showDialog);
 
     const [currentCanvasIndex, setCurrentCanvasIndex] = useState(0);
     const [isGridMode, setIsGridMode] = useState(false);
@@ -618,50 +619,84 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         toast.info(`${newObjs.length}件を貼り付けました`);
     }, [clipboard, currentCanvasIndex, addNoteObjects, targetType, displayTargetId]);
 
-    // 現在のキャンバスを PNG として書き出す（B-4）。事件ノート(preset)は論理1200×800を常に
-    // 2400×1600 で出力（ズーム非依存）。それ以外は表示範囲を2倍解像度で出力。
-    // 選択枠(Transformer/インジケータ)は一時非表示にし、紙面(方眼)背景は toDataURL に写らない
-    // CSS 背景なので一時的に Konva 背景Rectを敷いてから出力する。
-    const handleExportPng = useCallback(() => {
-        const stage = stageRefs.current[currentCanvasIndex];
+    // 1ペインを「選択枠なし」で dataURL 化する（紙面背景はまだ乗せない）。事件ノート(preset)は
+    // 論理1200×800を常に2400×1600で出力（ズーム非依存）。それ以外は表示範囲を2倍解像度で出力。
+    const capturePane = useCallback((index: number): string | null => {
+        const stage = stageRefs.current[index];
         const layer = stage?.getLayers()[0];
-        if (!stage || !layer) return;
+        if (!stage || !layer) return null;
         const s = layer.scaleX() || 1;
-        const rangeFit = targetType === 'preset';
-
         // 選択枠(Transformer/インジケータ)を一時非表示にして描画物だけを出力する
         const excluded = stage.find('.__export_exclude');
         excluded.forEach(n => n.visible(false));
         layer.batchDraw();
-        let transparentUrl: string;
         try {
-            transparentUrl = rangeFit
+            return targetType === 'preset'
                 ? stage.toDataURL({ pixelRatio: 2 / s, mimeType: 'image/png' })
                 : stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
         } finally {
             excluded.forEach(n => n.visible(true));
             layer.batchDraw();
         }
+    }, [targetType]);
 
-        // 紙面(方眼色)背景は CSS 背景で toDataURL に写らないため、2D canvas で合成する
-        // （react-konva と別インスタンスの new Konva.* は使わない）。
-        const fileName = `manosaba-note-${targetType}-${Date.now()}.png`;
-        const img = new Image();
-        img.onload = () => {
-            const c = document.createElement('canvas');
-            c.width = img.naturalWidth;
-            c.height = img.naturalHeight;
-            const ctx = c.getContext('2d');
-            if (!ctx) { downloadDataUrl(transparentUrl, fileName); toast.success('PNGを書き出しました'); return; }
-            ctx.fillStyle = '#ECD2B3';
-            ctx.fillRect(0, 0, c.width, c.height);
-            ctx.drawImage(img, 0, 0);
-            downloadDataUrl(c.toDataURL('image/png'), fileName);
+    // dataURL(透明背景) → 紙面色を敷いた canvas に載せ替えるための画像ロード
+    const loadImage = (url: string) => new Promise<HTMLImageElement>((res, rej) => {
+        const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url;
+    });
+
+    // キャンバスを PNG として書き出す（B-4 / 20.md #2）。4ペイン表示中は「4ペイン全体 / 現在のペイン」を選べる。
+    // 紙面(方眼色)背景は CSS 背景で toDataURL に写らないため、2D canvas で合成する
+    // （react-konva と別インスタンスの new Konva.* は使わない）。
+    const handleExportPng = useCallback(async () => {
+        let mode: 'current' | 'all' = 'current';
+        if (isGridMode) {
+            const v = await showDialog({
+                title: 'PNG書き出し',
+                message: '書き出す範囲を選んでください。',
+                buttons: [
+                    { label: '4ペイン全体', value: 'all', variant: 'primary' },
+                    { label: '現在のペイン', value: 'current' },
+                    { label: 'キャンセル', value: 'cancel' },
+                ],
+            });
+            if (v !== 'all' && v !== 'current') return; // '' = ESC/差し替え も中止
+            mode = v;
+        }
+        try {
+            if (mode === 'current') {
+                const url = capturePane(currentCanvasIndex);
+                if (!url) return;
+                const img = await loadImage(url);
+                const c = document.createElement('canvas');
+                c.width = img.naturalWidth; c.height = img.naturalHeight;
+                const ctx = c.getContext('2d')!;
+                ctx.fillStyle = '#ECD2B3'; ctx.fillRect(0, 0, c.width, c.height);
+                ctx.drawImage(img, 0, 0);
+                downloadDataUrl(c.toDataURL('image/png'), `manosaba-note-${targetType}-${Date.now()}.png`);
+            } else {
+                const urls = [0, 1, 2, 3].map(capturePane);
+                if (urls.some(u => !u)) { toast.error('ペインの取得に失敗しました'); return; }
+                const imgs = await Promise.all((urls as string[]).map(loadImage));
+                // グリッド中は4ペインのセル寸が同一 → 出力も同一サイズ
+                const w = imgs[0].naturalWidth, h = imgs[0].naturalHeight, GAP = 8;
+                const c = document.createElement('canvas');
+                c.width = w * 2 + GAP; c.height = h * 2 + GAP;
+                const ctx = c.getContext('2d')!;
+                ctx.fillStyle = '#444'; ctx.fillRect(0, 0, c.width, c.height); // 区切り線
+                imgs.forEach((img, i) => {
+                    const col = i % 2, row = Math.floor(i / 2);
+                    const x = col * (w + GAP), y = row * (h + GAP);
+                    ctx.fillStyle = '#ECD2B3'; ctx.fillRect(x, y, w, h);
+                    ctx.drawImage(img, x, y);
+                });
+                downloadDataUrl(c.toDataURL('image/png'), `manosaba-note-${targetType}-all-${Date.now()}.png`);
+            }
             toast.success('PNGを書き出しました');
-        };
-        img.onerror = () => { downloadDataUrl(transparentUrl, fileName); toast.success('PNGを書き出しました'); };
-        img.src = transparentUrl;
-    }, [currentCanvasIndex, targetType]);
+        } catch {
+            toast.error('PNG書き出しに失敗しました');
+        }
+    }, [isGridMode, currentCanvasIndex, targetType, showDialog, capturePane]);
 
     // 選択中オブジェクトを切り取り（クリップボードへ退避してから削除する。属性は維持）
     const handleCutSelected = useCallback(() => {
