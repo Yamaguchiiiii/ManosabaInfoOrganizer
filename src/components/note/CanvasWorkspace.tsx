@@ -192,7 +192,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         if (!container) return;
 
         const observer = new ResizeObserver((entries) => {
-            for (let entry of entries) {
+            for (const entry of entries) {
                 const newWidth = Math.round(entry.contentRect.width);
                 const newHeight = Math.round(entry.contentRect.height);
                 setCanvasSize(prev => {
