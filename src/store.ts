@@ -146,6 +146,8 @@ export interface AppState {
 
     isGraphEditMode: boolean; setGraphEditMode:(isEdit: boolean) => void;
     isSkullMode: boolean; setSkullMode: (v: boolean) => void;
+    // Animate: ContextPanel のイベント一覧のキャラフィルタ（20.md #10・persist除外）
+    eventFilterChar: string | null; setEventFilterChar: (id: string | null) => void;
     // チュートリアル: 初回スポットライトツアーを見たか（persist）
     tutorialSeen: boolean; setTutorialSeen: (v: boolean) => void;
     nodes: MapNode[]; edges: MapEdge[]; history: HistoryState[];
@@ -166,6 +168,8 @@ export interface AppState {
     saveBatchCharacterAnimations: (presetId: string, charIds: string[], path: string[], waypoints: Waypoint[], startTime?: number, syncConstraints?: SyncConstraint[], startRef?: StartRef | null, showBeforeStart?: boolean) => void;
     updateTimelineItem: (presetId: string, charId: string, updates: Partial<CharacterTimelineData>) => void;
     toggleDeadIcon: (icon: string) => void;
+    addPresetEvent: (presetId: string, ev: PresetEvent) => void;
+    removePresetEvent: (presetId: string, evId: string) => void;
 
     notes: NoteData;
     noteHistory: NoteData[];
@@ -298,13 +302,15 @@ export const useAppStore = create<AppState>()(
         activeFloor: '1F', setActiveFloor: (floor) => set({ activeFloor: floor }),
         mode: 'create', setMode: (mode) => set({ mode }),
         // Create 専用モード（どくろ/グラフ編集）は Create 以外へ入るとき必ず解除する。1回の set で完結。
+        // イベントフィルタ（20.md #10）は Animate 以外へ移動したら解除する。
         enterMode: (mode) => set(mode !== 'create'
-            ? { mode, isGraphEditMode: false, isSkullMode: false }
-            : { mode }),
+            ? { mode, isGraphEditMode: false, isSkullMode: false, ...(mode !== 'animate' ? { eventFilterChar: null } : {}) }
+            : { mode, eventFilterChar: null }),
         activeNoteTab: 'overview', setActiveNoteTab: (tab) => set({ activeNoteTab: tab }),
 
         isGraphEditMode: false, setGraphEditMode: (isEdit) => set({ isGraphEditMode: isEdit }),
         isSkullMode: false, setSkullMode: (v) => set({ isSkullMode: v }),
+        eventFilterChar: null, setEventFilterChar: (id) => set({ eventFilterChar: id }),
         tutorialSeen: false, setTutorialSeen: (v) => set({ tutorialSeen: v }),
         nodes: INITIAL_NODES, edges: INITIAL_EDGES, history: [],
         sidebarWidth: 200, setSidebarWidth: (width) => set({ sidebarWidth: width }),
@@ -404,7 +410,11 @@ export const useAppStore = create<AppState>()(
                         newData[cid] = { ...cData, syncConstraints: cleaned };
                     }
                 });
-                return { ...p, data: newData };
+                // 削除キャラを含む会話イベントからも除去し、1人以下になったら破棄
+                const cleanedEvents = (p.events || [])
+                    .map(ev => ({ ...ev, charIds: ev.charIds.filter(id => id !== charId) }))
+                    .filter(ev => ev.charIds.length >= 2);
+                return { ...p, data: newData, events: cleanedEvents };
             })
         })),
         saveBatchCharacterAnimations: (presetId, charIds, path, waypoints, startTIme=0, syncConstraints, startRef = null, showBeforeStart = true) => set((state) => ({
@@ -426,10 +436,16 @@ export const useAppStore = create<AppState>()(
         toggleDeadIcon: (icon) => set((state) => ({
             presets: state.presets.map(p => {
                 if (p.id !== state.activePresetId) return p;
-                const currentDead = p.deadIcons || []; 
+                const currentDead = p.deadIcons || [];
                 const newDead = currentDead.includes(icon) ? currentDead.filter(i => i !== icon) : [...currentDead, icon];
                 return { ...p, deadIcons: newDead };
             })
+        })),
+        addPresetEvent: (presetId, ev) => set((state) => ({
+            presets: state.presets.map(p => p.id !== presetId ? p : { ...p, events: [...(p.events || []), ev] })
+        })),
+        removePresetEvent: (presetId, evId) => set((state) => ({
+            presets: state.presets.map(p => p.id !== presetId ? p : { ...p, events: (p.events || []).filter(e => e.id !== evId) })
         })),
 
         replaceNotes: (notes) => set({ notes }),
@@ -550,7 +566,7 @@ export const useAppStore = create<AppState>()(
         storage: idbPersist,
         partialize: (state) =>
             Object.fromEntries(
-                Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== 'noteRedoStack' && key !== '_hasHydrated' && key !== 'dialog')
+                Object.entries(state).filter(([key]) => key !== 'noteHistory' && key !== 'noteRedoStack' && key !== '_hasHydrated' && key !== 'dialog' && key !== 'eventFilterChar')
             ) as AppState,
         onRehydrateStorage: () => (state) => {
             if (state) {

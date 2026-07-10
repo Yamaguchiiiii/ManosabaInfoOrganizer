@@ -1,7 +1,10 @@
 import React from 'react';
-import { useAppStore, ICON_FILES } from '../store';
+import { useAppStore, usePlaybackStore, ICON_FILES } from '../store';
 import { useSidebarResizer } from '../hooks/useSidebarResizer';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
+import { usePresetEvents } from '../hooks/usePresetEvents';
+import { EventList } from './common/EventList';
+import { formatCharName } from '../utils/charName';
 
 interface ContextPanelProps {
   selectedIcons: string[];
@@ -31,6 +34,10 @@ export const ContextPanel: React.FC<ContextPanelProps> = React.memo(({ selectedI
   const isSkullMode = useAppStore(s => s.isSkullMode);
   const setSkullMode = useAppStore(s => s.setSkullMode);
   const setContextPanelCollapsed = useAppStore(s => s.setContextPanelCollapsed);
+  const eventFilterChar = useAppStore(s => s.eventFilterChar);
+  const setEventFilterChar = useAppStore(s => s.setEventFilterChar);
+  // Animate 以外でも呼んで害はないが未使用時はメモコストのみ
+  const { events } = usePresetEvents();
 
   const { startResizing } = useSidebarResizer(setSidebarWidth);
 
@@ -38,6 +45,10 @@ export const ContextPanel: React.FC<ContextPanelProps> = React.memo(({ selectedI
   const deadIcons = activePreset?.deadIcons || [];
 
   const handleIconClick = (icon: string, e: React.MouseEvent) => {
+    if (mode === 'animate') {
+      setEventFilterChar(eventFilterChar === icon ? null : icon);   // 再タップで解除
+      return;
+    }
     if (isSkullMode && mode === 'create') {
       toggleDeadIcon(icon);
       if (selectedIcons.includes(icon) && !deadIcons.includes(icon)) {
@@ -89,7 +100,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = React.memo(({ selectedI
 
             <div className="icon-grid" data-tour={TOUR_TARGETS.sidebarIcons}>
               {ICON_FILES.map((fileName, index) => {
-                const isSelected = selectedIcons.includes(fileName);
+                const isSelected = mode === 'animate' ? eventFilterChar === fileName : selectedIcons.includes(fileName);
                 const isDead = deadIcons.includes(fileName);
                 const isDone = !!(activePreset?.data?.[fileName]);
                 return (
@@ -125,6 +136,33 @@ export const ContextPanel: React.FC<ContextPanelProps> = React.memo(({ selectedI
                 );
               })}
             </div>
+
+            {mode === 'animate' && (
+              <>
+                <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>イベント</span>
+                  {eventFilterChar && (
+                    <button onClick={() => setEventFilterChar(null)} title="フィルタ解除"
+                      style={{ background: 'transparent', border: '1px solid #555', borderRadius: 4, color: '#aaa',
+                               cursor: 'pointer', fontSize: '0.7rem', padding: '2px 8px', lineHeight: 1 }}>
+                      × 解除
+                    </button>
+                  )}
+                </div>
+                {eventFilterChar && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.72rem', color: '#aaa' }}>
+                    <img src={`./icon/${eventFilterChar}`} style={{ width: 18, height: 18, borderRadius: '50%' }} alt="" />
+                    {formatCharName(eventFilterChar)} のイベントのみ表示中
+                  </div>
+                )}
+                <div style={{ maxHeight: '32vh', overflowY: 'auto' }}>
+                  <EventList
+                    events={eventFilterChar ? events.filter(e => e.charIds.includes(eventFilterChar)) : events}
+                    onJump={(t) => usePlaybackStore.getState().setCurrentTime(t)}
+                  />
+                </div>
+              </>
+            )}
 
             {mode === 'create' && (
               <div style={{ marginTop: '20px', padding: '10px', background: '#333', borderRadius: '4px' }}>

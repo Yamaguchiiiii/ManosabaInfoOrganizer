@@ -192,7 +192,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
     addNode, updateNode, removeNode, addEdge, removeEdge,
     undo, saveHistory, setSidebarWidth,
     saveCharacterAnimation, saveBatchCharacterAnimations, deleteCharacterAnimation,
-    activePresetId, presets,
+    activePresetId, presets, addPresetEvent,
     showConfirm, showAlert, showDialog,
     isSkullMode, setSkullMode
   } = useAppStore();
@@ -588,7 +588,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
       setIsMergeModalOpen(true);
   };
 
-  const handleMergeConfirm = (selectedIds: string[]) => {
+  const handleMergeConfirm = async (selectedIds: string[]) => {
       const targets = mergeCandidates.filter(c => selectedIds.includes(c.charId));
       if (targets.length === 0) {
           setIsMergeModalOpen(false);
@@ -631,6 +631,21 @@ export const CreateView: React.FC<CreateViewProps> = ({
       setSyncTarget({ waypointId: earliest.waypointId, meetingTime: earliest.meetingTime, pathIndex: earliestIdx >= 0 ? earliestIdx : undefined });
 
       setIsMergeModalOpen(false);
+
+      // #07/04-8: 合流地点で「会話」を記録するか（明示イベント）
+      const talk = await showConfirm(
+          `合流地点「${mergeTargetWaypointName}」で会話イベントを記録しますか？\n（Animateのイベント一覧に「💬会話」として表示されます）`,
+          '会話イベント');
+      if (talk) {
+          addPresetEvent(activePresetId, {
+              id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              kind: 'talk',
+              nodeId: mergeTargetWaypointId,
+              nodeName: mergeTargetWaypointName,
+              time: meetingTime,
+              charIds: [...selectedIcons, ...targets.map(t => t.charId)],
+          });
+      }
 
       const followTarget = targets[0];
       const targetWaypoints: Waypoint[] = followTarget.data.waypoints || [];
