@@ -143,6 +143,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         lineStyle: 'pen',
         stabilization: 2,
     });
+    // F5: グリッドスナップ（配置/移動確定を方眼(24px)ピッチに吸着させる）
+    const [snapOn, setSnapOn] = useState(false);
 
     const isDrawingMode = !!placementMode;
 
@@ -398,9 +400,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             }
         }
 
-        // 同一ペイン内: 通常の移動として確定（最終位置をクランプ）
-        applyMove(clampX(rawX) - (obj.x ?? 0), clampY(rawY) - (obj.y ?? 0));
-    }, [isGridMode, isGridEditMode, compactMode, objects, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
+        // 同一ペイン内: 通常の移動として確定（最終位置をクランプ）。
+        // F5: スナップONなら方眼(24px)ピッチに丸める（跨ぎ移動の画面座標変換には使わない rawX/Y のみ対象）。
+        const snappedX = snapOn ? Math.round(rawX / 24) * 24 : rawX;
+        const snappedY = snapOn ? Math.round(rawY / 24) * 24 : rawY;
+        applyMove(clampX(snappedX) - (obj.x ?? 0), clampY(snappedY) - (obj.y ?? 0));
+    }, [isGridMode, isGridEditMode, compactMode, objects, updateNoteObject, updateNoteObjects, targetType, displayTargetId, snapOn]);
 
     useNoteKeyboard({
         editingTextId, setPlacementMode, undoNote, redoNote,
@@ -488,6 +493,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             const layer = e.target.getStage()?.getLayers()[0];
             const pos = layer?.getRelativePointerPosition();
             if (!pos) return;
+            // F5: グリッドスナップON時は方眼と同ピッチ(24px)に配置位置を吸着させる
+            if (snapOn) {
+                pos.x = Math.round(pos.x / 24) * 24;
+                pos.y = Math.round(pos.y / 24) * 24;
+            }
             // 事件ノート(preset)のみ基準範囲[0,1200]×[0,800]外への配置を禁止（Animateとの整合）。
             // それ以外(fillの全体/キャラ/メモ)はコンテナ全体に配置可。
             if (targetType === 'preset') {
@@ -754,6 +764,37 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     })();
     // トップバーは廃止（操作はTools上の sidebarHeader に集約）。常に単一行レイアウト。#06/28-3:58-3,4,5
 
+    // F5: オブジェクト整列（複数選択時）。line系(points基準)は対象外＝選択に含まれていても無視する。
+    const alignableSelected = () => currentCanvasObjects.filter(o => selectedIds.includes(o.id) && (o.width !== undefined || o.type === 'text'));
+    const handleAlignLeft = () => {
+        const targets = alignableSelected();
+        if (targets.length < 2) return;
+        const minX = Math.min(...targets.map(o => o.x));
+        updateNoteObjects(targetType, displayTargetId, targets.map(o => ({ id: o.id, attrs: { x: minX } })));
+    };
+    const handleAlignTop = () => {
+        const targets = alignableSelected();
+        if (targets.length < 2) return;
+        const minY = Math.min(...targets.map(o => o.y));
+        updateNoteObjects(targetType, displayTargetId, targets.map(o => ({ id: o.id, attrs: { y: minY } })));
+    };
+    const handleDistributeHorizontal = () => {
+        const targets = alignableSelected();
+        if (targets.length < 2) return;
+        const sorted = [...targets].sort((a, b) => a.x - b.x);
+        const span = sorted[sorted.length - 1].x - sorted[0].x;
+        const step = span / (sorted.length - 1);
+        updateNoteObjects(targetType, displayTargetId, sorted.map((o, i) => ({ id: o.id, attrs: { x: sorted[0].x + step * i } })));
+    };
+    const handleDistributeVertical = () => {
+        const targets = alignableSelected();
+        if (targets.length < 2) return;
+        const sorted = [...targets].sort((a, b) => a.y - b.y);
+        const span = sorted[sorted.length - 1].y - sorted[0].y;
+        const step = span / (sorted.length - 1);
+        updateNoteObjects(targetType, displayTargetId, sorted.map((o, i) => ({ id: o.id, attrs: { y: sorted[0].y + step * i } })));
+    };
+
     const getNodeScreenPosition = (id: string): { x: number; y: number; width: number } | null => {
         for (const tr of trRefs.current) {
             if (!tr) continue;
@@ -950,6 +991,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     onStartPlacement={startPlacement}
                     freehandSettings={freehandSettings}
                     onFreehandSettingsChange={setFreehandSettings}
+                    snapOn={snapOn}
+                    onToggleSnap={() => setSnapOn(v => !v)}
                     selectedIds={selectedIds}
                     selectedObject={selectedObject}
                     onToggleKeepRatio={(checked) => {
@@ -968,6 +1011,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         setSelectedIds([]);
                         saveNoteHistory();
                     }}
+                    onAlignLeft={handleAlignLeft}
+                    onAlignTop={handleAlignTop}
+                    onDistributeHorizontal={handleDistributeHorizontal}
+                    onDistributeVertical={handleDistributeVertical}
                     onDeleteSelected={() => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); }}
                     onExportPng={handleExportPng}
                     portraitPalette={portraitPalette}
