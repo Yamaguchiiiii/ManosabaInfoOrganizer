@@ -15,6 +15,7 @@ import { getImageSizeFromUrl, processFile } from '../utils/imageUtils';
 import { AssetImg, URLImage, EditableText, ShapeObject } from './note/NoteObjectComponents';
 import { ImageGalleryWindow } from './note/ImageGalleryWindow';
 import { CompactToolbar } from './note/CompactToolbar';
+import { ShapeContextMenu, ShapeContextMenuState } from './note/ShapeContextMenu';
 import '../styles/NoteView.scss';
 
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
@@ -160,7 +161,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     };
     const [drawingActive, setDrawingActive] = useState(false);
 
-    const [shapeContextMenu, setShapeContextMenu] = useState<{ id: string, type: ExtendedNoteObjectType, x: number, y: number, stroke: string, strokeWidth: number, fill?: string, lineStyle?: string } | null>(null);
+    const [shapeContextMenu, setShapeContextMenu] = useState<ShapeContextMenuState | null>(null);
     const [assetContextMenu, setAssetContextMenu] = useState<{ index: number, x: number, y: number } | null>(null);
     
     const [isFontLoaded, setIsFontLoaded] = useState(false);
@@ -1719,130 +1720,18 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 </div>
 
                 {shapeContextMenu && (
-                    <div 
-                        style={{
-                            position: 'fixed', top: shapeContextMenu.y, left: shapeContextMenu.x,
-                            background: '#2d2d2d', border: '1px solid #444', borderRadius: '8px', 
-                            padding: '15px', zIndex: 1000, color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', width: '200px'
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {['line', 'arrow', 'curve', 'curve_arrow', 'freehand'].includes(shapeContextMenu.type as string) && (
-                            <>
-                                <div style={{ marginBottom: '5px', fontSize: '0.85rem' }}>Line Style</div>
-                                <select 
-                                    value={shapeContextMenu.lineStyle || 'normal'}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        setShapeContextMenu(prev => prev ? {...prev, lineStyle: val} : null);
-                                        updateNoteObject(targetType, displayTargetId, shapeContextMenu.id, { lineStyle: val as any }, true);
-                                    }}
-                                    onBlur={() => saveNoteHistory()}
-                                    style={{ width: '100%', marginBottom: '10px', background: '#222', color: 'white', border: '1px solid #555', padding: '4px', borderRadius: '3px' }}
-                                >
-                                    <option value="normal">Normal</option>
-                                    <option value="marker">Marker</option>
-                                    <option value="pen">Pen</option>
-                                </select>
-                            </>
-                        )}
-
-                        <div style={{ marginBottom: '5px', fontSize: '0.85rem' }}>Line Color</div>
-                        <input 
-                            type="color" 
-                            value={shapeContextMenu.stroke}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                const id = shapeContextMenu.id;
-                                commitThrottled(() => {
-                                    setShapeContextMenu(prev => prev ? {...prev, stroke: val} : null);
-                                    updateNoteObject(targetType, displayTargetId, id, { stroke: val }, true);
-                                });
-                            }}
-                            onBlur={() => saveNoteHistory()}
-                            style={{ width: '100%', marginBottom: '10px' }} 
-                        />
-
-                        <div style={{ marginBottom: '5px', fontSize: '0.85rem' }}>Line Width: {shapeContextMenu.strokeWidth}</div>
-                        <input 
-                            type="range" min="0" max="20"
-                            value={shapeContextMenu.strokeWidth}
-                            onChange={(e) => {
-                                const val = parseInt(e.target.value);
-                                const id = shapeContextMenu.id;
-                                commitThrottled(() => {
-                                    setShapeContextMenu(prev => prev ? {...prev, strokeWidth: val} : null);
-                                    updateNoteObject(targetType, displayTargetId, id, { strokeWidth: val }, true);
-                                });
-                            }}
-                            onMouseUp={() => saveNoteHistory()}
-                            onTouchEnd={() => saveNoteHistory()} 
-                            style={{ width: '100%', marginBottom: '10px' }} 
-                        />
-
-                        {['rect', 'circle', 'triangle'].includes(shapeContextMenu.type) && (
-                            <>
-                                <div style={{ marginBottom: '5px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span>Fill Color</span>
-                                    <button 
-                                        onClick={() => {
-                                            setShapeContextMenu(prev => prev ? {...prev, fill: 'transparent'} : null);
-                                            updateNoteObject(targetType, displayTargetId, shapeContextMenu.id, { fill: 'transparent' }, true);
-                                            saveNoteHistory();
-                                        }}
-                                        style={{ background: '#444', border: '1px solid #666', color: '#ccc', fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}
-                                    >
-                                        No Fill
-                                    </button>
-                                </div>
-                                <input 
-                                    type="color" 
-                                    value={shapeContextMenu.fill === 'transparent' ? '#ffffff' : (shapeContextMenu.fill || '#A8D5BA')}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        const id = shapeContextMenu.id;
-                                        commitThrottled(() => {
-                                            setShapeContextMenu(prev => prev ? {...prev, fill: val} : null);
-                                            updateNoteObject(targetType, displayTargetId, id, { fill: val }, true);
-                                        });
-                                    }}
-                                    onBlur={() => saveNoteHistory()}
-                                    style={{ width: '100%' }}
-                                />
-                            </>
-                        )}
-
-                        <div style={{ borderTop: '1px solid #444', marginTop: '10px', paddingTop: '10px' }}>
-                            <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: '#aaa' }}>Layer</div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                                {(['front', 'up', 'down', 'back'] as const).map((dir) => (
-                                    <button
-                                        key={dir}
-                                        onClick={() => { reorderNoteObject(targetType, displayTargetId, shapeContextMenu.id, dir); setShapeContextMenu(null); }}
-                                        style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
-                                    >
-                                        {dir === 'front' ? '最前面' : dir === 'back' ? '最背面' : dir === 'up' ? '前へ' : '後へ'}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        {selectedIds.length >= 2 && (
-                            <div style={{ borderTop: '1px solid #444', marginTop: '10px', paddingTop: '10px' }}>
-                                <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: '#aaa' }}>Group</div>
-                                <button
-                                    onClick={() => {
-                                        const newGroupId = `group_${Date.now()}`;
-                                        updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
-                                        setShapeContextMenu(null);
-                                        saveNoteHistory();
-                                    }}
-                                    style={{ width: '100%', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
-                                >
-                                    グループ化
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                    <ShapeContextMenu
+                        menu={shapeContextMenu}
+                        setMenu={setShapeContextMenu}
+                        targetType={targetType}
+                        displayTargetId={displayTargetId}
+                        updateNoteObject={updateNoteObject}
+                        updateNoteObjects={updateNoteObjects}
+                        commitThrottled={commitThrottled}
+                        saveNoteHistory={saveNoteHistory}
+                        reorderNoteObject={reorderNoteObject}
+                        selectedIds={selectedIds}
+                    />
                 )}
 
                 {assetContextMenu && (
