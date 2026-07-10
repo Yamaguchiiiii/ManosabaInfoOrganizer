@@ -19,6 +19,7 @@ import { ShapeContextMenu, ShapeContextMenuState } from './note/ShapeContextMenu
 import { NoteToolsSidebar } from './note/NoteToolsSidebar';
 import { useNoteClipboard } from '../hooks/useNoteClipboard';
 import { useNoteKeyboard } from '../hooks/useNoteKeyboard';
+import { useTextEditing } from '../hooks/useTextEditing';
 import '../styles/NoteView.scss';
 
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
@@ -107,16 +108,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     }, [isDraggingGallery]);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [editingTextId, setEditingTextId] = useState<string | null>(null);
-    // #06/28-14:10-4: テキスト編集中はローカル状態で持ち、確定時のみ store にコミットする。
-    // 1キーストロークごとに updateNoteObject→全オブジェクト再描画していたためフレーム落ちしていた。
-    const [editingTextValue, setEditingTextValue] = useState('');
-    // #06/28-17:04-3: 入力値を ref にもミラーする。クリックで編集を抜ける際、mousedown が
-    // onBlur より先に editingTextId を消すと onBlur のコミットが走らず入力が失われるため、
-    // どの経路から編集終了しても確実にコミットできるよう finishTextEditing() を用意する。
-    const editingTextValueRef = useRef('');
-    const editingTextIdRef = useRef<string | null>(null);
-    useEffect(() => { editingTextIdRef.current = editingTextId; }, [editingTextId]);
+    const {
+        editingTextId, setEditingTextId, editingTextValue, setEditingTextValue,
+        editingTextValueRef, editingTextIdRef, editingTextBoundsRef, finishTextEditing,
+    } = useTextEditing(targetType, displayTargetId, updateNoteObject, saveNoteHistory);
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
     const [placementMode, setPlacementMode] = useState<PlacementMode>(null);
@@ -137,16 +132,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // 各ペインの Konva.Stage 参照。ブラウザズーム時に pixelRatio を再適用して画質劣化(#6)を防ぐ。
     const stageRefs = useRef<(Konva.Stage | null)[]>([null, null, null, null]);
 
-    // テキスト編集を確定して終了する。どの経路（blur/クリック離脱/Enter）から呼ばれても
-    // 入力値(ref)を必ずコミットする。二重呼び出しは prevId=null で無視（冪等）。#06/28-17:04-3
-    const finishTextEditing = useCallback(() => {
-        const id = editingTextIdRef.current;
-        if (!id) return;
-        editingTextIdRef.current = null; // 二重コミット防止（mousedown と blur の両方から呼ばれ得る）
-        updateNoteObject(targetType, displayTargetId, id, { text: editingTextValueRef.current }, true);
-        saveNoteHistory();
-        setEditingTextId(null);
-    }, [targetType, displayTargetId, updateNoteObject, saveNoteHistory]);
     const batchSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const saveHistoryOnceThenSkip = () => {
         if (!batchSaveRef.current) {
@@ -171,7 +156,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const trRefs = useRef<(Konva.Transformer | null)[]>([null, null, null, null]);
     // 4ペインそれぞれの DOM 要素。ペインをまたぐドラッグ移動(#4)のヒットテストに使う
     const paneRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
-    const editingTextBoundsRef = useRef<{ width: number } | null>(null);
 
     const objects = targetData?.objects || [];
     const assets = targetData?.assets || [];
