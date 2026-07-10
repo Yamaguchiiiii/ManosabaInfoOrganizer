@@ -73,9 +73,21 @@ export interface CharacterTimelineData {
     showBeforeStart?: boolean;
 }
 
+// sync合流時に明示的に記録する「会話」イベント（20.md #8）。
+// 自動検出の同室(会話)と違い、ユーザーの意思で「ここで話した」ことを固定する。
+export interface PresetEvent {
+    id: string;
+    kind: 'talk';
+    nodeId: string;
+    nodeName: string;
+    time: number; // 絶対フレーム（meetingTime と同じ、resolveStartTimes 基準の正規化前時刻）
+    charIds: string[];
+}
+
 export interface AnimationPreset {
     // data は onRehydrate で正規化され、常に CharacterTimelineData（旧 string[] 形式は移行済み）。#A-5
     id: string; name: string; data: Record<string, CharacterTimelineData>; deadIcons: string[]; note?: string;
+    events?: PresetEvent[]; // 明示会話イベント（省略可＝旧データ互換）
 }
 
 // ▼▼▼ 修正: 'freehand' を正式な型として追加 ▼▼▼
