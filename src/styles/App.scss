@@ -3,6 +3,7 @@
 // R3: インライン style → SCSS 移行分。1コンポーネント=1ファイル、BEM。(@use はファイル先頭でのみ許可されるため
 // 仕様書の「末尾に集約」は運用上の追記順の意図とし、実体は他の @use と並べて冒頭に置く)
 @use './components/waypoint-panel';
+@use './components/route-dock';
 
 // 変数定義（値はトークンへ委譲。SCSSの color 関数を使わない箇所は CSS 変数を参照する）
 $bg-dark: var(--surface-1);

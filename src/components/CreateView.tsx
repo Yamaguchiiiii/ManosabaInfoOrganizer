@@ -5,9 +5,9 @@ import { useAppStore, FloorId, MapNode, Waypoint } from '../store';
 import { MapImage } from './common/MapElements';
 import { NodeEditModal } from './modals/NodeEditModal';
 import { CharacterSelectModal } from './modals/CharacterSelectModal';
-import { SuggestionSidebar } from './common/SuggestionSidebar';
 
 import { WaypointPanel } from './create/WaypointPanel';
+import { RouteDock } from './create/RouteDock';
 import { FollowConfirmModal } from './create/FollowConfirmModal';
 import { MapObjectLayer } from './create/MapObjectLayer';
 import { useRouteEditor } from '../hooks/useRouteEditor';
@@ -170,7 +170,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
 
   // #06/28-3:58-8: ウィンドウサイズに応じて 2x2 / 縦1x4 / 横4x1 をマップ最大化で切替
   const gridRef = useRef<HTMLDivElement>(null);
-  const { gridStyle, isSingleColumn } = useResponsiveQuadGrid(gridRef);
+  const { gridStyle } = useResponsiveQuadGrid(gridRef);
 
   // 高速検索用マップ
   const nodeMap = useMemo(() => {
@@ -444,7 +444,29 @@ export const CreateView: React.FC<CreateViewProps> = ({
             </div>
         )}
 
-        <WaypointPanel
+        {/* U1: デスクトップは右のRouteDockに統合。モバイルは20.md #5のbottom variantを継続。 */}
+        {isMobile && (
+            <WaypointPanel
+                isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
+                highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
+                waypoints={waypoints}
+                suggestionTargetIndex={suggestionTargetIndex}
+                startRef={startRef} setStartRef={setStartRef}
+                showBeforeStart={showBeforeStart} setShowBeforeStart={setShowBeforeStart}
+                startRefCharOptions={startRefCharOptions} startRefNodeOptions={startRefNodeOptions}
+                handleWaypointChange={handleWaypointChange} setSuggestionTargetIndex={setSuggestionTargetIndex}
+                handleSyncTime={handleSyncTime} handleRemoveWaypoint={handleRemoveWaypoint}
+                handleAddWaypoint={handleAddWaypoint} handleSavePath={handleSavePath}
+                handleEditPath={handleEditPath} handleDeletePath={handleDeletePath}
+                syncConstraints={syncConstraints}
+                onRemoveSyncConstraint={handleRemoveSyncConstraint}
+                variant="bottom"
+            />
+        )}
+      </div>
+
+      {!isMobile && (
+        <RouteDock
             isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
             highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
             waypoints={waypoints}
@@ -458,19 +480,9 @@ export const CreateView: React.FC<CreateViewProps> = ({
             handleEditPath={handleEditPath} handleDeletePath={handleDeletePath}
             syncConstraints={syncConstraints}
             onRemoveSyncConstraint={handleRemoveSyncConstraint}
-            variant={isMobile || isSingleColumn ? 'bottom' : 'floating'}
-        />
-      </div>
-
-      {!isMobile && (
-        <SuggestionSidebar
-          isOpen={suggestionTargetIndex!==null}
-          targetType={suggestionTargetIndex===0?'start':(suggestionTargetIndex!==null&&suggestionTargetIndex===waypoints.length-1?'end':null)}
-          matchedNodes={matchedNodes}
-          otherNodes={otherNodes}
-          selectedNodeId={(suggestionTargetIndex !== null && waypoints[suggestionTargetIndex]) ? (waypoints[suggestionTargetIndex].id || "") : ""}
-          onSelect={handleSelectSuggestion}
-          onClose={()=>setSuggestionTargetIndex(null)}
+            matchedNodes={matchedNodes}
+            otherNodes={otherNodes}
+            handleSelectSuggestion={handleSelectSuggestion}
         />
       )}
 

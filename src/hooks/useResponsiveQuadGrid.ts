@@ -11,8 +11,6 @@ export interface QuadGridStyle {
 
 export interface QuadGridResult {
     gridStyle: QuadGridStyle;
-    // 縦1x4レイアウト（ペイン幅=画面幅）かどうか。floating UI がマップに被る判定に使う（20.md #5）
-    isSingleColumn: boolean;
 }
 
 const LAYOUTS = {
@@ -58,5 +56,5 @@ export const useResponsiveQuadGrid = (ref: RefObject<HTMLElement | null>): QuadG
         return () => obs.disconnect();
     }, [ref]);
 
-    return { gridStyle: style, isSingleColumn: style.gridTemplateColumns === '1fr' };
+    return { gridStyle: style };
 };
