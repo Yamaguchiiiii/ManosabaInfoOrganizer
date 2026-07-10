@@ -48,6 +48,8 @@ export const AnimateView = () => {
   const isMobile = useViewport() === 'mobile';
   // モバイルは1フロアずつ表示（4ペインは狭すぎるため）。#smartphone.md M2
   const [mobileFloor, setMobileFloor] = useState<AnimFloorId>('1F');
+  // モバイル: 下段の事件ノートの折りたたみ（20.md #3）。縦が細い端末は初期折りたたみ
+  const [noteCollapsed, setNoteCollapsed] = useState(() => window.innerHeight < 700);
 
   const nodesMapRef = useRef<Record<string, MapNode>>({});
   useEffect(() => {
@@ -169,6 +171,12 @@ export const AnimateView = () => {
             })}
             {renderAllCharsForFloor(mobileFloor)}
           </ReadOnlyMapView>
+        </div>
+        <div className={`animate-mobile-note ${noteCollapsed ? 'collapsed' : ''}`}>
+          <button className="note-collapse-bar" onClick={() => setNoteCollapsed(v => !v)}>
+            事件ノート {noteCollapsed ? '▸' : '▾'}
+          </button>
+          {!noteCollapsed && <div className="note-body"><NotesPanel /></div>}
         </div>
         <div className="animate-mobile-playbar" data-tour={TOUR_TARGETS.animatePlayback}>
           <AnimationTimeline />
