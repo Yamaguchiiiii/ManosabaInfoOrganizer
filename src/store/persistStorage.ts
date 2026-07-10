@@ -15,7 +15,9 @@ const STORE_NAME = 'app-state';
 // 画像実体(Blob)を state から分離して置くストア（P2）。openDB はこの1ファイルに集約する
 // （別バージョンで同一DBを開くと VersionError になるため、ここが唯一の open 地点）。
 export const ASSET_STORE = 'note-assets';
-const DB_VERSION = 2;
+// F4: 手動スナップショット（バージョン退避）の保存先。
+export const SNAPSHOT_STORE = 'snapshots';
+const DB_VERSION = 3;
 const PERSIST_DEBOUNCE_MS = 500;
 
 export const openDB = (): Promise<IDBDatabase> => {
@@ -25,6 +27,7 @@ export const openDB = (): Promise<IDBDatabase> => {
             const db = (event.target as IDBOpenDBRequest).result;
             if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
             if (!db.objectStoreNames.contains(ASSET_STORE)) db.createObjectStore(ASSET_STORE);
+            if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) db.createObjectStore(SNAPSHOT_STORE);
         };
         // revise No.5: 旧バージョン接続を持つ別タブが生きたままDB_VERSIONを上げると、
         // このopenはblockedのまま保留され続け新タブが永久Loadingになる。理由をバナーで示す。
@@ -82,12 +85,46 @@ export const idbPutString = async (name: string, value: string): Promise<void> =
     });
 };
 
-const idbDelete = async (name: string): Promise<void> => {
+// F4: 任意のオブジェクトストアに対する汎用ヘルパー（スナップショット等、STORE_NAME固定でない用途向け）。
+export const idbPut = async <T>(storeName: string, value: T, key: string): Promise<void> => {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete(name);
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.put(value, key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const idbGet = async <T>(storeName: string, key: string): Promise<T | undefined> => {
+    const db = await openDB();
+    return new Promise<T | undefined>((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(key);
+        request.onsuccess = () => resolve(request.result as T | undefined);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const idbGetAll = async <T>(storeName: string): Promise<T[]> => {
+    const db = await openDB();
+    return new Promise<T[]>((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result as T[]);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const idbDelete = async (storeName: string, key: string): Promise<void> => {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.delete(key);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
@@ -208,7 +245,7 @@ export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
             pending = { name, value };
             schedule();
         },
-        removeItem: async (name) => { await idbDelete(name); },
+        removeItem: async (name) => { await idbDelete(STORE_NAME, name); },
         flushNow,
     };
 };

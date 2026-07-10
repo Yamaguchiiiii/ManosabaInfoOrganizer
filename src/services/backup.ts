@@ -7,7 +7,8 @@ import { flushPersistNow } from '../store';
 import { idbGetString, idbPutString, REV_KEY } from '../store/persistStorage';
 import { listAssetKeys, getAssetBlob, putAssetAtKey } from './assetStore';
 
-const STORAGE_KEY = 'mystery-map-storage';
+// F4: 手動スナップショットも同じ zustand persist キーを読み書きするため export して共用する。
+export const STORAGE_KEY = 'mystery-map-storage';
 
 // v2: 画像は state から分離され asset:// キーになったため、Blob 実体も base64 で同梱する。
 // v1（画像が data URL で state 内）も import 可能（assets 無し扱い）。
@@ -20,7 +21,8 @@ interface BackupFile {
     assets?: Record<string, string>;         // v2: asset:// キー → data URL(base64)
 }
 
-const blobToDataUrl = (blob: Blob): Promise<string> =>
+// F4: 手動スナップショットでも同じ変換が必要なため export して共用する。
+export const blobToDataUrl = (blob: Blob): Promise<string> =>
     new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(r.result as string);
@@ -28,7 +30,7 @@ const blobToDataUrl = (blob: Blob): Promise<string> =>
         r.readAsDataURL(blob);
     });
 
-const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => (await fetch(dataUrl)).blob();
+export const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => (await fetch(dataUrl)).blob();
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 const defaultFileName = () => {

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { SHORTCUT_GROUPS, QUICK_START } from '../../data/shortcuts';
 import { useAppStore } from '../../store';
 import { exportBackup, importBackupFromText, pickBackupFile } from '../../services/backup';
+import { saveSnapshot, listSnapshots, restoreSnapshot, deleteSnapshot, SnapshotMeta } from '../../services/snapshots';
 import { toast } from '../../services/toast';
 import { Kbd } from './Kbd';
 
@@ -65,6 +66,7 @@ export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose, onStartTo
                             ))}
                             <button onClick={onStartTour} style={tourBtn}>● 初回ガイドをもう一度見る</button>
                             <BackupSection />
+                            <SnapshotSection />
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -128,6 +130,73 @@ const BackupSection: React.FC = () => {
     );
 };
 
+// F4: 手動スナップショット。バックアップと違いファイル書き出し不要で、直近5件をIDB内に保持する。
+const SnapshotSection: React.FC = () => {
+    const showConfirm = useAppStore(s => s.showConfirm);
+    const showAlert = useAppStore(s => s.showAlert);
+    const [busy, setBusy] = useState(false);
+    const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
+
+    const refresh = useCallback(async () => setSnapshots(await listSnapshots()), []);
+    useEffect(() => { void refresh(); }, [refresh]);
+
+    // R5 showPrompt は未実装のため、既定名(日時)で保存する。
+    const defaultName = () => {
+        const d = new Date();
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+    };
+
+    const handleSave = async () => {
+        setBusy(true);
+        try {
+            await saveSnapshot(defaultName());
+            await refresh();
+            toast.success('スナップショットを保存しました');
+        } catch (e) {
+            await showAlert(e instanceof Error ? e.message : 'スナップショットの保存に失敗しました');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleRestore = async (id: string, name: string) => {
+        if (!(await showConfirm(`"${name}" の状態に復元します。現在のデータは上書きされます。よろしいですか？`))) return;
+        setBusy(true);
+        try { await restoreSnapshot(id); } // 成功時は内部で location.reload()
+        catch (e) { await showAlert(e instanceof Error ? e.message : '復元に失敗しました'); setBusy(false); }
+    };
+
+    const handleDelete = async (id: string) => {
+        await deleteSnapshot(id);
+        await refresh();
+    };
+
+    return (
+        <div style={{ ...cardStyle, marginTop: 8 }}>
+            <div style={{ fontWeight: 'bold', color: '#66b3ff', marginBottom: 6 }}>スナップショット</div>
+            <div style={{ fontSize: '0.78rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 }}>
+                現在の状態を直近5件までこの端末内に保存できます。大きな変更を試す前の控えに便利です（ファイル書き出しはされません）。
+            </div>
+            <button onClick={handleSave} disabled={busy} style={{ ...backupBtn, marginBottom: snapshots.length > 0 ? 10 : 0, width: '100%' }}>＋ 現在の状態を保存</button>
+            {snapshots.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {snapshots.map(s => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}>
+                            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ccc' }}>
+                                {s.name}
+                                <span style={{ color: '#777', marginLeft: 6 }}>{new Date(s.createdAt).toLocaleString()}</span>
+                            </div>
+                            <button onClick={() => handleRestore(s.id, s.name)} disabled={busy} style={smallBtn}>復元</button>
+                            <button onClick={() => handleDelete(s.id)} disabled={busy} style={smallBtn}>削除</button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const TabBtn: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
     <button
         onClick={onClick}
@@ -150,4 +219,8 @@ const tourBtn: React.CSSProperties = {
 const backupBtn: React.CSSProperties = {
     flex: 1, background: '#333', border: '1px solid #555', color: '#ddd',
     padding: '8px 10px', borderRadius: 6, cursor: 'pointer', fontSize: '0.82rem',
+};
+const smallBtn: React.CSSProperties = {
+    flexShrink: 0, background: '#333', border: '1px solid #555', color: '#ddd',
+    padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem',
 };
