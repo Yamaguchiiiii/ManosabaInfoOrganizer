@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { FloorId, useAppStore } from './store';
 import { NavRail } from './components/NavRail';
 import { ContextPanel } from './components/ContextPanel';
 import { ContextBar } from './components/ContextBar';
-import { CreateView } from './components/CreateView';
-import { AnimateView } from './components/AnimateView';
-import { NoteView } from './components/NoteView';
 import { DialogHost } from './components/common/DialogHost';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { ToastHost } from './components/common/ToastHost';
@@ -17,6 +14,12 @@ import { runNavigationGuard } from './services/navigationGuard';
 import { checkStorageHealth } from './services/storageHealth';
 import './styles/App.scss';
 import './styles/Modal.scss';
+
+// R6/revise No.18: 3ビューを遅延ロードしチャンク分割する。CreateView/AnimateView は
+// NoteView から CanvasWorkspace 経由で参照されないため独立して分割される。
+const CreateView = React.lazy(() => import('./components/CreateView').then(m => ({ default: m.CreateView })));
+const AnimateView = React.lazy(() => import('./components/AnimateView').then(m => ({ default: m.AnimateView })));
+const NoteView = React.lazy(() => import('./components/NoteView').then(m => ({ default: m.NoteView })));
 
 function App() {
     // ▼ 修正: 必要な状態だけを個別に取得し、不要な再レンダリングを防止 ▼
@@ -98,15 +101,20 @@ function App() {
         })
     }
 
-    // 現在のビュー本体（デスクトップ/モバイルで共通に再利用する）
-    const viewElement = mode === 'create' ? (
-        <CreateView
-            onFloorChange={changeFloorWithTransition}
-        />
-    ) : mode === 'animate' ? (
-        <AnimateView />
-    ) : (
-        <NoteView />
+    // 現在のビュー本体（デスクトップ/モバイルで共通に再利用する）。R6: lazy化したビューの
+    // 初回チャンク読み込み待ちは、遷移オーバーレイと同じ LoadingScreen で覆う。
+    const viewElement = (
+        <Suspense fallback={<LoadingScreen overlay />}>
+            {mode === 'create' ? (
+                <CreateView
+                    onFloorChange={changeFloorWithTransition}
+                />
+            ) : mode === 'animate' ? (
+                <AnimateView />
+            ) : (
+                <NoteView />
+            )}
+        </Suspense>
     );
 
     const overlays = (

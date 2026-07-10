@@ -179,13 +179,19 @@ export const createIdbPersistStorage = <S>(): IdbPersistStorage<S> => {
         await writeNow();
     };
 
-    // タブ非表示/離脱時に未書き込みをベストエフォートで保存する
+    // タブ非表示/離脱時に未書き込みをベストエフォートで保存する。
+    // revise No.19: dev の HMR で createIdbPersistStorage が再評価されるたびにリスナーが
+    // 増えないよう、window にインストール済みフラグを立てて多重登録を防ぐ。
     if (typeof window !== 'undefined') {
-        window.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') void flushNow();
-        });
-        window.addEventListener('pagehide', () => { void flushNow(); });
-        window.addEventListener('beforeunload', () => { void flushNow(); }); // revise No.8
+        const w = window as unknown as { __manosabaPersistFlushInstalled?: boolean };
+        if (!w.__manosabaPersistFlushInstalled) {
+            w.__manosabaPersistFlushInstalled = true;
+            window.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') void flushNow();
+            });
+            window.addEventListener('pagehide', () => { void flushNow(); });
+            window.addEventListener('beforeunload', () => { void flushNow(); }); // revise No.8
+        }
     }
 
     return {

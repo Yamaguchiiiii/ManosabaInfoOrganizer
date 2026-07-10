@@ -15,8 +15,12 @@ export default defineConfig(async () => ({
   resolve: { dedupe: ["konva", "react-konva"] },
   plugins: [
     react(),
-    ...(isTauri ? [] : [VitePWA({
-      registerType: "autoUpdate",
+    VitePWA({
+      // Tauri では SW/manifest を生成しない。プラグイン自体を配列から除外すると
+      // virtual:pwa-register が解決できずビルドが壊れるため disable オプションで無効化する。
+      disable: isTauri,
+      registerType: "prompt", // autoUpdate → prompt（無言差し替えをやめ、更新をバナーで通知する。revise No.15）
+      injectRegister: false,  // 自前で pwa.ts から registerSW を呼ぶ
       // dev では SW を動かさない（HMR 干渉・キャッシュ混乱を避ける）。本番 web ビルドでのみ有効。
       devOptions: { enabled: false },
       workbox: {
@@ -38,8 +42,21 @@ export default defineConfig(async () => ({
           { src: "logo.png", sizes: "192x192", type: "image/png", purpose: "any" },
         ],
       },
-    })]),
+    }),
   ],
+
+  // R6/revise No.18: 単一678KBチャンクを分割し、モバイル/PWA初回ロードを軽くする。
+  // react/konva は3ビューすべてが依存するため独立チャンクへ。dedupe設定と合わせ konva は1chunkのみ。
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          konva: ["konva", "react-konva"],
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
