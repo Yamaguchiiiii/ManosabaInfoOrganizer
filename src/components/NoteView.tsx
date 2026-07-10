@@ -20,6 +20,7 @@ import { NoteToolsSidebar } from './note/NoteToolsSidebar';
 import { useNoteClipboard } from '../hooks/useNoteClipboard';
 import { useNoteKeyboard } from '../hooks/useNoteKeyboard';
 import { useTextEditing } from '../hooks/useTextEditing';
+import { useNoteHistoryBatch } from '../hooks/useNoteHistoryBatch';
 import '../styles/NoteView.scss';
 
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
@@ -132,18 +133,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // 各ペインの Konva.Stage 参照。ブラウザズーム時に pixelRatio を再適用して画質劣化(#6)を防ぐ。
     const stageRefs = useRef<(Konva.Stage | null)[]>([null, null, null, null]);
 
-    const batchSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const saveHistoryOnceThenSkip = () => {
-        if (!batchSaveRef.current) {
-            // バッチ先頭: 変更前の現在状態を保存
-            saveNoteHistory();
-        } else {
-            clearTimeout(batchSaveRef.current);
-        }
-        batchSaveRef.current = setTimeout(() => {
-            batchSaveRef.current = null;
-        }, 300);
-    };
+    const { saveHistoryOnceThenSkip, commitThrottled } = useNoteHistoryBatch(saveNoteHistory);
     const [drawingActive, setDrawingActive] = useState(false);
 
     const [shapeContextMenu, setShapeContextMenu] = useState<ShapeContextMenuState | null>(null);
@@ -376,28 +366,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         // 同一ペイン内: 通常の移動として確定（最終位置をクランプ）
         applyMove(clampX(rawX) - (obj.x ?? 0), clampY(rawY) - (obj.y ?? 0));
     }, [isGridMode, isGridEditMode, compactMode, objects, updateNoteObject, updateNoteObjects, targetType, displayTargetId]);
-
-    // カラーピッカー/スライダーなど「連続入力」のコミットを間引く（先頭で即時1回＋末尾で最終値）。
-    // これをしないと、ドラッグ中に毎フレーム updateNoteObject→キャンバス全再描画が走り、
-    // 極めて重く・OOM になっていた（永続化側は store の debounce で別途対策済み）。
-    const propCommitRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; last: (() => void) | null }>({ timer: null, last: null });
-    const commitThrottled = useCallback((fn: () => void) => {
-        const r = propCommitRef.current;
-        r.last = fn;
-        if (r.timer) return;
-        const run = () => {
-            if (r.last) { const f = r.last; r.last = null; r.timer = setTimeout(run, 100); f(); }
-            else { r.timer = null; }
-        };
-        run();
-    }, []);
-
-    // アンマウント時、間引き中の最終コミットを flush してからタイマーを破棄する（値落ち/リーク防止）。refactoring A-8-1
-    useEffect(() => () => {
-        const r = propCommitRef.current;
-        if (r.timer) { clearTimeout(r.timer); r.timer = null; }
-        if (r.last) { const f = r.last; r.last = null; f(); }
-    }, []);
 
     useNoteKeyboard({
         editingTextId, setPlacementMode, undoNote, redoNote,
