@@ -5,6 +5,7 @@ import { TARGET_FPS } from '../constants';
 import { usePresetEvents } from '../hooks/usePresetEvents';
 import { EventList } from './common/EventList';
 import { formatTime } from '../utils/timeFormat';
+import { TimelineGantt } from './animate/TimelineGantt';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
@@ -41,6 +42,7 @@ export const AnimationTimeline: React.FC = () => {
     const talkEvents = events.filter(e => e.kind !== 'pass');
 
     const [showEvents, setShowEvents] = useState(false);
+    const [showGantt, setShowGantt] = useState(false);
 
     return (
         <div style={{
@@ -114,6 +116,19 @@ export const AnimationTimeline: React.FC = () => {
                     </button>
                 )}
 
+                {/* F2: キャラ行動ガントバーのトグル */}
+                <button
+                    onClick={() => setShowGantt(v => !v)}
+                    title="キャラ行動ガントバー"
+                    style={{
+                        background: showGantt ? 'rgba(102,179,255,0.2)' : '#333',
+                        border: '1px solid #555', borderRadius: '4px', color: showGantt ? '#66b3ff' : '#ccc',
+                        padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem',
+                    }}
+                >
+                    📊
+                </button>
+
                 {/* 2行目: 現在の再生時間 | 再生バー | アニメーション全体の時間（幅100%で折り返す） */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
                     <div style={{ color: '#ccc', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
@@ -175,6 +190,8 @@ export const AnimationTimeline: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {showGantt && <TimelineGantt />}
         </div>
     );
 };
