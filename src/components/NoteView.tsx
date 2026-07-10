@@ -2480,16 +2480,47 @@ export const NoteView: React.FC = React.memo(() => {
                             targetId={actualMiscPageId}
                             compactMode={isMobile}
                             headerBar={isMobile ? (
-                                // モバイル: メモ選択+追加（改名/削除はデスクトップの Tools 側）。smartphone.md M1
+                                // モバイル: メモ選択+追加+改名+削除（20.md #07/04-6）
                                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                                    <select
-                                        value={actualMiscPageId || ''}
-                                        onChange={e => setActualMiscPageId(e.target.value)}
-                                        style={{ minWidth: '150px', background: '#333', color: 'white', border: '1px solid #555', padding: '6px 8px', borderRadius: '4px' }}
-                                    >
-                                        {notes.miscPages!.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                                    </select>
-                                    <button onClick={() => addMiscPage("New Page")} style={{ background: 'var(--accent, #7c5cff)', border: 'none', color: 'white', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }} title="メモを追加">+</button>
+                                    {renamingPageId === actualMiscPageId ? (
+                                        <input
+                                            autoFocus
+                                            value={renameInputValue}
+                                            onChange={e => setRenameInputValue(e.target.value)}
+                                            onBlur={() => {
+                                                if (renamingPageId && renameInputValue.trim()) renameMiscPage(renamingPageId, renameInputValue.trim());
+                                                setRenamingPageId(null);
+                                            }}
+                                            onKeyDown={e => {
+                                                if (e.nativeEvent.isComposing || e.keyCode === 229) return; // IME変換中は確定で奪わない
+                                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                if (e.key === 'Escape') setRenamingPageId(null);
+                                            }}
+                                            style={{ minWidth: '150px', background: '#333', color: 'white', border: '1px solid var(--focus-strong, #007acc)', padding: '6px 8px', borderRadius: '4px' }}
+                                        />
+                                    ) : (
+                                        <select
+                                            value={actualMiscPageId || ''}
+                                            onChange={e => setActualMiscPageId(e.target.value)}
+                                            style={{ minWidth: '150px', background: '#333', color: 'white', border: '1px solid #555', padding: '6px 8px', borderRadius: '4px' }}
+                                        >
+                                            {notes.miscPages!.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                                        </select>
+                                    )}
+                                    <button onClick={() => addMiscPage("New Page")} title="メモを追加"
+                                        style={{ background: 'var(--accent, #7c5cff)', border: 'none', color: 'white', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, minHeight: 40 }}>+</button>
+                                    <button title="名前を変更" onClick={() => {
+                                            const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
+                                            if (page) { setRenamingPageId(page.id); setRenameInputValue(page.title); }
+                                        }}
+                                        style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', flexShrink: 0, minHeight: 40 }}>✏️</button>
+                                    <button title="削除" onClick={async () => {
+                                            if (await showConfirm("このノートを削除しますか？")) {
+                                                deleteMiscPage(actualMiscPageId as string);
+                                                setActualMiscPageId(null);
+                                            }
+                                        }}
+                                        style={{ background: 'var(--danger, #ef4444)', border: 'none', color: 'white', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', flexShrink: 0, minHeight: 40 }}>🗑️</button>
                                 </div>
                             ) : undefined}
                             sidebarHeader={
