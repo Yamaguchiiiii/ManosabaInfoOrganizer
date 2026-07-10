@@ -1,0 +1,412 @@
+// Create画面の経路編集パネル。R3: インライン style → SCSS 移行の優先①（20.md #5 相当）。
+// 動的値（セグメント色・ターゲット強調・保存済み判定）は CSS変数 or is-* / --* modifier クラスで受け渡す。
+.waypoint-panel {
+  position: absolute;
+  bottom: 30px;
+  right: 30px;
+  left: auto;
+  background-color: rgba(30, 30, 30, 0.95);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--focus-strong);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  z-index: var(--z-panel);
+  min-width: 240px;
+  max-width: 300px;
+
+  &.is-saved {
+    border-color: var(--success);
+  }
+
+  &--bottom {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: none;
+    max-height: 45vh;
+    overflow-y: auto;
+
+    &.is-collapsed {
+      max-height: none;
+    }
+  }
+
+  // 数値入力のスピンボタンを消す（旧: コンポーネント内 <style> タグ）
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  &__collapse-btn {
+    background: none;
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
+    border-radius: var(--radius-1);
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    font-size: var(--fs-xs);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__summary {
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    flex: 1;
+  }
+
+  &__body {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  &__start-condition {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-bottom: var(--space-2);
+    margin-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  &__start-condition-title {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+  }
+
+  &__start-condition-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  &__start-condition-text {
+    font-size: var(--fs-xs);
+    color: var(--text-primary);
+  }
+
+  &__select {
+    background: var(--surface-3);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-1);
+    padding: 3px 6px;
+    font-size: var(--fs-xs);
+    max-width: 120px;
+  }
+
+  &__delay-input {
+    width: 52px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
+    padding: 4px;
+    border-radius: var(--radius-1);
+    text-align: right;
+  }
+
+  &__delay-unit {
+    font-size: 0.7rem;
+    color: var(--text-disabled);
+  }
+
+  &__show-before-start {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  &__row-segment {
+    width: 4px;
+    height: 24px;
+    border-radius: 2px;
+    background-color: var(--seg-color, transparent);
+    margin-right: 2px;
+  }
+
+  &__row-index {
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+    width: 20px;
+    text-align: center;
+  }
+
+  &__row-input {
+    flex: 1;
+    background: var(--surface-4);
+    color: var(--text-primary);
+    padding: 4px;
+    border-radius: var(--radius-1);
+    font-size: 0.9rem;
+    border: 1px solid var(--border-strong);
+    box-shadow: none;
+
+    &.is-target {
+      border-color: var(--focus);
+      box-shadow: 0 0 0 2px rgba(102, 179, 255, 0.25);
+    }
+  }
+
+  &__row-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    width: 80px;
+    justify-content: flex-end;
+  }
+
+  &__row-actions-spacer {
+    width: 24px;
+
+    &--stay {
+      width: 30px;
+    }
+    &--remove {
+      width: 20px;
+    }
+  }
+
+  &__sync-btn {
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    color: var(--gold);
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+  }
+
+  &__stay-input {
+    width: 30px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    color: var(--success);
+    padding: 4px;
+    border-radius: var(--radius-1);
+    font-size: var(--fs-xs);
+    text-align: right;
+  }
+
+  &__remove-btn {
+    background: var(--surface-4);
+    border: none;
+    color: var(--text-secondary);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-xs);
+  }
+
+  &__add-stop {
+    margin-top: 5px;
+    background: none;
+    border: 1px dashed var(--border-strong);
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: var(--radius-1);
+    cursor: pointer;
+    font-size: var(--fs-xs);
+    width: 100%;
+  }
+
+  &__sync-constraints {
+    border-top: 1px solid var(--border-default);
+    padding-top: var(--space-2);
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+  }
+
+  &__sync-constraints-title {
+    font-size: 0.7rem;
+    color: var(--text-disabled);
+    margin-bottom: 2px;
+  }
+
+  &__sync-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 6px;
+    border-radius: var(--radius-1);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid transparent;
+
+    &.is-anchor {
+      background: rgba(212, 169, 79, 0.1);
+      border-color: rgba(212, 169, 79, 0.3);
+    }
+  }
+
+  &__sync-icon {
+    color: var(--gold);
+    font-size: 0.85rem;
+  }
+
+  &__sync-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__sync-name {
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__sync-meta {
+    color: var(--text-disabled);
+    font-size: 0.68rem;
+  }
+
+  &__sync-anchor-badge {
+    font-size: 0.62rem;
+    color: var(--focus-strong);
+    white-space: nowrap;
+  }
+
+  &__sync-remove {
+    background: none;
+    border: none;
+    color: var(--text-disabled);
+    cursor: pointer;
+    font-size: var(--fs-xs);
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+
+  &__status {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-align: center;
+
+    &-empty {
+      color: var(--text-disabled);
+    }
+  }
+
+  &__status-value {
+    &--saved {
+      color: var(--success);
+    }
+    &--path {
+      color: #fff;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  &__icons {
+    display: flex;
+  }
+
+  &__icon {
+    border-radius: 50%;
+    object-fit: cover;
+
+    &--saved {
+      width: 40px;
+      height: 40px;
+      border: 2px solid var(--success);
+    }
+    &--pending {
+      width: 36px;
+      height: 36px;
+      border: 2px solid var(--focus-strong);
+    }
+  }
+
+  &__icon-placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px dashed var(--text-disabled);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-disabled);
+  }
+
+  &__btn {
+    border: none;
+    padding: 8px 12px;
+    border-radius: var(--radius-1);
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9rem;
+    color: white;
+
+    &--edit {
+      background-color: var(--warning);
+    }
+    &--delete {
+      background-color: var(--danger);
+    }
+    &--save {
+      background-color: var(--accent);
+      padding: 8px 16px;
+      font-size: 0.85rem;
+
+      &:disabled {
+        background-color: var(--surface-4);
+        cursor: not-allowed;
+      }
+    }
+    &--delete-lg {
+      background-color: var(--danger);
+      padding: 8px 16px;
+      font-size: 0.85rem;
+    }
+  }
+}
