@@ -1,20 +1,19 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Stage, Layer, Image as KonvaImage, Text, Rect, Circle, RegularPolygon, Arrow, Transformer, Line, Group } from 'react-konva';
+import { Stage, Layer, Rect, Arrow, Transformer, Line } from 'react-konva';
 import Konva from 'konva';
-import useImage from 'use-image';
 import { useAppStore, ICON_FILES, NoteObject, NoteObjectType, NoteTargetType } from '../store';
 import { NOTE_CANVAS } from '../constants';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
-import { putAsset, resolveAssetUrl } from '../services/assetStore';
-import { useAssetUrl } from '../hooks/useAssetUrl';
+import { putAsset } from '../services/assetStore';
 import { useViewport } from '../hooks/useViewport';
 import { toast } from '../services/toast';
 import { downloadDataUrl } from '../utils/download';
 import { formatCharName } from '../utils/charName';
+import { HANDWRITING_FONT, applyChaikin, CHARACTER_PORTRAITS } from './note/noteConstants';
+import { getImageSizeFromUrl, processFile } from '../utils/imageUtils';
+import { AssetImg, URLImage, EditableText, ShapeObject } from './note/NoteObjectComponents';
 import '../styles/NoteView.scss';
-
-const HANDWRITING_FONT = '"Yomogi", "Klee One", "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive';
 
 type ExtendedNoteObjectType = NoteObjectType | 'freehand';
 
@@ -25,335 +24,10 @@ type FreehandSettings = {
     stabilization: number;
 };
 
-const applyChaikin = (points: number[], iterations: number): number[] => {
-    if (iterations <= 0 || points.length < 4) return points;
-    const result: number[] = [];
-    for (let i = 0; i < points.length - 2; i += 2) {
-        const x0 = points[i], y0 = points[i + 1];
-        const x1 = points[i + 2], y1 = points[i + 3];
-        result.push(0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1);
-        result.push(0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1);
-    }
-    result.unshift(points[0], points[1]);
-    result.push(points[points.length - 2], points[points.length - 1]);
-    return applyChaikin(result, iterations - 1);
-};
-
-// キャラクターノートにデフォルト配置される立ち絵。全キャラぶんを事件ノート等の
-// 画像パレット/ギャラリーから配置できるようにするための一覧。
-const CHARACTER_PORTRAITS = ICON_FILES.map(icon => `./character/${icon}`);
-
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
 const COMPACT_SIDE_MIN = NOTE_CANVAS.COMPACT_SIDE_MIN;
 const CANVAS_BASE_W = NOTE_CANVAS.W;
 const CANVAS_BASE_H = NOTE_CANVAS.H;
-
-// asset:// キーにも対応する <img>（サムネイル/ギャラリー用）。静的パス/data: はそのまま表示。
-const AssetImg: React.FC<{ src: string; alt?: string; style?: React.CSSProperties }> = ({ src, alt, style }) => {
-    const url = useAssetUrl(src);
-    return <img src={url || ''} alt={alt} style={style} />;
-};
-
-// --- 画像コンポーネント (メモ化) ---
-const URLImage = React.memo(({ imageObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
-    // content が asset:// なら Blob の object URL を解決してから読み込む（P2）。
-    const resolvedSrc = useAssetUrl(imageObj.content);
-    const [img, status] = useImage(resolvedSrc || '');
-
-    // 読み込み失敗時は「見えないが存在する」を避け、破線プレースホルダを表示（E5）。
-    // オブジェクト自体は保持（選択・移動・削除は可能）＝データを壊さない。
-    if (status === 'failed') {
-        const w = imageObj.width || 100;
-        const h = imageObj.height || 100;
-        return (
-            <Group
-                id={imageObj.id}
-                name="note-object"
-                x={imageObj.x}
-                y={imageObj.y}
-                rotation={imageObj.rotation}
-                scaleX={imageObj.scaleX}
-                scaleY={imageObj.scaleY}
-                draggable={!isDrawingMode}
-                onClick={onSelect}
-                onTap={onSelect}
-                onContextMenu={onContextMenu}
-                onDragMove={onDragMove}
-                onDragEnd={onDragEnd ?? ((e: any) => onChange({ x: e.target.x(), y: e.target.y() }))}
-            >
-                <Rect width={w} height={h} fill="#3a3a3a" stroke="#f59e0b" strokeWidth={1} dash={[6, 4]} cornerRadius={4} />
-                <Text text={'⚠\n画像を\n読み込めません'} width={w} height={h} align="center" verticalAlign="middle" fontSize={Math.max(9, Math.min(13, w / 9))} fill="#f59e0b" listening={false} />
-            </Group>
-        );
-    }
-
-    return (
-        <KonvaImage
-            id={imageObj.id}
-            name="note-object"
-            onClick={onSelect}
-            onTap={onSelect}
-            onContextMenu={onContextMenu}
-            image={img}
-            x={imageObj.x}
-            y={imageObj.y}
-            width={imageObj.width}
-            height={imageObj.height}
-            rotation={imageObj.rotation}
-            scaleX={imageObj.scaleX}
-            scaleY={imageObj.scaleY}
-            draggable={!isDrawingMode}
-            onDragMove={onDragMove}
-            onDragEnd={onDragEnd ?? ((e: any) => { onChange({ x: e.target.x(), y: e.target.y() }); })}
-            onTransformEnd={(e) => {
-                const node = e.target;
-                const scaleX = node.scaleX();
-                const scaleY = node.scaleY();
-                node.scaleX(1);
-                node.scaleY(1);
-                onChange({
-                    x: node.x(),
-                    y: node.y(),
-                    width: node.width() * scaleX,
-                    height: node.height() * scaleY,
-                    rotation: node.rotation(),
-                });
-            }}
-        />
-    );
-});
-
-// --- テキストコンポーネント (メモ化) ---
-const EditableText = React.memo(({ textObj, onSelect, onChange, onToggleEdit, onDragMove, onDragEnd, isDrawingMode }: any) => {
-    return (
-        <Text
-            id={textObj.id}
-            name="note-object"
-            onClick={onSelect}
-            onTap={onSelect}
-            onDblClick={onToggleEdit}
-            text={textObj.text}
-            x={textObj.x}
-            y={textObj.y}
-            fontSize={textObj.fontSize || 24}
-            fontStyle={textObj.fontWeight || 'normal'}
-            fontFamily={HANDWRITING_FONT}
-            fill={textObj.fill}
-            rotation={textObj.rotation}
-            scaleX={textObj.scaleX}
-            scaleY={textObj.scaleY}
-            draggable={!isDrawingMode}
-            onDragMove={onDragMove}
-            onDragEnd={onDragEnd ?? ((e: any) => { onChange({ x: e.target.x(), y: e.target.y() }); })}
-        />
-    );
-});
-
-// --- 図形コンポーネント (メモ化) ---
-const ShapeObject = React.memo(({ shapeObj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: any) => {
-    const commonProps: any = {
-        id: shapeObj.id,
-        name: "note-object",
-        onClick: onSelect,
-        onTap: onSelect,
-        onContextMenu: onContextMenu,
-        x: shapeObj.x,
-        y: shapeObj.y,
-        rotation: shapeObj.rotation,
-        scaleX: shapeObj.scaleX,
-        scaleY: shapeObj.scaleY,
-        draggable: !isDrawingMode,
-        onDragMove: onDragMove,
-        onDragEnd: onDragEnd ?? ((e: any) => onChange({ x: e.target.x(), y: e.target.y() })),
-        onTransformEnd: (e: any) => {
-            const node = e.target;
-            const scaleX = node.scaleX();
-            const scaleY = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const type = shapeObj.type as string;
-            if (type === 'rect') {
-                onChange({
-                    x: node.x(), y: node.y(),
-                    width: Math.round((shapeObj.width || 100) * scaleX),
-                    height: Math.round((shapeObj.height || 100) * scaleY),
-                    scaleX: 1, scaleY: 1,
-                    rotation: node.rotation(),
-                });
-            } else if (type === 'circle' || type === 'triangle') {
-                const scale = Math.max(scaleX, scaleY);
-                onChange({
-                    x: node.x(), y: node.y(),
-                    width: Math.round((shapeObj.width || 100) * scale),
-                    height: Math.round((shapeObj.height || 100) * scale),
-                    scaleX: 1, scaleY: 1,
-                    rotation: node.rotation(),
-                });
-            } else {
-                onChange({
-                    x: node.x(), y: node.y(),
-                    scaleX: 1, scaleY: 1,
-                    rotation: node.rotation(),
-                });
-            }
-        }
-    };
-
-    const getLineProps = () => {
-        const props: any = { ...commonProps };
-        if (shapeObj.lineStyle === 'marker') {
-            props.opacity = 0.4;
-            props.lineCap = 'round';
-            props.lineJoin = 'round';
-        } else if (shapeObj.lineStyle === 'pen') {
-            props.lineCap = 'round';
-            props.lineJoin = 'round';
-        }
-        props.hitStrokeWidth = Math.max(20, shapeObj.strokeWidth || 3);
-        return props;
-    };
-
-    const isStrokeEnabled = shapeObj.strokeWidth !== 0;
-    const linePoints = shapeObj.points || (shapeObj.type.includes('curve') ? [0, 0, 50, -50, 100, 0] : [0, 0, 100, 0]);
-
-    return (
-        <>
-            {shapeObj.type === 'rect' && (
-                <Rect {...commonProps} width={shapeObj.width || 100} height={shapeObj.height || 100} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} strokeScaleEnabled={false} />
-            )}
-            {shapeObj.type === 'circle' && (
-                <Circle {...commonProps} radius={(shapeObj.width || 100) / 2} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} strokeScaleEnabled={false} />
-            )}
-            {shapeObj.type === 'triangle' && (
-                <RegularPolygon {...commonProps} sides={3} radius={(shapeObj.width || 100) / 2} fill={shapeObj.fill} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 0} strokeEnabled={isStrokeEnabled} strokeScaleEnabled={false} />
-            )}
-            {shapeObj.type === 'line' && (
-                <Arrow {...getLineProps()} points={linePoints} pointerLength={0} pointerWidth={0} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 3} />
-            )}
-            {shapeObj.type === 'arrow' && (
-                <Arrow {...getLineProps()} points={linePoints} pointerLength={10} pointerWidth={10} stroke={shapeObj.stroke} fill={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 3} />
-            )}
-            {shapeObj.type === 'curve' && (
-                <Arrow {...getLineProps()} points={linePoints} tension={0.5} pointerLength={0} pointerWidth={0} stroke={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 3} />
-            )}
-            {shapeObj.type === 'curve_arrow' && (
-                <Arrow {...getLineProps()} points={linePoints} tension={0.5} pointerLength={10} pointerWidth={10} stroke={shapeObj.stroke} fill={shapeObj.stroke} strokeWidth={shapeObj.strokeWidth || 3} />
-            )}
-            {(shapeObj.type as string) === 'freehand' && (
-                <Line 
-                    {...getLineProps()} 
-                    points={shapeObj.points || []} 
-                    tension={0.5} 
-                    stroke={shapeObj.stroke} 
-                    strokeWidth={shapeObj.strokeWidth || 3} 
-                />
-            )}
-        </>
-    );
-});
-
-// url は静的パス / data: / asset:// のいずれでも可（asset:// は object URL に解決してから計測）。
-const getImageSizeFromUrl = async (url: string, maxDimension = 500): Promise<{ width: number, height: number }> => {
-    const resolved = await resolveAssetUrl(url);
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            let { width, height } = img;
-            if (width > height) {
-                if (width > maxDimension) { height *= maxDimension / width; width = maxDimension; }
-            } else {
-                if (height > maxDimension) { width *= maxDimension / height; height = maxDimension; }
-            }
-            resolve({ width, height });
-        };
-        img.onerror = () => resolve({ width: 200, height: 200 });
-        img.src = resolved;
-    });
-};
-
-// canvas を PNG Blob 化する（toDataURL の base64 を避け、state に載せない実体を得る）。
-const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
-    new Promise((resolve, reject) =>
-        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'));
-
-// 透明背景をトリミングし、最大500pxへ縮小した PNG Blob を返す（前景でバウンディングボックスを取る）。
-const autocropTransparent = (
-    originalBlob: Blob,
-    dataUrl: string,
-    imgWidth: number,
-    imgHeight: number
-): Promise<{ blob: Blob; width: number; height: number }> => {
-    return new Promise((resolve) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = imgWidth;
-        canvas.height = imgHeight;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { resolve({ blob: originalBlob, width: imgWidth, height: imgHeight }); return; }
-        const src = new Image();
-        src.onload = () => {
-            ctx.drawImage(src, 0, 0);
-            const data = ctx.getImageData(0, 0, imgWidth, imgHeight).data;
-            const ALPHA_THRESHOLD = 10;
-            let minX = imgWidth, minY = imgHeight, maxX = 0, maxY = 0;
-            for (let y = 0; y < imgHeight; y++) {
-                for (let x = 0; x < imgWidth; x++) {
-                    if (data[(y * imgWidth + x) * 4 + 3] > ALPHA_THRESHOLD) {
-                        if (x < minX) minX = x;
-                        if (y < minY) minY = y;
-                        if (x > maxX) maxX = x;
-                        if (y > maxY) maxY = y;
-                    }
-                }
-            }
-            if (maxX < minX || maxY < minY) {
-                resolve({ blob: originalBlob, width: imgWidth, height: imgHeight });
-                return;
-            }
-            const cropW = maxX - minX + 1;
-            const cropH = maxY - minY + 1;
-            const cropCanvas = document.createElement('canvas');
-            cropCanvas.width = cropW;
-            cropCanvas.height = cropH;
-            const cropCtx = cropCanvas.getContext('2d')!;
-            cropCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
-            const maxDim = 500;
-            let w = cropW, h = cropH;
-            if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
-            else       { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
-            // 縮小が必要なら別canvasで縮小してから Blob 化
-            if (w !== cropW || h !== cropH) {
-                const scaled = document.createElement('canvas');
-                scaled.width = w; scaled.height = h;
-                scaled.getContext('2d')!.drawImage(cropCanvas, 0, 0, w, h);
-                canvasToBlob(scaled).then(blob => resolve({ blob, width: w, height: h }))
-                    .catch(() => resolve({ blob: originalBlob, width: imgWidth, height: imgHeight }));
-            } else {
-                canvasToBlob(cropCanvas).then(blob => resolve({ blob, width: w, height: h }))
-                    .catch(() => resolve({ blob: originalBlob, width: imgWidth, height: imgHeight }));
-            }
-        };
-        src.onerror = () => resolve({ blob: originalBlob, width: imgWidth, height: imgHeight });
-        src.src = dataUrl;
-    });
-};
-
-// アップロード画像を「autocrop済みPNG Blob + 表示寸法」に変換する（base64は state に載せない）。
-const processFile = (file: File): Promise<{ blob: Blob, width: number, height: number }> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const dataUrl = e.target?.result as string;
-            const img = new Image();
-            img.onload = () => {
-                autocropTransparent(file, dataUrl, img.width, img.height).then(resolve);
-            };
-            img.onerror = reject;
-            img.src = dataUrl;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-};
 
 export interface CanvasWorkspaceProps {
     targetType: NoteTargetType;
@@ -1879,7 +1553,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                 >
                                     <Layer scaleX={effScale} scaleY={effScale}>
                                         {isFontLoaded && objs.map((obj) => {
-                                            const isSelected = selectedIds.includes(obj.id);
                                             if (obj.id === editingTextId) return null;
 
                                             // グループドラッグ: ドラッグ中に同グループの他メンバーを追従させる
@@ -1902,8 +1575,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             } : {};
 
                                             const props = {
-                                                imageObj: obj, textObj: obj, shapeObj: obj,
-                                                isSelected,
+                                                obj,
                                                 isDrawingMode,
                                                 ...groupDragHandlers,
                                                 // ドラッグ確定はグループ/単体ともに統一ハンドラへ（#4 ペイン跨ぎ移動対応）
@@ -1924,7 +1596,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                         setSelectedIds([obj.id]);
                                                     }
                                                 },
-                                                onChange: (newAttrs: NoteObject) => {
+                                                onChange: (newAttrs: Partial<NoteObject>) => {
                                                     saveHistoryOnceThenSkip();
                                                     updateNoteObject(targetType, displayTargetId, obj.id, newAttrs, true);
                                                 },
