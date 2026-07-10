@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../store';
-import { CanvasWorkspace } from './NoteView';
+import { CanvasWorkspace } from './note/CanvasWorkspace';
 
 // ▼ 修正: React.memo でラップし、親(AnimateView)からの不要な再レンダリングをブロック ▼
 export const NotesPanel = React.memo(() => {
