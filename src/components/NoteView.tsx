@@ -17,6 +17,7 @@ import { ImageGalleryWindow } from './note/ImageGalleryWindow';
 import { CompactToolbar } from './note/CompactToolbar';
 import { ShapeContextMenu, ShapeContextMenuState } from './note/ShapeContextMenu';
 import { NoteToolsSidebar } from './note/NoteToolsSidebar';
+import { useNoteClipboard } from '../hooks/useNoteClipboard';
 import '../styles/NoteView.scss';
 
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
@@ -64,7 +65,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     });
 
     const addNoteObject = useAppStore(state => state.addNoteObject);
-    const addNoteObjects = useAppStore(state => state.addNoteObjects);
     const updateNoteObject = useAppStore(state => state.updateNoteObject);
     const updateNoteObjects = useAppStore(state => state.updateNoteObjects);
     const removeNoteObjects = useAppStore(state => state.removeNoteObjects);
@@ -106,8 +106,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     }, [isDraggingGallery]);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    // コピー/ペースト用クリップボード（オブジェクトの属性を保持したまま複製する）
-    const [clipboard, setClipboard] = useState<NoteObject[]>([]);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     // #06/28-14:10-4: テキスト編集中はローカル状態で持ち、確定時のみ store にコミットする。
     // 1キーストロークごとに updateNoteObject→全オブジェクト再描画していたためフレーム落ちしていた。
@@ -187,6 +185,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const currentCanvasObjects = useMemo(() => objects.filter(o => (o.canvasIndex || 0) === currentCanvasIndex), [objects, currentCanvasIndex]);
     const objectsLength = objects.length;
 
+    const { clipboard, handleCopySelected, handleCutSelected, handlePasteClipboard } = useNoteClipboard(
+        targetType, displayTargetId, currentCanvasIndex, selectedIds, currentCanvasObjects, setSelectedIds,
+    );
+
 
     useEffect(() => {
         const container = canvasContainerRef.current;
@@ -251,41 +253,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         applyPixelRatio();
         return () => { mq?.removeEventListener('change', onChange); };
     }, []);
-
-    // 選択中オブジェクトをクリップボードへコピー（サイズ・色などの属性を維持）
-    const handleCopySelected = useCallback(() => {
-        if (selectedIds.length === 0) return;
-        const sel = currentCanvasObjects.filter(o => selectedIds.includes(o.id));
-        if (sel.length === 0) return;
-        setClipboard(sel.map(o => ({ ...o, points: o.points ? [...o.points] : undefined })));
-        toast.info(`${sel.length}件をコピーしました`);
-    }, [selectedIds, currentCanvasObjects]);
-
-    // クリップボードの内容を現在のキャンバスへ少しずらして貼り付ける（グループ構造も維持）
-    const handlePasteClipboard = useCallback(() => {
-        if (clipboard.length === 0) return;
-        const stamp = Date.now();
-        const groupIdMap: Record<string, string> = {};
-        const newObjs: NoteObject[] = clipboard.map((o, i) => {
-            let groupId = o.groupId;
-            if (groupId) {
-                if (!groupIdMap[groupId]) groupIdMap[groupId] = `group_${stamp}_${i}`;
-                groupId = groupIdMap[groupId];
-            }
-            return {
-                ...o,
-                id: `${o.type}_${stamp}_${i}_${Math.random().toString(36).slice(2, 6)}`,
-                x: (o.x || 0) + 20,
-                y: (o.y || 0) + 20,
-                canvasIndex: currentCanvasIndex,
-                groupId,
-                points: o.points ? [...o.points] : undefined,
-            };
-        });
-        addNoteObjects(targetType, displayTargetId, newObjs);
-        setSelectedIds(newObjs.map(o => o.id));
-        toast.info(`${newObjs.length}件を貼り付けました`);
-    }, [clipboard, currentCanvasIndex, addNoteObjects, targetType, displayTargetId]);
 
     // 1ペインを「選択枠なし」で dataURL 化する（紙面背景はまだ乗せない）。事件ノート(preset)は
     // 論理1200×800を常に2400×1600で出力（ズーム非依存）。それ以外は表示範囲を2倍解像度で出力。
@@ -365,17 +332,6 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             toast.error('PNG書き出しに失敗しました');
         }
     }, [isGridMode, currentCanvasIndex, targetType, showDialog, capturePane]);
-
-    // 選択中オブジェクトを切り取り（クリップボードへ退避してから削除する。属性は維持）
-    const handleCutSelected = useCallback(() => {
-        if (selectedIds.length === 0) return;
-        const sel = currentCanvasObjects.filter(o => selectedIds.includes(o.id));
-        if (sel.length === 0) return;
-        setClipboard(sel.map(o => ({ ...o, points: o.points ? [...o.points] : undefined })));
-        removeNoteObjects(targetType, displayTargetId, selectedIds);
-        setSelectedIds([]);
-        toast.info(`${sel.length}件を切り取りました`);
-    }, [selectedIds, currentCanvasObjects, removeNoteObjects, targetType, displayTargetId]);
 
     // オブジェクトのドラッグ確定処理（#4: 4ペインをまたぐ移動に対応）。
     // グリッド編集中に別ペイン上でドロップされたら、対象（グループなら全メンバー）を

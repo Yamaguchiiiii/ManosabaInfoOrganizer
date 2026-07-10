@@ -1,4 +1,4 @@
-import { FloorId, SliceCreator, DialogRequest } from './types';
+import { FloorId, SliceCreator, DialogRequest, NoteObject } from './types';
 import { runNavigationGuard } from '../services/navigationGuard';
 
 export interface UiSlice {
@@ -35,6 +35,10 @@ export interface UiSlice {
 
     // モバイルの文脈シート（下から出すシート）の開閉（R1・旧 MobileShell ローカル state。persist除外）
     mobileSheetOpen: boolean; setMobileSheetOpen: (v: boolean) => void;
+
+    // Note のクリップボード（revise No.10）。旧 CanvasWorkspace ローカル state。
+    // store化によりノート種別を跨いだ貼り付け・切替時の保持が可能になる（persist除外）。
+    noteClipboard: NoteObject[]; setNoteClipboard: (objs: NoteObject[]) => void;
 
     _hasHydrated: boolean;
     setHasHydrated: (state: boolean) => void;
@@ -113,6 +117,8 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     mobileSheetOpen: false, setMobileSheetOpen: (v) => set({ mobileSheetOpen: v }),
 
     noteCharIndex: 0, setNoteCharIndex: (i) => set({ noteCharIndex: i }),
+
+    noteClipboard: [], setNoteClipboard: (objs) => set({ noteClipboard: objs }),
 
     _hasHydrated: false,
     setHasHydrated: (state) => set({ _hasHydrated: state }),

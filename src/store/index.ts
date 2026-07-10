@@ -16,7 +16,7 @@ export const flushPersistNow = idbPersist.flushNow;
 // persist 対象から除外する state（UI一時状態・履歴の逆参照など。詳細は各 slice のコメント参照）
 const PERSIST_EXCLUDE = new Set([
     'noteHistory', 'noteRedoStack', '_hasHydrated', 'dialog', 'eventFilterChar',
-    'selectedIcons', 'mobileSheetOpen',
+    'selectedIcons', 'mobileSheetOpen', 'noteClipboard',
 ]);
 
 export const useAppStore = create<AppState>()(
