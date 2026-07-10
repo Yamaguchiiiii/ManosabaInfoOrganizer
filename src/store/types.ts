@@ -128,6 +128,13 @@ export interface DialogRequest {
     buttons: DialogButton[];
 }
 
-export type AppState = UiSlice & MapSlice & PresetSlice & NoteSlice;
+// 単一スライスに属さない複合アクション（実装は store/index.ts。複数スライスをまたいで
+// 状態更新するため、特定のスライスのインターフェースには持たせない）。
+export interface CompositeActions {
+    // F1: プリセット複製。presets と 事件ノートcanvas(notes.presets[id]) を同時に深複製する。
+    duplicatePreset: (id: string) => void;
+}
+
+export type AppState = UiSlice & MapSlice & PresetSlice & NoteSlice & CompositeActions;
 
 export type SliceCreator<T> = StateCreator<AppState, [['zustand/persist', unknown]], [], T>;

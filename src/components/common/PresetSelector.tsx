@@ -4,7 +4,7 @@ import { useAppStore } from '../../store';
 export const PresetSelector: React.FC = () => {
   const {
     presets, activePresetId,
-    setActivePresetId, addPreset, updatePresetName, deletePreset,
+    setActivePresetId, addPreset, updatePresetName, deletePreset, duplicatePreset,
     showConfirm
   } = useAppStore();
 
@@ -88,6 +88,16 @@ export const PresetSelector: React.FC = () => {
                   }}
               >
                   ✎
+              </button>
+              <button
+                  onClick={() => duplicatePreset(activePresetId)}
+                  title="複製"
+                  style={{
+                      background: 'transparent', border: 'none', color: '#aaa',
+                      cursor: 'pointer', padding: '4px', fontSize: '1rem'
+                  }}
+              >
+                  ⧉
               </button>
               {presets.length > 1 && (
                   <button 

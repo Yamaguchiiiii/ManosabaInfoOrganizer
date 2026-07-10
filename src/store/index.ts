@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createIdbPersistStorage } from './persistStorage';
 import { normalizeTimelineData } from '../utils/animationUtils';
-import { AppState, CharacterTimelineData } from './types';
+import { AppState, AnimationPreset, CharacterTimelineData } from './types';
 import { createUiSlice } from './uiSlice';
 import { createMapSlice } from './mapSlice';
 import { createPresetSlice } from './presetSlice';
@@ -21,12 +21,35 @@ const PERSIST_EXCLUDE = new Set([
 
 export const useAppStore = create<AppState>()(
   persist(
-    (...a) => ({
-        ...createUiSlice(...a),
-        ...createMapSlice(...a),
-        ...createPresetSlice(...a),
-        ...createNoteSlice(...a),
-    }),
+    (...a) => {
+        const [set] = a;
+        return {
+            ...createUiSlice(...a),
+            ...createMapSlice(...a),
+            ...createPresetSlice(...a),
+            ...createNoteSlice(...a),
+            // F1: プリセット複製。presets と 事件ノートcanvas(notes.presets[id]) を同時に深複製する
+            // 複合アクションのため、単一スライスをまたいで書ける index.ts に置く。
+            duplicatePreset: (id: string) => set((state) => {
+                const src = state.presets.find(p => p.id === id);
+                if (!src) return state;
+                const newId = `preset_${Date.now()}`;
+                const copy: AnimationPreset = {
+                    ...structuredClone(src),
+                    id: newId,
+                    name: `${src.name} (コピー)`,
+                };
+                const srcCanvas = state.notes.presets?.[id];
+                return {
+                    presets: [...state.presets, copy],
+                    activePresetId: newId,
+                    notes: srcCanvas
+                        ? { ...state.notes, presets: { ...state.notes.presets, [newId]: structuredClone(srcCanvas) } }
+                        : state.notes,
+                };
+            }),
+        };
+    },
     {
         name: 'mystery-map-storage',
         storage: idbPersist,
