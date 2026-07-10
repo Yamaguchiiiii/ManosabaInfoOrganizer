@@ -1031,15 +1031,17 @@ export const CreateView: React.FC<CreateViewProps> = ({
         />
       </div>
 
-      <SuggestionSidebar 
-        isOpen={suggestionTargetIndex!==null} 
-        targetType={suggestionTargetIndex===0?'start':(suggestionTargetIndex!==null&&suggestionTargetIndex===waypoints.length-1?'end':null)}
-        matchedNodes={matchedNodes} 
-        otherNodes={otherNodes} 
-        selectedNodeId={(suggestionTargetIndex !== null && waypoints[suggestionTargetIndex]) ? (waypoints[suggestionTargetIndex].id || "") : ""}
-        onSelect={handleSelectSuggestion} 
-        onClose={()=>setSuggestionTargetIndex(null)} 
-      />
+      {!isMobile && (
+        <SuggestionSidebar
+          isOpen={suggestionTargetIndex!==null}
+          targetType={suggestionTargetIndex===0?'start':(suggestionTargetIndex!==null&&suggestionTargetIndex===waypoints.length-1?'end':null)}
+          matchedNodes={matchedNodes}
+          otherNodes={otherNodes}
+          selectedNodeId={(suggestionTargetIndex !== null && waypoints[suggestionTargetIndex]) ? (waypoints[suggestionTargetIndex].id || "") : ""}
+          onSelect={handleSelectSuggestion}
+          onClose={()=>setSuggestionTargetIndex(null)}
+        />
+      )}
       
       <MergeModal 
           isOpen={isMergeModalOpen}
