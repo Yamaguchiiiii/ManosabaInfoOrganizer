@@ -30,6 +30,7 @@ function App() {
     const setActiveFloor = useAppStore(state => state.setActiveFloor);
     const sidebarWidth = useAppStore(state => state.sidebarWidth);
     const contextPanelCollapsed = useAppStore(state => state.contextPanelCollapsed);
+    const theme = useAppStore(state => state.theme);
     const viewport = useViewport();
 
     // #06/30-8: ページ遷移中はロゴ+「Loading ...」オーバーレイを表示する（旧: workspace の黒フェード）
@@ -55,6 +56,11 @@ function App() {
     useEffect(() => {
         if (_hasHydrated) void checkStorageHealth();
     }, [_hasHydrated]);
+
+    // F6: テーマ切替（ダーク/セピア）。Konva内の色・紙面は対象外、DOM UIのみCSS変数で切り替える。
+    useEffect(() => {
+        document.documentElement.dataset.theme = theme;
+    }, [theme]);
 
     if (!_hasHydrated) {
         return <LoadingScreen />;

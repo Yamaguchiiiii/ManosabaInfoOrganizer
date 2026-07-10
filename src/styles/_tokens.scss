@@ -45,3 +45,11 @@
   --z-toast: 3000;
   --z-tour: 100000;
 }
+
+// F6: テーマ切替（ダーク/セピア）。Konva内の色・紙面(#ECD2B3)はユーザーデータ/紙メタファー
+// 維持のため対象外。DOM UI(サイドバー・パネル・ダイアログ等)の配色のみ切り替える。
+:root[data-theme='sepia'] {
+  --surface-0: #efe6d8; --surface-1: #f5ecdd; --surface-2: #eadfca; --surface-3: #e0d3b8; --surface-4: #d5c6a8;
+  --border-default: #c2b299; --border-strong: #a08e6f;
+  --text-primary: #3a3226; --text-secondary: #6b5f4b; --text-disabled: #a09173;
+}

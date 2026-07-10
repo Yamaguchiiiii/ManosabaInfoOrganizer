@@ -65,6 +65,7 @@ export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose, onStartTo
                                 </div>
                             ))}
                             <button onClick={onStartTour} style={tourBtn}>● 初回ガイドをもう一度見る</button>
+                            <ThemeSection />
                             <BackupSection />
                             <SnapshotSection />
                         </div>
@@ -90,6 +91,29 @@ export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose, onStartTo
             </aside>
         </>,
         document.body
+    );
+};
+
+// F6: DOM UIのテーマ切替（ダーク/セピア）。Konva内の色・紙面は対象外。
+const ThemeSection: React.FC = () => {
+    const theme = useAppStore(s => s.theme);
+    const setTheme = useAppStore(s => s.setTheme);
+
+    return (
+        <div style={cardStyle}>
+            <div style={{ fontWeight: 'bold', color: '#66b3ff', marginBottom: 6 }}>テーマ</div>
+            <div style={{ fontSize: '0.78rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 }}>
+                画面の配色を切り替えます（マップ/ノートの紙面色は対象外です）。
+            </div>
+            <select
+                value={theme}
+                onChange={e => setTheme(e.target.value as 'dark' | 'sepia')}
+                style={{ width: '100%', background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', fontSize: '0.85rem' }}
+            >
+                <option value="dark">ダーク</option>
+                <option value="sepia">セピア</option>
+            </select>
+        </div>
     );
 };
 

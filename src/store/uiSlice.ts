@@ -33,6 +33,9 @@ export interface UiSlice {
     // ContextPanel（旧サイドバー本体）の折りたたみ状態（persist）。ui.md P2
     contextPanelCollapsed: boolean; setContextPanelCollapsed: (v: boolean) => void;
 
+    // F6: DOM UIのテーマ（persist）。Konva内の色・紙面(#ECD2B3)は対象外。
+    theme: 'dark' | 'sepia'; setTheme: (t: 'dark' | 'sepia') => void;
+
     // Create/Animate で選択中のキャラアイコン（R1・旧 App ローカル state。persist除外）
     selectedIcons: string[];
     selectIcon: (icon: string, multi: boolean) => Promise<void>;
@@ -108,6 +111,8 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     tutorialSeen: false, setTutorialSeen: (v) => set({ tutorialSeen: v }),
     sidebarWidth: 200, setSidebarWidth: (width) => set({ sidebarWidth: width }),
     contextPanelCollapsed: false, setContextPanelCollapsed: (v) => set({ contextPanelCollapsed: v }),
+
+    theme: 'dark', setTheme: (t) => set({ theme: t }),
 
     selectedIcons: [],
     clearIconSelection: () => set({ selectedIcons: [] }),
