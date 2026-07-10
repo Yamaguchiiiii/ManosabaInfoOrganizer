@@ -5,10 +5,8 @@ interface SelectionContextBarProps {
     // null は「選択中に色/線幅を持つオブジェクトが無い」（image のみ選択など）＝コントロール非表示
     colorValue: string | null;
     onColorChange: (v: string) => void;
-    onColorCommit: () => void;
     widthValue: number | null;
     onWidthChange: (v: number) => void;
-    onWidthCommit: () => void;
     canReorder: boolean;
     onReorderBack: () => void;
     onReorderFront: () => void;
@@ -28,7 +26,7 @@ const segBtnStyle: React.CSSProperties = {
 // U3: キャンバス上端の選択中オブジェクト操作バー（右クリックメニューと同じハンドラを共有し、
 // 右クリックなしで色/線幅/レイヤー/グループ化/削除を完結させる）。選択が無いときは親側で非表示にする。
 export const SelectionContextBar: React.FC<SelectionContextBarProps> = ({
-    count, colorValue, onColorChange, onColorCommit, widthValue, onWidthChange, onWidthCommit,
+    count, colorValue, onColorChange, widthValue, onWidthChange,
     canReorder, onReorderBack, onReorderFront, canGroup, onGroup, canUngroup, onUngroup, onDelete,
 }) => (
     <div style={{
@@ -45,7 +43,6 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = ({
                     type="color"
                     value={colorValue}
                     onChange={e => onColorChange(e.target.value)}
-                    onBlur={onColorCommit}
                     title="色"
                     style={{ width: 26, height: 24, border: 'none', cursor: 'pointer', background: 'none', padding: 0, flexShrink: 0 }}
                 />
@@ -60,8 +57,6 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = ({
                     type="range" min="0" max="20"
                     value={widthValue}
                     onChange={e => onWidthChange(parseInt(e.target.value, 10))}
-                    onMouseUp={onWidthCommit}
-                    onTouchEnd={onWidthCommit}
                     style={{ width: 70, flexShrink: 0 }}
                 />
                 <span style={{ minWidth: 16, textAlign: 'right', flexShrink: 0 }}>{widthValue}</span>

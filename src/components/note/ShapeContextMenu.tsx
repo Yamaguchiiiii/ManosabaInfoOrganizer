@@ -21,7 +21,7 @@ interface ShapeContextMenuProps {
     updateNoteObject: (targetType: NoteTargetType, targetId: string, objId: string, attrs: Partial<NoteObject>, skipHistory?: boolean) => void;
     updateNoteObjects: (targetType: NoteTargetType, targetId: string, updates: { id: string, attrs: Partial<NoteObject> }[], skipHistory?: boolean) => void;
     commitThrottled: (fn: () => void) => void;
-    saveNoteHistory: () => void;
+    saveHistoryOnceThenSkip: () => void;
     reorderNoteObject: (targetType: NoteTargetType, targetId: string, objId: string, direction: 'front' | 'back' | 'up' | 'down') => void;
     selectedIds: string[];
 }
@@ -29,7 +29,7 @@ interface ShapeContextMenuProps {
 // 図形の右クリックメニュー（線色/線幅/塗り/レイヤー/グループ化）。CanvasWorkspace の shapeContextMenu 用。
 export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
     menu, setMenu, targetType, displayTargetId, updateNoteObject, updateNoteObjects,
-    commitThrottled, saveNoteHistory, reorderNoteObject, selectedIds,
+    commitThrottled, saveHistoryOnceThenSkip, reorderNoteObject, selectedIds,
 }) => (
     <div
         style={{
@@ -46,10 +46,10 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
                     value={menu.lineStyle || 'normal'}
                     onChange={(e) => {
                         const val = e.target.value;
+                        saveHistoryOnceThenSkip();
                         setMenu(prev => prev ? { ...prev, lineStyle: val } : null);
                         updateNoteObject(targetType, displayTargetId, menu.id, { lineStyle: val as 'normal' | 'marker' | 'pen' }, true);
                     }}
-                    onBlur={() => saveNoteHistory()}
                     style={{ width: '100%', marginBottom: '10px', background: '#222', color: 'white', border: '1px solid #555', padding: '4px', borderRadius: '3px' }}
                 >
                     <option value="normal">Normal</option>
@@ -66,12 +66,12 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
             onChange={(e) => {
                 const val = e.target.value;
                 const id = menu.id;
+                saveHistoryOnceThenSkip();
                 commitThrottled(() => {
                     setMenu(prev => prev ? { ...prev, stroke: val } : null);
                     updateNoteObject(targetType, displayTargetId, id, { stroke: val }, true);
                 });
             }}
-            onBlur={() => saveNoteHistory()}
             style={{ width: '100%', marginBottom: '10px' }}
         />
 
@@ -82,13 +82,12 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
             onChange={(e) => {
                 const val = parseInt(e.target.value);
                 const id = menu.id;
+                saveHistoryOnceThenSkip();
                 commitThrottled(() => {
                     setMenu(prev => prev ? { ...prev, strokeWidth: val } : null);
                     updateNoteObject(targetType, displayTargetId, id, { strokeWidth: val }, true);
                 });
             }}
-            onMouseUp={() => saveNoteHistory()}
-            onTouchEnd={() => saveNoteHistory()}
             style={{ width: '100%', marginBottom: '10px' }}
         />
 
@@ -98,9 +97,9 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
                     <span>Fill Color</span>
                     <button
                         onClick={() => {
+                            saveHistoryOnceThenSkip();
                             setMenu(prev => prev ? { ...prev, fill: 'transparent' } : null);
                             updateNoteObject(targetType, displayTargetId, menu.id, { fill: 'transparent' }, true);
-                            saveNoteHistory();
                         }}
                         style={{ background: '#444', border: '1px solid #666', color: '#ccc', fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}
                     >
@@ -113,12 +112,12 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
                     onChange={(e) => {
                         const val = e.target.value;
                         const id = menu.id;
+                        saveHistoryOnceThenSkip();
                         commitThrottled(() => {
                             setMenu(prev => prev ? { ...prev, fill: val } : null);
                             updateNoteObject(targetType, displayTargetId, id, { fill: val }, true);
                         });
                     }}
-                    onBlur={() => saveNoteHistory()}
                     style={{ width: '100%' }}
                 />
             </>
@@ -146,7 +145,6 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
                         const newGroupId = `group_${Date.now()}`;
                         updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
                         setMenu(null);
-                        saveNoteHistory();
                     }}
                     style={{ width: '100%', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                 >

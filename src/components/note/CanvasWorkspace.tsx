@@ -800,21 +800,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // 3箇所で同じ挙動を共有するため、名前付き関数として一本化する（従来は各呼び出し側に同一ロジックを複製していた）。
     const handleReorderSelected = (dir: 'front' | 'up' | 'down' | 'back') => {
         reorderNoteObject(targetType, displayTargetId, selectedIds[0], dir);
-        saveNoteHistory();
     };
     const handleToggleKeepRatioSelected = (checked: boolean) => {
-        updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: checked }, true);
-        saveNoteHistory();
+        updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: checked });
     };
     const handleGroupSelected = () => {
         const newGroupId = `group_${Date.now()}`;
         updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
-        saveNoteHistory();
     };
     const handleUngroupSelected = () => {
         updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: undefined } })));
         setSelectedIds([]);
-        saveNoteHistory();
     };
     const handleDeleteSelected = () => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); };
 
@@ -826,12 +822,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const selectionWidthValue = widthTargets.length === 0 ? null : (widthTargets[0].strokeWidth ?? 3);
     const handleSelectionColorChange = (val: string) => {
         if (colorTargets.length === 0) return;
+        saveHistoryOnceThenSkip();
         commitThrottled(() => updateNoteObjects(targetType, displayTargetId, colorTargets.map(o => ({
             id: o.id, attrs: o.type === 'text' ? { fill: val } : { stroke: val }
         })), true));
     };
     const handleSelectionWidthChange = (val: number) => {
         if (widthTargets.length === 0) return;
+        saveHistoryOnceThenSkip();
         commitThrottled(() => updateNoteObjects(targetType, displayTargetId, widthTargets.map(o => ({ id: o.id, attrs: { strokeWidth: val } })), true));
     };
 
@@ -872,16 +870,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 <label>Size:
                     <input type="number" min="8" max="200"
                         value={selectedObject.fontSize || 24}
-                        onChange={e => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontSize: +e.target.value }, true)}
-                        onBlur={() => saveNoteHistory()}
+                        onChange={e => {
+                            saveHistoryOnceThenSkip();
+                            updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontSize: +e.target.value }, true);
+                        }}
                         style={{ width: '50px', background: '#222', border: '1px solid #555', color: 'white', borderRadius: '3px', padding: '2px 5px', marginLeft: '5px' }}
                     />
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <input type="checkbox"
                         checked={selectedObject.fontWeight === 'bold'}
-                        onChange={e => updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontWeight: e.target.checked ? 'bold' : 'normal' }, true)}
-                        onBlur={() => saveNoteHistory()}
+                        onChange={e => {
+                            saveHistoryOnceThenSkip();
+                            updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontWeight: e.target.checked ? 'bold' : 'normal' }, true);
+                        }}
                     />
                     Bold
                 </label>
@@ -891,9 +893,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         // ドラッグ中の連続 onChange を間引く（コンテキストメニュー側と統一）。#06/30-4, refactoring A-8-2
                         const val = e.target.value;
                         const id = selectedIds[0];
+                        saveHistoryOnceThenSkip();
                         commitThrottled(() => updateNoteObject(targetType, displayTargetId, id, { fill: val }, true));
                     }}
-                    onBlur={() => saveNoteHistory()}
                     title="Text Color"
                     style={{ width: '28px', height: '28px', border: 'none', cursor: 'pointer' }}
                 />
@@ -1072,10 +1074,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                             count={selectedIds.length}
                             colorValue={selectionColorValue}
                             onColorChange={handleSelectionColorChange}
-                            onColorCommit={() => saveNoteHistory()}
                             widthValue={selectionWidthValue}
                             onWidthChange={handleSelectionWidthChange}
-                            onWidthCommit={() => saveNoteHistory()}
                             canReorder={selectedIds.length === 1 && !!selectedObject}
                             onReorderBack={() => handleReorderSelected('down')}
                             onReorderFront={() => handleReorderSelected('up')}
@@ -1524,7 +1524,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         updateNoteObject={updateNoteObject}
                         updateNoteObjects={updateNoteObjects}
                         commitThrottled={commitThrottled}
-                        saveNoteHistory={saveNoteHistory}
+                        saveHistoryOnceThenSkip={saveHistoryOnceThenSkip}
                         reorderNoteObject={reorderNoteObject}
                         selectedIds={selectedIds}
                     />
