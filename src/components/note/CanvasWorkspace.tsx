@@ -60,9 +60,11 @@ export interface CanvasWorkspaceProps {
     compactMode?: boolean;
     // compact 時にキャンバス上部へ出す横並びヘッダ（モバイルのプリセット/キャラ選択用）。smartphone.md M1
     headerBar?: React.ReactNode;
+    // F3: ノート全文検索からのジャンプ先オブジェクトID。マウント/切替時に選択状態へ反映する。
+    initialSelectId?: string;
 }
 
-export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false, headerBar }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false, headerBar, initialSelectId }: CanvasWorkspaceProps) => {
 
     const [displayTargetId, setDisplayTargetId] = useState(targetId);
     const [canvasOpacity, setCanvasOpacity] = useState(1);
@@ -181,6 +183,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
     const currentCanvasObjects = useMemo(() => objects.filter(o => (o.canvasIndex || 0) === currentCanvasIndex), [objects, currentCanvasIndex]);
     const objectsLength = objects.length;
+
+    // F3: ノート全文検索からのジャンプ先を選択状態へ反映する。対象が別ペイン(canvasIndex)に
+    // あればそのペインへ切り替え、4ペイン表示中なら単一表示へ戻して見えるようにする。
+    useEffect(() => {
+        if (!initialSelectId || displayTargetId !== targetId) return;
+        const target = objects.find(o => o.id === initialSelectId);
+        if (!target) return;
+        setSelectedIds([initialSelectId]);
+        setCurrentCanvasIndex(target.canvasIndex || 0);
+        setIsGridMode(false);
+    }, [initialSelectId, displayTargetId, targetId, objects]);
 
     const { clipboard, handleCopySelected, handleCutSelected, handlePasteClipboard } = useNoteClipboard(
         targetType, displayTargetId, currentCanvasIndex, selectedIds, currentCanvasObjects, setSelectedIds,

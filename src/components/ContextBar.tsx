@@ -2,6 +2,7 @@ import React from 'react';
 import { useAppStore, ICON_FILES } from '../store';
 import { PresetSelector } from './common/PresetSelector';
 import { SaveStatusIndicator } from './common/SaveStatusIndicator';
+import { NoteSearchBox } from './common/NoteSearchBox';
 
 const NOTE_TAB_LABELS: Record<string, string> = {
   overview: '全体ノート', preset: '事件ノート', character: 'キャラクターノート', misc: 'メモ',
@@ -72,6 +73,7 @@ export const ContextBar: React.FC = () => {
       )}
 
       <div className="context-bar-right">
+        <NoteSearchBox />
         <SaveStatusIndicator />
       </div>
     </div>

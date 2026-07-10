@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAppStore, ICON_FILES } from '../store';
+import { useAppStore, ICON_FILES, NoteTargetType } from '../store';
 import { NOTE_CANVAS } from '../constants';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 import { useViewport } from '../hooks/useViewport';
@@ -18,6 +18,9 @@ export const NoteView: React.FC = React.memo(() => {
     const deleteMiscPage = useAppStore(state => state.deleteMiscPage);
     const showConfirm = useAppStore(state => state.showConfirm);
     const setMobileSheetOpen = useAppStore(state => state.setMobileSheetOpen);
+    const setActiveNoteTab = useAppStore(state => state.setActiveNoteTab);
+    const pendingNoteFocus = useAppStore(state => state.pendingNoteFocus);
+    const setPendingNoteFocus = useAppStore(state => state.setPendingNoteFocus);
     const isMobile = useViewport() === 'mobile';
 
     const [displayTab, setDisplayTab] = useState(activeNoteTab);
@@ -68,6 +71,33 @@ export const NoteView: React.FC = React.memo(() => {
             setActualMiscPageId(notes.miscPages[0].id);
         }
     }, [activeNoteTab, notes.miscPages, actualMiscPageId]);
+
+    // F3: ノート全文検索からのジャンプ。タブ→ID の順で1段階ずつ同期し、両方一致したら
+    // CanvasWorkspace側のフェード(最大250ms程度)完了を待ってから消費済み(null)に戻す。
+    useEffect(() => {
+        if (!pendingNoteFocus) return;
+        if (activeNoteTab !== pendingNoteFocus.targetType) {
+            setActiveNoteTab(pendingNoteFocus.targetType);
+            return;
+        }
+        if (pendingNoteFocus.targetType === 'preset' && actualPresetId !== pendingNoteFocus.targetId) {
+            setActualPresetId(pendingNoteFocus.targetId);
+            return;
+        }
+        if (pendingNoteFocus.targetType === 'character') {
+            const idx = ICON_FILES.indexOf(pendingNoteFocus.targetId);
+            if (idx !== -1 && actualCharIndex !== idx) { setActualCharIndex(idx); return; }
+        }
+        if (pendingNoteFocus.targetType === 'misc' && actualMiscPageId !== pendingNoteFocus.targetId) {
+            setActualMiscPageId(pendingNoteFocus.targetId);
+            return;
+        }
+        const timer = setTimeout(() => setPendingNoteFocus(null), 400);
+        return () => clearTimeout(timer);
+    }, [pendingNoteFocus, activeNoteTab, actualPresetId, actualCharIndex, actualMiscPageId, setActiveNoteTab, setPendingNoteFocus, setActualCharIndex]);
+
+    const initialSelectIdFor = (tt: NoteTargetType, tid: string): string | undefined =>
+        (pendingNoteFocus?.targetType === tt && pendingNoteFocus.targetId === tid) ? pendingNoteFocus.objId : undefined;
 
     const selectedChar = ICON_FILES[Math.min(actualCharIndex, ICON_FILES.length - 1)];
     const initializedCharsRef = useRef<Set<string>>(new Set());
@@ -124,6 +154,7 @@ export const NoteView: React.FC = React.memo(() => {
                         targetType="overview"
                         targetId="overview"
                         compactMode={isMobile}
+                        initialSelectId={initialSelectIdFor('overview', 'overview')}
                     />
                 )}
 
@@ -133,6 +164,7 @@ export const NoteView: React.FC = React.memo(() => {
                         targetType="preset"
                         targetId={actualPresetId}
                         compactMode={isMobile}
+                        initialSelectId={initialSelectIdFor('preset', actualPresetId)}
                         headerBar={isMobile ? (
                             <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', minWidth: '160px' }}>
                                 {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -153,6 +185,7 @@ export const NoteView: React.FC = React.memo(() => {
                         targetId={selectedChar}
                         sidebarHeaderDivider={false}
                         compactMode={isMobile}
+                        initialSelectId={initialSelectIdFor('character', selectedChar)}
                         headerBar={isMobile ? (
                             // モバイル: 見切れていた横スクロール15個をやめ、現在キャラ+名前+変更ボタンに（20.md #07/04-7）
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -200,6 +233,7 @@ export const NoteView: React.FC = React.memo(() => {
                             targetType="misc"
                             targetId={actualMiscPageId}
                             compactMode={isMobile}
+                            initialSelectId={initialSelectIdFor('misc', actualMiscPageId)}
                             headerBar={isMobile ? (
                                 // モバイル: メモ選択+追加+改名+削除（20.md #07/04-6）
                                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>

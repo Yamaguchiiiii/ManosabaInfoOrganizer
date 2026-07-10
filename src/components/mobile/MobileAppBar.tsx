@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppStore } from '../../store';
 import { SaveStatusIndicator } from '../common/SaveStatusIndicator';
+import { NoteSearchBox } from '../common/NoteSearchBox';
 
 interface MobileAppBarProps {
   onOpenContext: () => void;
@@ -23,7 +24,7 @@ export const MobileAppBar: React.FC<MobileAppBarProps> = ({ onOpenContext }) => 
     <header className="mobile-appbar">
       <button className="appbar-menu" onClick={onOpenContext} title="メニュー" aria-label="メニュー">☰</button>
       <span className="appbar-title">{title}</span>
-      <div className="appbar-right"><SaveStatusIndicator /></div>
+      <div className="appbar-right"><NoteSearchBox /><SaveStatusIndicator /></div>
     </header>
   );
 };

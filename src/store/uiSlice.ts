@@ -1,5 +1,13 @@
-import { FloorId, SliceCreator, DialogRequest, NoteObject } from './types';
+import { FloorId, SliceCreator, DialogRequest, NoteObject, NoteTargetType } from './types';
 import { runNavigationGuard } from '../services/navigationGuard';
+
+// F3: ノート全文検索のジャンプ先。NoteView が消費してタブ/IDを同期し、
+// 対象の CanvasWorkspace が initialSelectId として選択状態を復元する。
+export interface PendingNoteFocus {
+    targetType: NoteTargetType;
+    targetId: string;
+    objId?: string;
+}
 
 export interface UiSlice {
     // オーバーレイダイアログ
@@ -39,6 +47,9 @@ export interface UiSlice {
     // Note のクリップボード（revise No.10）。旧 CanvasWorkspace ローカル state。
     // store化によりノート種別を跨いだ貼り付け・切替時の保持が可能になる（persist除外）。
     noteClipboard: NoteObject[]; setNoteClipboard: (objs: NoteObject[]) => void;
+
+    // F3: ノート全文検索のジャンプ先（persist除外・NoteViewが消費後にnullへ戻す）
+    pendingNoteFocus: PendingNoteFocus | null; setPendingNoteFocus: (f: PendingNoteFocus | null) => void;
 
     _hasHydrated: boolean;
     setHasHydrated: (state: boolean) => void;
@@ -119,6 +130,8 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     noteCharIndex: 0, setNoteCharIndex: (i) => set({ noteCharIndex: i }),
 
     noteClipboard: [], setNoteClipboard: (objs) => set({ noteClipboard: objs }),
+
+    pendingNoteFocus: null, setPendingNoteFocus: (f) => set({ pendingNoteFocus: f }),
 
     _hasHydrated: false,
     setHasHydrated: (state) => set({ _hasHydrated: state }),
