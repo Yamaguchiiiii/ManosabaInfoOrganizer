@@ -41,6 +41,7 @@ export const AnimateView = () => {
   const presets         = useAppStore(state => state.presets);
   const activePresetId  = useAppStore(state => state.activePresetId);
   const nodes           = useAppStore(state => state.nodes);
+  const playbackPinned  = useAppStore(state => state.playbackPinned);
 
   const activePreset = presets.find(p => p.id === activePresetId);
   const deadIcons = activePreset?.deadIcons || [];
@@ -74,7 +75,9 @@ export const AnimateView = () => {
   const timelineDragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
   // Map3 セルの左下隅に操作盤の左下を合わせる。実高さを測るため、仮配置→計測→補正の2段階。
+  // playbackPinned中はフローティング自体を描画しないため計測不要（📌でフローティングに戻した時に再計算）。
   useEffect(() => {
+    if (playbackPinned) return;
     if (placedRef.current) return;
     const cell = mapCellRef.current;
     if (cell) {
@@ -92,7 +95,7 @@ export const AnimateView = () => {
     }
     // 計測できない場合も必ず表示する（後でドラッグ移動可）
     if (!timelinePos) setTimelinePos({ x: 12, y: Math.round(window.innerHeight * 0.6) });
-  }, [timelinePos]);
+  }, [timelinePos, playbackPinned]);
 
   const handleTimelineDragStart = (e: React.MouseEvent) => {
     if (!timelinePos) return;
@@ -186,65 +189,74 @@ export const AnimateView = () => {
   }
 
   return (
-    <div className="animate-view-container" ref={gridRef} style={gridStyle}>
-      <div className="grid-cell">
-        <div className="cell-label">Map 1 (2F)</div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-            <ReadOnlyMapView floorId="2F" fitContainer={true}>
-                {renderAllCharsForFloor('2F')}
-            </ReadOnlyMapView>
+    <div className="animate-view-wrapper">
+      <div className="animate-view-container" ref={gridRef} style={gridStyle}>
+        <div className="grid-cell">
+          <div className="cell-label">Map 1 (2F)</div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ReadOnlyMapView floorId="2F" fitContainer={true}>
+                  {renderAllCharsForFloor('2F')}
+              </ReadOnlyMapView>
+          </div>
         </div>
-      </div>
-      <div className="grid-cell">
-        <div className="cell-label">Map 2 (1F)</div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-            <ReadOnlyMapView floorId="1F" fitContainer={true}>
-                {renderAllCharsForFloor('1F')}
-            </ReadOnlyMapView>
+        <div className="grid-cell">
+          <div className="cell-label">Map 2 (1F)</div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ReadOnlyMapView floorId="1F" fitContainer={true}>
+                  {renderAllCharsForFloor('1F')}
+              </ReadOnlyMapView>
+          </div>
         </div>
-      </div>
-      <div className="grid-cell" style={{ position: 'relative' }} ref={mapCellRef}>
-        <div className="cell-label">Map 3 (B1)</div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-            <ReadOnlyMapView floorId="B1" fitContainer={true}>
-                {deadIcons.map(icon => {
-                    const pos = PRISON_POSITIONS[icon];
-                    if (!pos) return null;
-                    return (
-                        <Line key={icon} points={[0, 0, pos.w, 0]} x={pos.x} y={pos.y} rotation={pos.angle || -5} stroke="black" strokeWidth={5} lineCap="round" />
-                    );
-                })}
-                {renderAllCharsForFloor('B1')}
-            </ReadOnlyMapView>
+        <div className="grid-cell" style={{ position: 'relative' }} ref={mapCellRef}>
+          <div className="cell-label">Map 3 (B1)</div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ReadOnlyMapView floorId="B1" fitContainer={true}>
+                  {deadIcons.map(icon => {
+                      const pos = PRISON_POSITIONS[icon];
+                      if (!pos) return null;
+                      return (
+                          <Line key={icon} points={[0, 0, pos.w, 0]} x={pos.x} y={pos.y} rotation={pos.angle || -5} stroke="black" strokeWidth={5} lineCap="round" />
+                      );
+                  })}
+                  {renderAllCharsForFloor('B1')}
+              </ReadOnlyMapView>
+          </div>
         </div>
-      </div>
-      <div className="grid-cell control-cell-wrapper">
-        <div className="notes-section"><NotesPanel /></div>
+        <div className="grid-cell control-cell-wrapper">
+          <div className="notes-section"><NotesPanel /></div>
+        </div>
       </div>
 
-      {/* 再生操作盤: フローティングウィンドウ（ドラッグ移動可・既定はMap1の右上隅）。
-          .workspace の opacity サブツリー外へ portal して確実に表示する。 */}
-      {timelinePos && createPortal(
-        <div
-          ref={toolbarRef}
-          data-tour={TOUR_TARGETS.animatePlayback}
-          style={{
-            position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
-            width: '480px', maxWidth: '92vw',
-            background: '#222', border: '1px solid #444', borderRadius: '8px',
-            boxShadow: '0 6px 24px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column',
-            overflow: 'hidden'
-          }}
-        >
-          <div
-            onMouseDown={handleTimelineDragStart}
-            style={{ cursor: isDraggingTimeline ? 'grabbing' : 'grab', padding: '3px', display: 'flex', justifyContent: 'center', background: '#2a2a2a', borderBottom: '1px solid #333' }}
-          >
-            <div style={{ width: '34px', height: '4px', borderRadius: '2px', background: '#666' }} />
-          </div>
+      {playbackPinned ? (
+        // U2: 再生操作盤を workspace 下端に固定するドック（既定）。マップに被る浮遊UIは0。
+        <div className="animate-playback-dock" data-tour={TOUR_TARGETS.animatePlayback}>
           <AnimationTimeline />
-        </div>,
-        document.body
+        </div>
+      ) : (
+        // 旧: ドラッグ可能フローティング（📌で復帰できる互換モード）。
+        // .workspace の opacity サブツリー外へ portal して確実に表示する。
+        timelinePos && createPortal(
+          <div
+            ref={toolbarRef}
+            data-tour={TOUR_TARGETS.animatePlayback}
+            style={{
+              position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
+              width: '480px', maxWidth: '92vw',
+              background: '#222', border: '1px solid #444', borderRadius: '8px',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+          >
+            <div
+              onMouseDown={handleTimelineDragStart}
+              style={{ cursor: isDraggingTimeline ? 'grabbing' : 'grab', padding: '3px', display: 'flex', justifyContent: 'center', background: '#2a2a2a', borderBottom: '1px solid #333' }}
+            >
+              <div style={{ width: '34px', height: '4px', borderRadius: '2px', background: '#666' }} />
+            </div>
+            <AnimationTimeline />
+          </div>,
+          document.body
+        )
       )}
     </div>
   );

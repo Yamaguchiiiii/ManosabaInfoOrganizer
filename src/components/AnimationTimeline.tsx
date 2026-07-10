@@ -3,9 +3,9 @@ import { useAppStore, usePlaybackStore } from '../store';
 import { formatCharName } from '../utils/charName';
 import { TARGET_FPS } from '../constants';
 import { usePresetEvents } from '../hooks/usePresetEvents';
-import { EventList } from './common/EventList';
 import { formatTime } from '../utils/timeFormat';
 import { TimelineGantt } from './animate/TimelineGantt';
+import { useViewport } from '../hooks/useViewport';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
@@ -25,6 +25,10 @@ export const AnimationTimeline: React.FC = () => {
     const presets = useAppStore(state => state.presets);
     const activePresetId = useAppStore(state => state.activePresetId);
     const setActivePresetId = useAppStore(state => state.setActivePresetId);
+    const playbackPinned = useAppStore(state => state.playbackPinned);
+    const setPlaybackPinned = useAppStore(state => state.setPlaybackPinned);
+    // モバイルは常に下部固定バーで、フローティング互換モードの概念自体がないため📌は出さない
+    const isMobile = useViewport() === 'mobile';
 
     useEffect(() => {
         const handlePointerDown = (e: PointerEvent) => {
@@ -41,7 +45,6 @@ export const AnimationTimeline: React.FC = () => {
     const passEvents = events.filter(e => e.kind === 'pass');
     const talkEvents = events.filter(e => e.kind !== 'pass');
 
-    const [showEvents, setShowEvents] = useState(false);
     const [showGantt, setShowGantt] = useState(false);
 
     return (
@@ -101,19 +104,17 @@ export const AnimationTimeline: React.FC = () => {
                     {isPlaying ? 'Pause' : 'Play'}
                 </button>
 
-                {/* イベント（⚇遭遇/💬会話）ログのトグル。件数を表示し、クリックで一覧を開く。20.md #9 */}
+                {/* イベント（⚇遭遇/💬会話）の件数バッジ。一覧の正はContextPanel(20.md #10)側。U2 */}
                 {events.length > 0 && (
-                    <button
-                        onClick={() => setShowEvents(v => !v)}
-                        title="会話・遭遇の一覧"
+                    <span
+                        title="会話・遭遇の一覧はContextPanelのイベントタブへ"
                         style={{
-                            background: showEvents ? 'rgba(20,180,180,0.25)' : '#333',
-                            border: '1px solid #178c8c', borderRadius: '4px', color: '#5fd0d0',
-                            padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem',
+                            background: '#333', border: '1px solid #178c8c', borderRadius: '4px', color: '#5fd0d0',
+                            padding: '5px 10px', fontSize: '0.85rem',
                         }}
                     >
-                        🗓 イベント {events.length}
-                    </button>
+                        🗓 {events.length}
+                    </span>
                 )}
 
                 {/* F2: キャラ行動ガントバーのトグル */}
@@ -128,6 +129,21 @@ export const AnimationTimeline: React.FC = () => {
                 >
                     📊
                 </button>
+
+                {/* U2: 下部固定ドック⇔フローティングの切替。モバイルは常時固定のため出さない */}
+                {!isMobile && (
+                    <button
+                        onClick={() => setPlaybackPinned(!playbackPinned)}
+                        title={playbackPinned ? 'フローティング表示に切替' : '下部ドックに固定'}
+                        style={{
+                            background: playbackPinned ? 'rgba(212,169,79,0.2)' : '#333',
+                            border: '1px solid #555', borderRadius: '4px', color: playbackPinned ? 'var(--gold, #d4a94f)' : '#ccc',
+                            padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem',
+                        }}
+                    >
+                        📌
+                    </button>
+                )}
 
                 {/* 2行目: 現在の再生時間 | 再生バー | アニメーション全体の時間（幅100%で折り返す） */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
@@ -171,18 +187,6 @@ export const AnimationTimeline: React.FC = () => {
                                 }}
                             />
                         ))}
-
-                        {/* イベント一覧（トグル）。クリックでその時刻へジャンプ。 */}
-                        {showEvents && (
-                            <div style={{
-                                position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0,
-                                maxHeight: '160px', overflowY: 'auto', background: '#1c1c1c',
-                                border: '1px solid #178c8c', borderRadius: '6px', padding: '6px', zIndex: 50,
-                                boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-                            }}>
-                                <EventList events={events} onJump={(t) => { setCurrentTime(t); setShowEvents(false); }} />
-                            </div>
-                        )}
                     </div>
 
                     <div style={{ color: '#888', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>

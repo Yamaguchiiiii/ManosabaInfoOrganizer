@@ -36,6 +36,9 @@ export interface UiSlice {
     // F6: DOM UIのテーマ（persist）。Konva内の色・紙面(#ECD2B3)は対象外。
     theme: 'dark' | 'sepia'; setTheme: (t: 'dark' | 'sepia') => void;
 
+    // U2: Animate再生盤の配置モード（persist）。true=下部固定ドック（既定）、false=旧フローティング互換。
+    playbackPinned: boolean; setPlaybackPinned: (v: boolean) => void;
+
     // Create/Animate で選択中のキャラアイコン（R1・旧 App ローカル state。persist除外）
     selectedIcons: string[];
     selectIcon: (icon: string, multi: boolean) => Promise<void>;
@@ -113,6 +116,8 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     contextPanelCollapsed: false, setContextPanelCollapsed: (v) => set({ contextPanelCollapsed: v }),
 
     theme: 'dark', setTheme: (t) => set({ theme: t }),
+
+    playbackPinned: true, setPlaybackPinned: (v) => set({ playbackPinned: v }),
 
     selectedIcons: [],
     clearIconSelection: () => set({ selectedIcons: [] }),
