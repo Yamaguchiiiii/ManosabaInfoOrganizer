@@ -35,6 +35,8 @@ function App() {
 
     useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
+            const t = e.target as HTMLElement | null;
+            if (t && t.closest('input, textarea, [contenteditable="true"], [contenteditable=""]')) return;
             e.preventDefault();
         };
         document.addEventListener('contextmenu', handleContextMenu);

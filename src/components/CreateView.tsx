@@ -127,6 +127,7 @@ const FloorPane: React.FC<FloorPaneProps> = ({
         <div
             ref={containerRef}
             onMouseEnter={() => onHover(floorId)}
+            onPointerDown={() => onHover(floorId)}
             style={{
                 position: 'relative', width: '100%', height: '100%', overflow: 'hidden',
                 background: '#222', boxSizing: 'border-box',
@@ -1073,12 +1074,13 @@ const FollowConfirmModal: React.FC<{
     onClose: () => void;
     onConfirm: (waypointsToAppend: Waypoint[]) => void;
 }> = ({ info, onClose, onConfirm }) => {
-    if (!info) return null;
     const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
     useEffect(() => {
         setSelectedIndex(-1);
     }, [info]);
+
+    if (!info) return null;
 
     return (
         <div className="modal-overlay" style={{ zIndex: 2000, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>

@@ -3,15 +3,16 @@ import { useAppStore, usePlaybackStore } from '../store';
 import { resolveStartTimes, normalizeTimelineData, precomputePath, computeAnchors } from '../utils/animationUtils';
 import { detectEncounters, Encounter } from '../utils/encounterDetection';
 import { formatCharName } from '../utils/charName';
+import { TARGET_FPS } from '../constants';
 
 const SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
 
 export const AnimationTimeline: React.FC = () => {
-    // ▼ 修正: 再生中のシークバー更新頻度を「1秒(30フレーム)ごと」に制限
+    // ▼ 修正: 再生中のシークバー更新頻度を「1秒ごと」に制限
     // 再生の一時状態は永続化しない usePlaybackStore から取得する
     const displayTime = usePlaybackStore(state => {
         if (!state.isPlaying) return state.currentTime; // 停止・ドラッグ中はリアルタイム
-        return Math.floor(state.currentTime / 30) * 30; // 再生中は再レンダリングをブロック
+        return Math.floor(state.currentTime / TARGET_FPS) * TARGET_FPS; // 再生中は再レンダリングをブロック
     });
 
     const setCurrentTime = usePlaybackStore(state => state.setCurrentTime);
@@ -78,10 +79,10 @@ export const AnimationTimeline: React.FC = () => {
     const [showEncounters, setShowEncounters] = useState(false);
 
     const formatTime = (frames: number) => {
-        const seconds = Math.floor(frames / 30);
+        const seconds = Math.floor(frames / TARGET_FPS);
         const mm = Math.floor(seconds / 60).toString().padStart(2, '0');
         const ss = (seconds % 60).toString().padStart(2, '0');
-        const ff = Math.floor(frames % 30).toString().padStart(2, '0');
+        const ff = Math.floor(frames % TARGET_FPS).toString().padStart(2, '0');
         return `${mm}:${ss}:${ff}`;
     };
 

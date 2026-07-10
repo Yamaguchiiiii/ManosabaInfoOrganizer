@@ -28,9 +28,9 @@ export const DialogHost: React.FC = () => {
                 closeDialog(cancelBtn ? cancelBtn.value : '');
             } else if (e.key === 'Enter') {
                 e.preventDefault();
-                // primary ボタンを優先、無ければ最後のボタン
-                const primary = dialog.buttons.find(b => b.variant === 'primary') ?? dialog.buttons[dialog.buttons.length - 1];
-                if (primary) closeDialog(primary.value);
+                // primary ボタンのみ Enter で確定。無い/危険な確認は明示クリックを要求する
+                const primary = dialog.buttons.find(b => b.variant === 'primary');
+                if (primary && primary.variant !== 'danger') closeDialog(primary.value);
             }
         };
         window.addEventListener('keydown', handleKey, true);
