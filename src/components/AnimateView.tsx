@@ -16,6 +16,14 @@ import { TOUR_TARGETS } from './tutorial/tourTargets';
 const ICON_SIZE = 80;
 const HALF_SIZE = ICON_SIZE / 2;
 
+// フロアマップ画像の実寸(px)。上ペインをこの比率にフィットさせ、レターボックス(無駄な余白)を
+// 出さずに済む高さへ縮めることで、下段の事件ノートへ最大限の高さを譲る。
+const MAP_ASPECT: Record<AnimFloorId, number> = {
+  '2F': 1239 / 587,
+  '1F': 1406 / 761,
+  'B1': 1031 / 589,
+};
+
 const MovingCharIcon = React.memo(React.forwardRef<Konva.Group, { icon: string, x: number, y: number }>(
     ({ icon, x, y }, ref) => {
         const image = useCachedImage(`./icon/${icon}`);
@@ -190,7 +198,7 @@ export const AnimateView = () => {
           </div>,
           appbarSlot
         )}
-        <div className="animate-mobile-map">
+        <div className="animate-mobile-map" style={{ aspectRatio: `${MAP_ASPECT[mobileFloor]}` }}>
           <ReadOnlyMapView floorId={mobileFloor} fitContainer={true}>
             {mobileFloor === 'B1' && deadIcons.map(icon => {
               const pos = PRISON_POSITIONS[icon];

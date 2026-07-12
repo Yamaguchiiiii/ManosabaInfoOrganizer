@@ -100,6 +100,10 @@ export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, on
 });
 
 // --- テキストコンポーネント (メモ化) ---
+// タップ領域を拡張するための余白。文字サイズが小さい/短いテキストは見た目の外接矩形が
+// 指のタップ幅より狭く、スマホで選択しにくいため hitFunc で当たり判定だけ広げる。
+const TEXT_HIT_PADDING = 14;
+
 export const EditableText = React.memo(({ obj, onSelect, onChange, onToggleEdit, onDragStart, onDragMove, onDragEnd, isDrawingMode }: NoteObjectComponentProps) => {
     return (
         <Text
@@ -119,6 +123,17 @@ export const EditableText = React.memo(({ obj, onSelect, onChange, onToggleEdit,
             scaleX={obj.scaleX}
             scaleY={obj.scaleY}
             draggable={!isDrawingMode}
+            hitFunc={(context, shape) => {
+                context.beginPath();
+                context.rect(
+                    -TEXT_HIT_PADDING,
+                    -TEXT_HIT_PADDING,
+                    shape.width() + TEXT_HIT_PADDING * 2,
+                    shape.height() + TEXT_HIT_PADDING * 2,
+                );
+                context.closePath();
+                context.fillStrokeShape(shape);
+            }}
             onDragStart={onDragStart}
             onDragMove={onDragMove}
             onDragEnd={onDragEnd ?? ((e) => { onChange({ x: e.target.x(), y: e.target.y() }); })}

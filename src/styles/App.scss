@@ -383,7 +383,6 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  height: 100dvh; // モバイルブラウザのURLバー可変分を吸収
   width: 100vw;
   overflow: hidden;
   background-color: var(--surface-1);
@@ -505,16 +504,18 @@ body {
   overflow: hidden;
   background: #111;
 
+  // マップ画像の実アスペクト比(aspect-ratio、JS側で floor ごとに指定)ぶんの高さだけを占め、
+  // レターボックス分を残さない。画面が低い端末では flex-shrink で縮められる（事件ノート優先）。
   .animate-mobile-map {
-    flex: 1.2;
+    flex: 0 1 auto;
+    min-height: 80px;
     position: relative;
     overflow: hidden;
-    min-height: 0;
   }
 
-  // 事件ノート（上下2ペイン化）。折りたたみでマップが広がる。#07/04-3
+  // 事件ノート（上下2ペイン化）。マップの残り高さを全て使う（最大化）。#07/04-3
   .animate-mobile-note {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
