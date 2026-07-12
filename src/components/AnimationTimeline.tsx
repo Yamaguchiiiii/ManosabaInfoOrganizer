@@ -66,18 +66,22 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
             flexDirection: 'column'
         }}>
             <div style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '10px 20px', borderBottom: '1px solid var(--border-default)',
+                display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '12px',
+                padding: isMobile ? '8px 10px' : '10px 20px', borderBottom: '1px solid var(--border-default)',
+                // 操作群(preset|speed|play|…)は1行に収める。プリセット選択が可変幅(flex)で余りを吸収するため、
+                // 固定幅の小要素だけなら折り返さない。2行目のシークバー(width:100%)だけが次行へ回る。
                 flexWrap: 'wrap'
             }}>
-                {/* 1行目: プリセット | 速度 | Play （ここで折り返す） */}
+                {/* 1行目: プリセット | 速度 | Play （デスクトップはここで折り返す） */}
                 <select
                     value={activePresetId}
                     onChange={(e) => setActivePresetId(e.target.value)}
                     style={{
                         background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)',
-                        borderRadius: '4px', padding: '5px 10px', fontSize: '0.9rem',
-                        cursor: 'pointer', maxWidth: '150px'
+                        borderRadius: '4px', padding: isMobile ? '5px 6px' : '5px 10px', fontSize: isMobile ? '0.8rem' : '0.9rem',
+                        cursor: 'pointer',
+                        // モバイル: 唯一の可変幅要素として横幅を吸収し、他要素を1行に収める
+                        ...(isMobile ? { flex: '1 1 40px', minWidth: 0, maxWidth: 'none' } : { maxWidth: '150px' })
                     }}
                 >
                     {presets.map(preset => (
@@ -87,14 +91,16 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                     ))}
                 </select>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Speed:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                    {/* モバイルは幅節約のため "Speed:" ラベルを省く（x1 等の選択肢で自明） */}
+                    {!isMobile && <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Speed:</span>}
                     <select
                         value={playbackSpeed}
                         onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                        title="再生速度"
                         style={{
                             background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)',
-                            borderRadius: '4px', padding: '2px 5px', fontSize: '0.9rem', cursor: 'pointer'
+                            borderRadius: '4px', padding: '2px 5px', fontSize: isMobile ? '0.8rem' : '0.9rem', cursor: 'pointer'
                         }}
                     >
                         {SPEED_OPTIONS.map(speed => (
@@ -108,7 +114,8 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                     style={{
                         background: isPlaying ? '#ef4444' : '#10b981',
                         border: 'none', borderRadius: '4px', color: 'white',
-                        padding: '5px 15px', cursor: 'pointer', fontWeight: 'bold'
+                        padding: isMobile ? '5px 10px' : '5px 15px', cursor: 'pointer', fontWeight: 'bold',
+                        flexShrink: 0
                     }}
                 >
                     {isPlaying ? 'Pause' : 'Play'}
@@ -122,7 +129,7 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                         style={{
                             background: showEvents ? 'rgba(95,208,208,0.15)' : 'var(--surface-3, #333)',
                             border: '1px solid var(--talk-strong)', borderRadius: '4px', color: 'var(--talk)',
-                            padding: '5px 10px', fontSize: '0.85rem', cursor: 'pointer',
+                            padding: '5px 10px', fontSize: '0.85rem', cursor: 'pointer', flexShrink: 0,
                         }}
                     >
                         🗓 {events.length}
@@ -137,7 +144,7 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                             background: syncErrors.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
                             border: `1px solid ${syncErrors.length > 0 ? 'var(--danger, #ef4444)' : 'var(--warning, #f59e0b)'}`,
                             color: syncErrors.length > 0 ? 'var(--danger, #ef4444)' : 'var(--warning, #f59e0b)',
-                            borderRadius: '4px', padding: '5px 10px', fontSize: '0.85rem', cursor: 'default',
+                            borderRadius: '4px', padding: '5px 10px', fontSize: '0.85rem', cursor: 'default', flexShrink: 0,
                         }}
                     >
                         ⚠ {syncErrors.length + syncWarns.length}
@@ -151,7 +158,7 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                     style={{
                         background: showGantt ? 'rgba(102,179,255,0.2)' : 'var(--surface-3)',
                         border: '1px solid var(--border-strong)', borderRadius: '4px', color: showGantt ? '#66b3ff' : 'var(--text-secondary)',
-                        padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem',
+                        padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem', flexShrink: 0,
                     }}
                 >
                     📊
@@ -173,8 +180,8 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                 )}
 
                 {/* 2行目: 現在の再生時間 | 再生バー | アニメーション全体の時間（幅100%で折り返す） */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
-                    <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px', width: '100%' }}>
+                    <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '1.1rem', minWidth: isMobile ? '44px' : '80px', textAlign: 'center' }}>
                         {formatTime(displayTime)}
                     </div>
 
@@ -216,7 +223,7 @@ export const AnimationTimeline: React.FC<{ onEventJump?: (e: TimedEvent) => void
                         ))}
                     </div>
 
-                    <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '1.1rem', minWidth: '80px', textAlign: 'center' }}>
+                    <div style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: isMobile ? '0.8rem' : '1.1rem', minWidth: isMobile ? '44px' : '80px', textAlign: 'center' }}>
                         {formatTime(maxDuration)}
                     </div>
                 </div>

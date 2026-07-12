@@ -25,6 +25,9 @@ export const MobileAppBar: React.FC<MobileAppBarProps> = ({ onOpenContext }) => 
     <header className="mobile-appbar">
       <button className="appbar-menu" data-tour={TOUR_TARGETS.mobileMenu} onClick={onOpenContext} title="メニュー" aria-label="メニュー">☰</button>
       <span className="appbar-title">{title}</span>
+      {/* ビュー固有のコントロールをタイトル横に差し込むスロット。
+          Animate=フロア切替(2F/1F/B1)、Note=表示モード(1面/4面/編集) が portal で入る。 */}
+      <div className="appbar-slot" id="mobile-appbar-slot" />
       <div className="appbar-right"><NoteSearchBox /><SaveStatusIndicator /></div>
     </header>
   );

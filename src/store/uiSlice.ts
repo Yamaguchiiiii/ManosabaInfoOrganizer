@@ -1,4 +1,4 @@
-import { FloorId, SliceCreator, DialogRequest, NoteObject, NoteTargetType } from './types';
+import { FloorId, SliceCreator, DialogRequest, NoteObject, NoteTargetType, ICON_FILES } from './types';
 import { runNavigationGuard } from '../services/navigationGuard';
 
 // F3: ノート全文検索のジャンプ先。NoteView が消費してタブ/IDを同期し、
@@ -123,7 +123,9 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
 
     playbackPinned: true, setPlaybackPinned: (v) => set({ playbackPinned: v }),
 
-    selectedIcons: [],
+    // 初期値は先頭キャラ(桜庭エマ)。未選択のまま経路作成すると機能が破綻するため、
+    // 起動時は必ずどちらかのキャラが選択された状態にする（resolve_error/23）。
+    selectedIcons: [ICON_FILES[0]],
     clearIconSelection: () => set({ selectedIcons: [] }),
     selectIcon: async (icon, multi) => {
         const { selectedIcons } = get();
