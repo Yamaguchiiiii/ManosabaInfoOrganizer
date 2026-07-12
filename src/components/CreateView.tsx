@@ -209,7 +209,6 @@ const FloorPane: React.FC<FloorPaneProps> = ({
                             onEdgeTouchStart={onEdgeTouchStart}
                             onEdgeTouchEnd={onEdgeTouchEnd}
                             touchHitScale={interactiveZoom ? effScale : undefined}
-                            showNodeNames={interactiveZoom}
                         />
                         {showDynamic && nodeMap[connectingNodeId!] && (
                             <Line
