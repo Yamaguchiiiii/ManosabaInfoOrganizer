@@ -51,6 +51,13 @@ export const AnimateView = () => {
   const [mobileFloor, setMobileFloor] = useState<AnimFloorId>('1F');
   // モバイル: 下段の事件ノートの折りたたみ（20.md #3）。縦が細い端末は初期折りたたみ
   const [noteCollapsed, setNoteCollapsed] = useState(() => window.innerHeight < 700);
+  // モバイル: フロア切替を上部バー（Animate の横）へ portal するためのスロット解決。
+  // 独立した .floor-segment 行を廃し、縦の圧迫を1行ぶん解消する。
+  const [appbarSlot, setAppbarSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!isMobile) return;
+    setAppbarSlot(document.getElementById('mobile-appbar-slot'));
+  }, [isMobile]);
 
   const nodesMapRef = useRef<Record<string, MapNode>>({});
   useEffect(() => {
@@ -169,15 +176,20 @@ export const AnimateView = () => {
   if (isMobile) {
     return (
       <div className="animate-mobile">
-        <div className="floor-segment">
-          {(['2F', '1F', 'B1'] as AnimFloorId[]).map(f => (
-            <button
-              key={f}
-              className={mobileFloor === f ? 'active' : ''}
-              onClick={() => setMobileFloor(f)}
-            >{f}</button>
-          ))}
-        </div>
+        {/* フロア切替は上部バー（Animate の横）へ移設（smartphone.md 圧迫対策）。
+            マップを縦に広げるため、独立した .floor-segment 行は廃止。 */}
+        {appbarSlot && createPortal(
+          <div className="appbar-floor-segment">
+            {(['2F', '1F', 'B1'] as AnimFloorId[]).map(f => (
+              <button
+                key={f}
+                className={mobileFloor === f ? 'active' : ''}
+                onClick={() => setMobileFloor(f)}
+              >{f}</button>
+            ))}
+          </div>,
+          appbarSlot
+        )}
         <div className="animate-mobile-map">
           <ReadOnlyMapView floorId={mobileFloor} fitContainer={true}>
             {mobileFloor === 'B1' && deadIcons.map(icon => {
@@ -195,6 +207,9 @@ export const AnimateView = () => {
             <button className="note-collapse-bar" onClick={() => setNoteCollapsed(v => !v)}>
               事件ノート {noteCollapsed ? '▸' : '▾'}
             </button>
+            {/* 表示モード(1面/4面/編集)を折りたたみボタンの横へ移設する portal 先。
+                旧: Tools の上に専用行があり縦を圧迫していた（CanvasWorkspace(compact) が挿す）。 */}
+            <div id="animate-note-viewseg-slot" className="note-viewseg-slot" />
             {/* 0711_2 #2: 選択中オブジェクト操作バーの portal 先（CanvasWorkspace(compact) が挿す）。
                 行の高さは固定なので、バーが出ても canvas がピコピコ動かない。 */}
             <div id="animate-note-selection-slot" className="note-selection-slot" />

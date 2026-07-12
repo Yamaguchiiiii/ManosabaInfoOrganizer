@@ -225,9 +225,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
     // 画像パレット/ギャラリーに出す画像。事件ノート(preset)では全キャラの立ち絵を常時利用可能にする。
     const portraitPalette = targetType === 'preset' ? CHARACTER_PORTRAITS : [];
+    // モバイルの画像一覧(ImageGalleryWindow)。デスクトップは preset の "Images" と
+    // 非preset の "Character Images" に分かれて全キャラ立ち絵が常に出る。モバイルは単一の一覧
+    // なので、種別を問わず立ち絵(CHARACTER_PORTRAITS)＋アップロード画像(assets)を常時出す。
     const availableImages = useMemo(
-        () => [...(targetType === 'preset' ? CHARACTER_PORTRAITS : []), ...assets],
-        [targetType, assets]
+        () => [...CHARACTER_PORTRAITS, ...assets],
+        [assets]
     );
 
     const currentCanvasObjects = useMemo(() => objects.filter(o => (o.canvasIndex || 0) === currentCanvasIndex), [objects, currentCanvasIndex]);
@@ -1073,6 +1076,25 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         return null;
     };
 
+    // スマホでは Konva Text のダブルタップが発火しづらく本文編集に入れないため、選択中テキストの
+    // 操作バーから明示的にインライン編集を開始できるようにする（onToggleEdit のタッチ版）。
+    const startTextEditing = (objId: string) => {
+        const obj = currentCanvasObjects.find(o => o.id === objId);
+        if (!obj || obj.type !== 'text') return;
+        // 編集textareaの幅は画面px基準。ノードの実スケール(レイヤー縮尺込み)から算出する。
+        let width = 200;
+        for (const tr of trRefs.current) {
+            const node = tr?.getStage()?.findOne(`#${objId}`);
+            if (node) { width = Math.max(50, node.width() * node.getAbsoluteScale().x); break; }
+        }
+        editingTextBoundsRef.current = { width };
+        setEditingTextValue(obj.text ?? '');
+        editingTextValueRef.current = obj.text ?? '';
+        editingTextIdRef.current = objId;
+        setEditingTextId(objId);
+        setSelectedIds([]);
+    };
+
     const renderFloatingTextToolbar = () => {
         if (draggingSelection) return null;
         if (selectedIds.length !== 1 || selectedObject?.type !== 'text') return null;
@@ -1093,6 +1115,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                 fontSize: '0.85rem', color: 'var(--text-secondary, #ccc)'
             }}>
+                {/* スマホ: ダブルタップに頼らず本文を編集できる明示ボタン */}
+                {isMobileVp && (
+                    <button
+                        onClick={() => startTextEditing(selectedIds[0])}
+                        title="文字を編集"
+                        style={{ background: '#007acc', border: 'none', color: '#fff', borderRadius: '4px', padding: '5px 10px', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', minHeight: 32 }}
+                    >✎ 文字</button>
+                )}
                 <label>Size:
                     <input type="number" min="8" max="200"
                         value={selectedObject.fontSize || 24}
@@ -1209,8 +1239,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const panesW = Math.max(0, canvasSize.width - compactToolbarW);
 
     // U3: 表示モード(単一/4面/編集)セグメント + 現在ペイン番号。desktop/compact-desktop は
-    // Canvas右下のフロート、モバイルは下部の専用行(flow)に置く（tools/ヘルプFABとの重なり回避）。
-    const renderViewSegment = () => (
+    // Canvas右下のフロート、モバイルは上部バー/事件ノート折りたたみ行の横へ portal する。
+    // compact=true で上部バーに収まるよう一段小さいサイズにする。
+    const renderViewSegment = (compact = false) => (
         <>
             {([
                 { key: 'single', label: '1面', title: '単一表示', onSelect: () => { setIsGridMode(false); setIsGridEditMode(false); } },
@@ -1226,8 +1257,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                         style={{
                             background: active ? '#007acc' : 'transparent',
                             border: 'none', color: active ? '#fff' : '#aaa',
-                            borderRadius: '5px', padding: '6px 10px', fontSize: '0.78rem', cursor: 'pointer',
-                            fontWeight: active ? 'bold' : 'normal', minHeight: '36px',
+                            borderRadius: '5px', padding: compact ? '3px 7px' : '6px 10px',
+                            fontSize: compact ? '0.72rem' : '0.78rem', cursor: 'pointer',
+                            fontWeight: active ? 'bold' : 'normal', minHeight: compact ? '28px' : '36px',
+                            flexShrink: 0,
                         }}
                     >
                         {seg.label}
@@ -1236,12 +1269,21 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             })}
             {/* revise3 B-12: 単一表示では左上ラベルの代わりに現在ペイン番号を小さく表示 */}
             {!isGridMode && (
-                <span style={{ display: 'flex', alignItems: 'center', padding: '0 6px', fontSize: '0.72rem', color: '#888', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'flex', alignItems: 'center', padding: '0 6px', fontSize: compact ? '0.66rem' : '0.72rem', color: '#888', whiteSpace: 'nowrap' }}>
                     Canvas {currentCanvasIndex + 1}
                 </span>
             )}
         </>
     );
+
+    // モバイル: 表示モードセグメントは専用行をやめ、上部バー（Note）/事件ノート折りたたみ行（Animate）の
+    // 横へ portal する。スロットは Animate 側を優先し、無ければ上部バーへ。
+    // getElementById は初回描画時にまだ DOM 未コミットのことがあるため effect で解決する（compactSlot と同じ流儀）。
+    const [viewSegSlot, setViewSegSlot] = useState<HTMLElement | null>(null);
+    useEffect(() => {
+        if (!(compactMode && isMobileVp)) { setViewSegSlot(null); return; }
+        setViewSegSlot(document.getElementById('animate-note-viewseg-slot') ?? document.getElementById('mobile-appbar-slot'));
+    }, [compactMode, isMobileVp, targetType, displayTargetId]);
 
     return (
         <div
@@ -1883,16 +1925,21 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 </div>
                 </div>
 
-                {/* モバイル: 表示モード切替(1面/4面/編集)を tools の上の専用行(左寄せ)に置く。
-                    旧: Canvas右下のフロートが下部ツール列とヘルプ(?)FABに重なっていた（本行で解消）。 */}
+                {/* モバイル: 表示モード切替(1面/4面/編集)は専用行をやめ、上部バー（Note）/
+                    事件ノート折りたたみ行（Animate）の横へ portal する（縦の圧迫解消）。
+                    スロットが未解決の初回のみ、従来の専用行にフォールバックする。 */}
                 {compactMode && isMobileVp && (
-                    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
-                                  background: 'var(--surface-1, #1a1a1a)', borderTop: '1px solid var(--border-default, #333)' }}>
-                        <div style={{ display: 'flex', gap: 2, backgroundColor: 'rgba(30, 30, 30, 0.85)', borderRadius: 8,
-                                      padding: 3, border: '1px solid var(--border-default, #444)' }}>
-                            {renderViewSegment()}
-                        </div>
-                    </div>
+                    viewSegSlot
+                        ? createPortal(<div className="note-viewseg">{renderViewSegment(true)}</div>, viewSegSlot)
+                        : (
+                            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+                                          background: 'var(--surface-1, #1a1a1a)', borderTop: '1px solid var(--border-default, #333)' }}>
+                                <div style={{ display: 'flex', gap: 2, backgroundColor: 'rgba(30, 30, 30, 0.85)', borderRadius: 8,
+                                              padding: 3, border: '1px solid var(--border-default, #444)' }}>
+                                    {renderViewSegment()}
+                                </div>
+                            </div>
+                        )
                 )}
 
                 {/* revise3 B-18: モバイルビューポートでは左ドックの代わりに下部の横スクロール列にツールを出す。
