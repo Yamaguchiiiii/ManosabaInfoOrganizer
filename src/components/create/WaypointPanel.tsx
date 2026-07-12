@@ -4,6 +4,7 @@ import { SEGMENT_COLORS } from '../../utils/mapDrawUtils';
 import { formatTime } from '../../utils/timeFormat';
 import { formatCharName } from '../../utils/charName';
 import { NodeCandidateList } from './NodeCandidateList';
+import { useViewport } from '../../hooks/useViewport';
 
 export type { SyncConstraint };
 
@@ -24,7 +25,7 @@ interface WaypointPanelProps {
     // 現在地点入力のターゲット（この行を --focus で強調してターゲット迷子を防ぐ）。null=なし
     suggestionTargetIndex: number | null;
     handleWaypointChange: (index: number, field: keyof Waypoint, value: string | number) => void;
-    setSuggestionTargetIndex: (index: number) => void;
+    setSuggestionTargetIndex: (index: number | null) => void;
     handleSyncTime: (id: string, name: string, waypointIndex?: number) => void;
     handleRemoveWaypoint: (index: number) => void;
     handleAddWaypoint: () => void;
@@ -53,6 +54,9 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
     matchedNodes = [], otherNodes = [], handleSelectSuggestion,
 }) => {
     const [collapsed, setCollapsed] = useState(variant !== 'floating'); // bottom/dock は既定折りたたみ
+    // モバイルは地点名を「候補一覧/マップタップ」で入れる設計のため、ソフトキーボードを出さない。
+    // フォーカス自体は通す(is-target 強調と候補展開に必要)。#23-B
+    const isMobileVp = useViewport() === 'mobile';
 
     if (isGraphEditMode) return null;
     if (selectedIcons.length === 0 && highlightedPath.length === 0) return null;
@@ -159,6 +163,8 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                     type="text" value={wp.name}
                                     onChange={(e) => handleWaypointChange(index, 'name', e.target.value)}
                                     onFocus={() => setSuggestionTargetIndex(index)}
+                                    inputMode={isMobileVp ? 'none' : undefined}
+                                    autoComplete="off"
                                     placeholder={index === 0 ? "Start..." : (index === waypoints.length - 1 ? "Goal..." : "Via...")}
                                     className={`waypoint-panel__row-input${index === suggestionTargetIndex ? ' is-target' : ''}`}
                                 />
@@ -196,13 +202,25 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
 
                     {/* dock: 地点入力にフォーカスがある間、候補一覧を body 内に自動展開する（0711 #7） */}
                     {variant === 'dock' && suggestionTargetIndex !== null && handleSelectSuggestion && (
-                        <div style={{ maxHeight: '30vh', overflowY: 'auto' }}>
-                            <NodeCandidateList
-                                matchedNodes={matchedNodes}
-                                otherNodes={otherNodes}
-                                selectedNodeId={selectedNodeId}
-                                onSelect={handleSelectSuggestion}
-                            />
+                        <div className="waypoint-panel__candidates">
+                            <div className="waypoint-panel__candidates-head">
+                                <span className="waypoint-panel__candidates-title">
+                                    {suggestionTargetIndex === 0 ? 'Select Start' : suggestionTargetIndex === waypoints.length - 1 ? 'Select Goal' : 'Select Via'}
+                                </span>
+                                <button
+                                    className="waypoint-panel__candidates-close"
+                                    onClick={() => setSuggestionTargetIndex(null)}
+                                    aria-label="候補を閉じる"
+                                >×</button>
+                            </div>
+                            <div className="waypoint-panel__candidates-body">
+                                <NodeCandidateList
+                                    matchedNodes={matchedNodes}
+                                    otherNodes={otherNodes}
+                                    selectedNodeId={selectedNodeId}
+                                    onSelect={handleSelectSuggestion}
+                                />
+                            </div>
                         </div>
                     )}
 

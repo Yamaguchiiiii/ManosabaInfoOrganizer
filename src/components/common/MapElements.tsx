@@ -44,9 +44,9 @@ export const MapImage = ({ src, onLoad }: { src: string, onLoad?: (w: number, h:
 
 // ▼▼▼ RoomNode (修正版: モダンなハイライト) ▼▼▼
 export const RoomNode = ({
-  x, y, isSelected, isPath, opacity, ...props
+  x, y, isSelected, isPath, opacity, hitStrokeWidth = 20, ...props
 }: NodeVisualProps) => {
-  const size = 18; 
+  const size = 18;
   const colors = THEME_COLORS.room;
 
   // 優先順位: 選択中 > 経路中 > 通常
@@ -65,7 +65,7 @@ export const RoomNode = ({
       <Rect
         width={size} height={size}
         offsetX={size / 2} offsetY={size / 2}
-        rotation={45} hitStrokeWidth={20}
+        rotation={45} hitStrokeWidth={hitStrokeWidth}
         fill={colors.fill}
         
         stroke={currentStroke}
@@ -82,7 +82,7 @@ export const RoomNode = ({
 
 // ▼▼▼ PassNode (isPath対応) ▼▼▼
 export const PassNode = ({
-  x, y, isSelected, isPath, opacity, ...props
+  x, y, isSelected, isPath, opacity, hitStrokeWidth = 20, ...props
 }: NodeVisualProps) => {
   const colors = THEME_COLORS.pass;
   const currentStroke = isSelected ? THEME_COLORS.selected.stroke 
@@ -96,7 +96,7 @@ export const PassNode = ({
   return (
     <Group x={x} y={y} opacity={opacity} {...props}>
       <Circle
-        radius={5} hitStrokeWidth={20}
+        radius={5} hitStrokeWidth={hitStrokeWidth}
         fill={colors.fill}
         
         stroke={currentStroke}
@@ -112,7 +112,7 @@ export const PassNode = ({
 
 // ▼▼▼ StairNode (isPath対応) ▼▼▼
 export const StairNode = ({
-  x, y, isSelected, isPath, opacity, ...props
+  x, y, isSelected, isPath, opacity, hitStrokeWidth = 30, ...props
 }: NodeVisualProps) => {
   const colors = THEME_COLORS.stair;
   const currentStroke = isSelected ? THEME_COLORS.selected.stroke 
@@ -126,7 +126,7 @@ export const StairNode = ({
   return (
     <Group x={x} y={y} opacity={opacity} {...props}>
       <Circle
-        radius={12} hitStrokeWidth={30}
+        radius={12} hitStrokeWidth={hitStrokeWidth}
         fill={colors.fill}
         
         stroke={currentStroke}

@@ -61,6 +61,11 @@ button, a, input, select, textarea, [tabindex], [role="button"] {
   }
 }
 
+html, body {
+  // C-14: スクロール連鎖とプルリフレッシュ(引っ張って更新)を止める
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -553,4 +558,83 @@ body {
   font-size: 0.78rem;
   color: var(--text-primary);
   &:hover { background: var(--surface-4); }
+}
+
+// C-1: モバイルマップのズームリセットボタン
+.floorpane-zoom-reset {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 5;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border-strong);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+// C-3/C-4: モバイルのグラフ編集バー（状態表示 + Undo + 終了）
+.mobile-editbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 122, 204, 0.15);
+  border-bottom: 1px solid var(--focus-strong);
+
+  &__label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__btn {
+    min-height: 40px;
+    min-width: 64px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+
+    &--done {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+  }
+}
+
+// C-8: BottomSheet の高さ。dvh 非対応ブラウザは直前の vh 行にフォールバックする
+.bottom-sheet {
+  max-height: 90vh;
+  max-height: 90dvh;
+
+  &--half { height: 55vh; height: 55dvh; }
+  &--full { height: 90vh; height: 90dvh; }
+  &--auto { height: auto; }
+}
+
+// C-14: 内部スクロール領域は端に達しても外へ連鎖させない
+.waypoint-panel--dock,
+.waypoint-panel__body,
+.bottom-sheet,
+.animate-mobile-playbar,
+.node-candidate-list,
+.mobile-workspace {
+  overscroll-behavior: contain;
+}
+
+// C-15: ダブルタップズームを無効化し、タップの認識も速くする（スクロール/ピンチは阻害しない）
+button, a, select, label, input, [role='button'], [tabindex] {
+  touch-action: manipulation;
 }

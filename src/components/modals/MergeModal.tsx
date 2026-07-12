@@ -105,7 +105,7 @@ export const MergeModal: React.FC<MergeModalProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'center'
         }} onClick={onClose}>
             <div style={{
-                width: '440px', backgroundColor: 'var(--surface-1, #1e1e1e)', borderRadius: '8px',
+                width: 'min(440px, 92vw)', backgroundColor: 'var(--surface-1, #1e1e1e)', borderRadius: '8px',
                 border: '1px solid var(--border-default, #444)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px',
                 boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
             }} onClick={e => e.stopPropagation()}>

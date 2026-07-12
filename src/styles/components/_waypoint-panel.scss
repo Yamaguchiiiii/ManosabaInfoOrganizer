@@ -267,6 +267,38 @@
     width: 100%;
   }
 
+  &__candidates {
+    width: 100%;
+    border-top: 1px solid var(--border-default);
+  }
+
+  &__candidates-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+
+  &__candidates-title {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+  }
+
+  &__candidates-close {
+    background: none;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-1);
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+  }
+
+  &__candidates-body {
+    max-height: 30vh;
+    overflow-y: auto;
+  }
+
   &__sync-constraints {
     border-top: 1px solid var(--border-default);
     padding-top: var(--space-2);
@@ -426,4 +458,24 @@
       font-size: 0.85rem;
     }
   }
+}
+
+// C-9: タッチ端末はヒット領域を底上げ（revise3 B-8 の waypoint-panel 版）。
+// font-size 16px は iOS のフォーカス時自動ズーム抑止も兼ねる（C-6 の保険）。
+@media (pointer: coarse) {
+  .waypoint-panel {
+    &__collapse-btn { width: 40px; height: 40px; font-size: var(--fs-sm); }
+    &__sync-btn { width: 40px; height: 40px; }
+    &__remove-btn { width: 36px; height: 36px; }
+    &__stay-input { width: 48px; min-height: 36px; font-size: 16px; }
+    &__delay-input { min-height: 36px; font-size: 16px; }
+    &__row-input { min-height: 40px; font-size: 16px; }
+    &__select { min-height: 36px; }
+    &__add-stop { min-height: 40px; }
+    &__row-actions { width: auto; }          // 固定80pxを解除（拡大ボタンが収まるように）
+    &__btn { min-height: 44px; }
+  }
+
+  .node-candidate-list__item { min-height: 40px; }
+  .floor-segment button { min-height: 44px; }
 }

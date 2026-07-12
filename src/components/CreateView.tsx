@@ -9,7 +9,7 @@ import { CharacterSelectModal } from './modals/CharacterSelectModal';
 import { WaypointPanel } from './create/WaypointPanel';
 import { RouteDock } from './create/RouteDock';
 import { FollowConfirmModal } from './create/FollowConfirmModal';
-import { MapObjectLayer } from './create/MapObjectLayer';
+import { MapObjectLayer, MapPointerKonvaEvent } from './create/MapObjectLayer';
 import { useRouteEditor } from '../hooks/useRouteEditor';
 import { useResponsiveQuadGrid } from '../hooks/useResponsiveQuadGrid';
 import { useViewport } from '../hooks/useViewport';
@@ -18,6 +18,19 @@ import { MergeModal } from './modals/MergeModal';
 import { TOUR_TARGETS } from './tutorial/tourTargets';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+// タッチ(TouchEvent)には button が無い。MouseEvent のときだけ button を判定する。#23-A
+const isMouseEvt = (e: MapPointerKonvaEvent): e is Konva.KonvaEventObject<MouseEvent> =>
+    e.evt instanceof MouseEvent;
+const isRightButton = (e: MapPointerKonvaEvent): boolean => isMouseEvt(e) && e.evt.button === 2;
+// 主ボタン以外(中/右)のマウスクリックだけ弾く。タッチは常に主入力として通す。
+const isSecondaryMouse = (e: MapPointerKonvaEvent): boolean => isMouseEvt(e) && e.evt.button !== 0;
+// C-1(ピンチ)/C-2(長押し)直後の合成タップを無視するためのゲート。stage attr に期限時刻を積む。
+const isTapSuppressed = (e: MapPointerKonvaEvent): boolean => {
+    const stage = e.target.getStage();
+    const until = stage ? ((stage.getAttr('suppressTapUntil') as number | undefined) ?? 0) : 0;
+    return Date.now() < until;
+};
 
 const mapSrcFor = (floor: FloorId): string => {
     switch (floor) {
@@ -46,14 +59,21 @@ interface FloorPaneProps {
     hoveredNodeId: string | null;
     waypoints: Waypoint[];
     dynamicEdgeRef: React.RefObject<Konva.Line | null>;
-    onStageClick: (e: Konva.KonvaEventObject<MouseEvent>, floor: FloorId) => void;
-    onStageMouseMove: (e: Konva.KonvaEventObject<MouseEvent>) => void;
-    onNodeClick: (e: Konva.KonvaEventObject<MouseEvent>, nodeId: string, floor: FloorId) => void;
+    onStageClick: (e: MapPointerKonvaEvent, floor: FloorId) => void;
+    onStageMouseMove: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+    onNodeClick: (e: MapPointerKonvaEvent, nodeId: string, floor: FloorId) => void;
     onNodeMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => void;
     onNodeMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>, nodeId: string) => void;
     onNodeDragMove: (e: Konva.KonvaEventObject<DragEvent>, nodeId: string) => void;
     onNodeDragEnd: (e: Konva.KonvaEventObject<DragEvent>, nodeId: string) => void;
     onEdgeContextMenu: (e: Konva.KonvaEventObject<PointerEvent>, edgeId: string) => void;
+    // C-2: グラフ編集モードの長押し(=右クリック相当)
+    onNodeTouchStart?: (e: Konva.KonvaEventObject<TouchEvent>, nodeId: string) => void;
+    onNodeTouchEnd?: () => void;
+    onEdgeTouchStart?: (e: Konva.KonvaEventObject<TouchEvent>, edgeId: string) => void;
+    onEdgeTouchEnd?: () => void;
+    // §A-3/C-1: モバイル単一ペインでのみ true。タッチヒット領域底上げ + ピンチズームを有効にする。
+    interactiveZoom?: boolean;
 }
 
 const FloorPane: React.FC<FloorPaneProps> = ({
@@ -61,7 +81,9 @@ const FloorPane: React.FC<FloorPaneProps> = ({
     nodes, nodeMap, edges, isGraphEditMode, mode,
     displaySegments, displayPath, connectingNodeId, hoveredNodeId, waypoints, dynamicEdgeRef,
     onStageClick, onStageMouseMove, onNodeClick, onNodeMouseEnter, onNodeMouseLeave,
-    onNodeDragMove, onNodeDragEnd, onEdgeContextMenu
+    onNodeDragMove, onNodeDragEnd, onEdgeContextMenu,
+    onNodeTouchStart, onNodeTouchEnd, onEdgeTouchStart, onEdgeTouchEnd,   // C-2
+    interactiveZoom,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [size, setSize] = useState({ width: 0, height: 0 });
@@ -86,6 +108,50 @@ const FloorPane: React.FC<FloorPaneProps> = ({
     const fitX = (size.width - mapNat.w * fitScale) / 2;
     const fitY = (size.height - mapNat.h * fitScale) / 2;
 
+    // C-1: モバイルの2本指ピンチズーム/パン。null = fit 表示（従来）。
+    const [view, setView] = useState<{ scale: number; x: number; y: number } | null>(null);
+    const lastCenterRef = useRef<{ x: number; y: number } | null>(null);
+    const lastDistRef = useRef(0);
+    useEffect(() => { setView(null); lastCenterRef.current = null; lastDistRef.current = 0; }, [floorId]);
+
+    const handleTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+        if (!interactiveZoom || e.evt.touches.length < 2) {
+            onStageMouseMove(e);   // 1本指: 連結中の動的エッジ線プレビュー（従来動作）
+            return;
+        }
+        e.evt.preventDefault();
+        const stage = e.target.getStage();
+        if (!stage) return;
+        // ピンチ操作中および直後の tap を握りつぶす（指を離した瞬間の誤タップ防止）#23-A
+        stage.setAttr('suppressTapUntil', Date.now() + 400);
+        const t1 = e.evt.touches[0], t2 = e.evt.touches[1];
+        const center = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        if (!lastCenterRef.current || lastDistRef.current === 0) {
+            lastCenterRef.current = center;
+            lastDistRef.current = dist;
+            return;
+        }
+        const cur = view ?? { scale: fitScale, x: fitX, y: fitY };
+        const newScale = Math.min(Math.max(cur.scale * (dist / lastDistRef.current), fitScale), fitScale * 8);
+        const rect = stage.container().getBoundingClientRect();
+        const centerOnStage = { x: center.x - rect.left, y: center.y - rect.top };
+        // ピンチ中心を不動点にズームし、中心の移動分だけパンする
+        const pointTo = { x: (centerOnStage.x - cur.x) / cur.scale, y: (centerOnStage.y - cur.y) / cur.scale };
+        const dx = center.x - lastCenterRef.current.x;
+        const dy = center.y - lastCenterRef.current.y;
+        setView({ scale: newScale, x: centerOnStage.x - pointTo.x * newScale + dx, y: centerOnStage.y - pointTo.y * newScale + dy });
+        lastCenterRef.current = center;
+        lastDistRef.current = dist;
+    };
+    const handleTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+        if (e.evt.touches.length < 2) { lastCenterRef.current = null; lastDistRef.current = 0; }
+    };
+
+    const effScale = view?.scale ?? fitScale;
+    const effX = view?.x ?? fitX;
+    const effY = view?.y ?? fitY;
+
     const showDynamic = isGraphEditMode && !!connectingNodeId && nodeMap[connectingNodeId]?.floor === floorId;
 
     return (
@@ -102,12 +168,23 @@ const FloorPane: React.FC<FloorPaneProps> = ({
             <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '3px 8px', borderRadius: 4, fontSize: 12, pointerEvents: 'none' }}>
                 {label}
             </div>
+            {interactiveZoom && view && (
+                <button
+                    className="floorpane-zoom-reset"
+                    onClick={() => setView(null)}
+                    title="表示をリセット"
+                    aria-label="ズームをリセット"
+                >⤢</button>
+            )}
             {size.width > 0 && size.height > 0 && (
                 <Stage
                     width={size.width} height={size.height}
-                    scaleX={fitScale} scaleY={fitScale} x={fitX} y={fitY}
+                    scaleX={effScale} scaleY={effScale} x={effX} y={effY}
                     onClick={(e) => onStageClick(e, floorId)}
+                    onTap={(e) => onStageClick(e, floorId)}
                     onMouseMove={onStageMouseMove}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
                     onContextMenu={(e) => e.evt.preventDefault()}
                     style={{ cursor: isGraphEditMode ? 'crosshair' : 'default' }}
                 >
@@ -127,6 +204,12 @@ const FloorPane: React.FC<FloorPaneProps> = ({
                             onNodeMouseLeave={onNodeMouseLeave}
                             onNodeDragMove={onNodeDragMove}
                             onNodeDragEnd={onNodeDragEnd}
+                            onNodeTouchStart={onNodeTouchStart}
+                            onNodeTouchEnd={onNodeTouchEnd}
+                            onEdgeTouchStart={onEdgeTouchStart}
+                            onEdgeTouchEnd={onEdgeTouchEnd}
+                            touchHitScale={interactiveZoom ? effScale : undefined}
+                            showNodeNames={interactiveZoom}
                         />
                         {showDynamic && nodeMap[connectingNodeId!] && (
                             <Line
@@ -158,6 +241,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
     showConfirm, showAlert, showDialog,
     isSkullMode, setSkullMode,
     selectedIcons, selectIcon, clearIconSelection,
+    setGraphEditMode,
   } = useAppStore();
 
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null);
@@ -220,18 +304,55 @@ export const CreateView: React.FC<CreateViewProps> = ({
       if (isGraphEditMode && await showConfirm("この通路(エッジ)を削除しますか？")) removeEdge(edgeId);
   }, [isGraphEditMode, removeEdge, showConfirm]);
 
-  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, floorOverride?: FloorId) => {
+  // C-2: タッチの長押しを右クリック相当にする（ノード=編集モーダル / エッジ=削除確認）。
+  // 長押し成立時は stage attr で後続の tap を握りつぶす（§A の isTapSuppressed が見る）。
+  const nodePressRef = useRef<number | null>(null);
+  const edgePressRef = useRef<number | null>(null);
+  const cancelNodePress = useCallback(() => {
+      if (nodePressRef.current !== null) { window.clearTimeout(nodePressRef.current); nodePressRef.current = null; }
+  }, []);
+  const cancelEdgePress = useCallback(() => {
+      if (edgePressRef.current !== null) { window.clearTimeout(edgePressRef.current); edgePressRef.current = null; }
+  }, []);
+
+  const handleNodeTouchStart = useCallback((e: Konva.KonvaEventObject<TouchEvent>, nodeId: string) => {
+      if (!isGraphEditMode) return;
+      const stage = e.target.getStage();
+      cancelNodePress();
+      nodePressRef.current = window.setTimeout(() => {
+          nodePressRef.current = null;
+          stage?.setAttr('suppressTapUntil', Date.now() + 600);
+          const node = nodeMap[nodeId];
+          if (node) setEditingNode(node);
+      }, 500);
+  }, [isGraphEditMode, nodeMap, cancelNodePress]);
+
+  const handleEdgeTouchStart = useCallback((e: Konva.KonvaEventObject<TouchEvent>, edgeId: string) => {
+      if (!isGraphEditMode) return;
+      const stage = e.target.getStage();
+      cancelEdgePress();
+      edgePressRef.current = window.setTimeout(() => {
+          edgePressRef.current = null;
+          stage?.setAttr('suppressTapUntil', Date.now() + 600);
+          void (async () => {
+              if (await showConfirm('この通路(エッジ)を削除しますか？')) removeEdge(edgeId);
+          })();
+      }, 500);
+  }, [isGraphEditMode, removeEdge, showConfirm, cancelEdgePress]);
+
+  const handleStageClick = useCallback((e: MapPointerKonvaEvent, floorOverride?: FloorId) => {
     // 4ペインでは編集対象フロアをペイン(floorOverride)で明示。未指定時は activeFloor。
     const floor = floorOverride ?? activeFloor;
+    if (isTapSuppressed(e)) return;   // ピンチ/長押し直後の合成タップは無視 #23-C1/C2
     // 死亡設定モード(どくろ)中にマップがクリックされたら自動解除する
     if (isSkullMode) setSkullMode(false);
-    if (e.evt.button === 2) {
+    if (isRightButton(e)) {
         if (isGraphEditMode && connectingNodeId) {
             setConnectingNodeId(null);
         }
         return;
     }
-    if (e.evt.button !== 0) return;
+    if (isSecondaryMouse(e)) return;
 
     if (suggestionTargetIndex !== null) setSuggestionTargetIndex(null);
 
@@ -248,13 +369,17 @@ export const CreateView: React.FC<CreateViewProps> = ({
     if (!isGraphEditMode) return;
     if (e.target.getClassName() !== 'Image') return;
 
-    setConnectingNodeId(null);
+    // C-5: 連結中の空クリック/空タップは「キャンセルのみ」。ノードを勝手に増やさない
+    if (connectingNodeId) {
+        setConnectingNodeId(null);
+        return;
+    }
     const stage = e.target.getStage();
     const pointer = stage?.getRelativePointerPosition();
     if (pointer) addNode({ id: generateId(), x: pointer.x, y: pointer.y, floor, type: 'pass' });
   }, [isGraphEditMode, suggestionTargetIndex, activeFloor, addNode, selectedIcons.length, clearIconSelection, connectingNodeId, isSkullMode, setSkullMode]);
 
-  const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+  const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (!isGraphEditMode || !connectingNodeId || !dynamicEdgeRef.current) return;
 
       const stage = e.target.getStage();
@@ -267,11 +392,12 @@ export const CreateView: React.FC<CreateViewProps> = ({
       }
   }, [isGraphEditMode, connectingNodeId, nodeMap]);
 
-  const handleNodeClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>, nodeId: string, floorOverride?: FloorId) => {
+  const handleNodeClick = useCallback((e: MapPointerKonvaEvent, nodeId: string, floorOverride?: FloorId) => {
       const floor = floorOverride ?? activeFloor;
+      if (isTapSuppressed(e)) return;   // ピンチ/長押し直後の合成タップは無視 #23-C1/C2
       // 死亡設定モード(どくろ)中にマップ上のノードがクリックされたら自動解除する
       if (isSkullMode) setSkullMode(false);
-      if (e.evt.button === 2) {
+      if (isRightButton(e)) {
           if (isGraphEditMode) {
               if (connectingNodeId) {
                   setConnectingNodeId(null);
@@ -285,7 +411,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
           return;
       }
 
-      if (e.evt.button !== 0) return;
+      if (isSecondaryMouse(e)) return;
       e.cancelBubble = true;
 
       if (isGraphEditMode) {
@@ -401,6 +527,10 @@ export const CreateView: React.FC<CreateViewProps> = ({
       onNodeDragMove: handleNodeDragMove,
       onNodeDragEnd: handleNodeDragEnd,
       onEdgeContextMenu: handleEdgeContextMenu,
+      onNodeTouchStart: handleNodeTouchStart,
+      onNodeTouchEnd: cancelNodePress,
+      onEdgeTouchStart: handleEdgeTouchStart,
+      onEdgeTouchEnd: cancelEdgePress,
   };
 
   return (
@@ -423,8 +553,18 @@ export const CreateView: React.FC<CreateViewProps> = ({
                         label={`Map (${activeFloor})`}
                         isActive={true}
                         onHover={setActiveFloor}
+                        interactiveZoom
                     />
                 </div>
+                {isGraphEditMode && (
+                    <div className="mobile-editbar">
+                        <span className="mobile-editbar__label">
+                            {connectingNodeId ? '連結中: つなぐ先をタップ（空きタップで解除）' : '🕸 グラフ編集中'}
+                        </span>
+                        <button className="mobile-editbar__btn" onClick={undo}>↩ Undo</button>
+                        <button className="mobile-editbar__btn mobile-editbar__btn--done" onClick={() => setGraphEditMode(false)}>完了</button>
+                    </div>
+                )}
                 {/* 0711 #7: オーバーレイをやめ通常フローの下ペインに。マップは上ペインで常時可視 */}
                 <WaypointPanel
                     isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}

@@ -5,9 +5,13 @@ import { MapNode, MapEdge, FloorId, Waypoint } from '../../store';
 import { StairNode, RoomNode, PassNode, THEME_COLORS } from '../common/MapElements';
 import { SEGMENT_COLORS, getOffsetPoint } from '../../utils/mapDrawUtils';
 
+// タッチ(tap)とマウス(click)を同一ハンドラで受けるための evt 型。
+// Konva はタッチでは click を発火しない(tap のみ)ため、両方を登録する必要がある。#23-A
+export type MapPointerKonvaEvent = Konva.KonvaEventObject<MouseEvent | TouchEvent>;
+
 interface MapObjectLayerProps {
     nodes: MapNode[];
-    nodeMap: Record<string, MapNode>; 
+    nodeMap: Record<string, MapNode>;
     edges: MapEdge[];
     activeFloor: FloorId;
     isGraphEditMode: boolean;
@@ -18,18 +22,30 @@ interface MapObjectLayerProps {
     hoveredNodeId: string | null;
     waypoints: Waypoint[];
     handleEdgeContextMenu: (e: Konva.KonvaEventObject<PointerEvent>, id: string) => void;
-    onNodeClick: (e: Konva.KonvaEventObject<MouseEvent>, id: string) => void;
-    onNodeMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>, id: string) => void;
+    onNodeClick: (e: MapPointerKonvaEvent, id: string) => void;
+    onNodeMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>, id: string) => void;   // hover はマウス専用のまま
     onNodeMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>, id: string) => void;
     onNodeDragMove: (e: Konva.KonvaEventObject<DragEvent>, id: string) => void;
     onNodeDragEnd: (e: Konva.KonvaEventObject<DragEvent>, id: string) => void;
+    // C-2: グラフ編集モードの長押し(=右クリック相当)。ノード編集モーダル/エッジ削除に使う。
+    onNodeTouchStart?: (e: Konva.KonvaEventObject<TouchEvent>, id: string) => void;
+    onNodeTouchEnd?: () => void;
+    onEdgeTouchStart?: (e: Konva.KonvaEventObject<TouchEvent>, id: string) => void;
+    onEdgeTouchEnd?: () => void;
+    // タッチ端末でヒット領域を物理44px相当へ底上げするための「現在の表示倍率」。
+    // undefined = 従来値(デスクトップ)。#23-A3
+    touchHitScale?: number;
+    // C-12: モバイルはホバーが無いため、常時ラベル表示に切り替える。
+    showNodeNames?: boolean;
 }
 
 export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
     nodes, nodeMap, edges, activeFloor, isGraphEditMode, mode,
     pathSegments, highlightedPath, connectingNodeId, hoveredNodeId, waypoints,
     handleEdgeContextMenu, onNodeClick, onNodeMouseEnter, onNodeMouseLeave,
-    onNodeDragMove, onNodeDragEnd 
+    onNodeDragMove, onNodeDragEnd,
+    onNodeTouchStart, onNodeTouchEnd, onEdgeTouchStart, onEdgeTouchEnd,
+    touchHitScale, showNodeNames,
 }) => {
     
     // エッジ使用数カウント
@@ -80,7 +96,10 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                             lineCap="round" lineJoin="round" opacity={0.2} 
                             listening={isGraphEditMode} hitStrokeWidth={20}
                             onContextMenu={(e) => handleEdgeContextMenu(e, edge.id)}
-                            onMouseEnter={(e) => { 
+                            onTouchStart={(e) => onEdgeTouchStart?.(e, edge.id)}
+                            onTouchEnd={() => onEdgeTouchEnd?.()}
+                            onTouchMove={() => onEdgeTouchEnd?.()}
+                            onMouseEnter={(e) => {
                                 if (isGraphEditMode) { 
                                     const c = e.target.getStage()?.container(); if(c) c.style.cursor = 'pointer'; 
                                     (e.target as Konva.Shape).stroke('red'); (e.target as Konva.Shape).opacity(1); 
@@ -169,6 +188,11 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                         } 
                     }
 
+                    // 物理半径22px(直径44px)相当のヒット領域。hitStrokeWidth はパス中心線の両側に
+                    // hsw/2 ずつ広がるため、外縁半径 = radius + hsw/2。よって hsw = 2*(22/scale - radius)。
+                    const hswFor = (radius: number, base: number): number =>
+                        touchHitScale ? Math.max(base, 2 * (22 / touchHitScale - radius)) : base;
+
                     // Props定義
                     const commonProps = {
                         x: node.x,
@@ -177,9 +201,13 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                         isPath,
                         opacity: nodeOpacity,
                         draggable: isGraphEditMode,
-                        onClick: (e: Konva.KonvaEventObject<MouseEvent>) => onNodeClick(e, node.id),
+                        onClick: (e: MapPointerKonvaEvent) => onNodeClick(e, node.id),
+                        onTap: (e: MapPointerKonvaEvent) => onNodeClick(e, node.id),   // タッチ用。#23-A
                         onMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>) => onNodeMouseEnter(e, node.id),
                         onMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>) => onNodeMouseLeave(e, node.id),
+                        onTouchStart: (e: Konva.KonvaEventObject<TouchEvent>) => onNodeTouchStart?.(e, node.id),
+                        onTouchEnd: () => onNodeTouchEnd?.(),
+                        onTouchMove: () => onNodeTouchEnd?.(),   // 指が動いたら長押しキャンセル（ドラッグ/ピンチと区別）
                     };
 
                     // ▼ 修正: ドラッグイベントを親のGroupでキャッチして確実に状態を更新する
@@ -198,31 +226,39 @@ export const MapObjectLayer = React.memo<MapObjectLayerProps>(({
                                 onDragMove={handleDragMove}
                                 onDragEnd={handleDragEnd}
                             >
-                                {node.name && isGraphEditMode && <Text x={node.x - 20} y={node.y + 15} text={node.name} fontSize={12} fill="white" />}
+                                {node.name && isGraphEditMode && <Text x={node.x - 20} y={node.y + 15} text={node.name} fontSize={12} fill="white" listening={false} />}
                                 {node.connectedFloor && mode !== 'animate' && <Text x={node.x - 20} y={node.y - 25} text={`↑ ${node.connectedFloor}へ`} fontSize={14} fill={THEME_COLORS.text} stroke="#000000" strokeWidth={3} fillAfterStrokeEnabled={true} fontStyle="bold" listening={false} align="center" />}
-                                <StairNode {...commonProps} />
+                                <StairNode {...commonProps} hitStrokeWidth={hswFor(12, 30)} />
                             </Group>
                         );
                     } else if (node.type === 'room') {
                         return (
-                            <Group 
+                            <Group
                                 key={node.id}
                                 onDragMove={handleDragMove}
                                 onDragEnd={handleDragEnd}
                             >
-                                {node.name && (isGraphEditMode || isSelected || hoveredNodeId === node.id) && <Text x={node.x - 20} y={node.y + 15} text={node.name} fontSize={12} fill="white" stroke="black" strokeWidth={2} fillAfterStrokeEnabled />}
-                                <RoomNode {...commonProps} />
+                                {node.name && (isGraphEditMode || isSelected || hoveredNodeId === node.id || showNodeNames) && (
+                                    <Text
+                                        x={node.x - 20} y={node.y + 15}
+                                        text={node.name}
+                                        fontSize={showNodeNames && touchHitScale ? 12 / touchHitScale : 12}
+                                        fill="white" stroke="black" strokeWidth={2} fillAfterStrokeEnabled
+                                        listening={false}
+                                    />
+                                )}
+                                <RoomNode {...commonProps} hitStrokeWidth={hswFor(13, 20)} />
                             </Group>
                         );
                     } else {
                         // ▼ 修正: PassNodeもGroupで囲んでイベントをキャッチ
                         return (
-                            <Group 
+                            <Group
                                 key={node.id}
                                 onDragMove={handleDragMove}
                                 onDragEnd={handleDragEnd}
                             >
-                                <PassNode {...commonProps} />
+                                <PassNode {...commonProps} hitStrokeWidth={hswFor(5, 20)} />
                             </Group>
                         );
                     }

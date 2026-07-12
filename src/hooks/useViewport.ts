@@ -8,7 +8,11 @@ export type Viewport = 'mobile' | 'tablet' | 'desktop';
 const compute = (): Viewport => {
     if (typeof window === 'undefined') return 'desktop';
     const w = window.innerWidth;
-    if (w < 768) return 'mobile';
+    const h = window.innerHeight;
+    // 横向きスマホ対策: 主ポインタが指(coarse)かつ高さが極端に低い端末は幅に関わらず mobile。
+    // w < 1000 の条件でタブレット横(1024+)を除外する。
+    const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    if (w < 768 || (coarse && h < 500 && w < 1000)) return 'mobile';
     if (w < 1100) return 'tablet';
     return 'desktop';
 };

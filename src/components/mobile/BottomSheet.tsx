@@ -13,15 +13,15 @@ interface BottomSheetProps {
 // 背景タップ / ×で閉じる。safe-area-inset-bottom を考慮。
 export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, height = 'auto', children }) => {
   if (!open) return null;
-  const h = height === 'full' ? '90vh' : height === 'half' ? '55vh' : 'auto';
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 2500, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
       <div
+        className={`bottom-sheet bottom-sheet--${height}`}
         style={{
           position: 'relative', background: 'var(--surface-2, #252526)',
           borderTopLeftRadius: 16, borderTopRightRadius: 16,
-          maxHeight: '90vh', height: h, display: 'flex', flexDirection: 'column',
+          display: 'flex', flexDirection: 'column',
           boxShadow: '0 -8px 30px rgba(0,0,0,0.5)', animation: 'sheet-up 200ms ease',
         }}
       >
