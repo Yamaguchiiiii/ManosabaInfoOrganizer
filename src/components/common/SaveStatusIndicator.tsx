@@ -13,8 +13,8 @@ export const SaveStatusIndicator: React.FC = () => {
     if (status === 'idle') return null;
 
     const map = {
-        pending: { text: '…変更あり', color: '#888' },
-        saving: { text: '…保存中', color: '#888' },
+        pending: { text: '…変更あり', color: 'var(--text-secondary)' },
+        saving: { text: '…保存中', color: 'var(--text-secondary)' },
         saved: { text: '✓ 保存済み', color: '#10b981' },
         error: { text: '⚠ 保存失敗', color: '#ef4444' },
     } as const;

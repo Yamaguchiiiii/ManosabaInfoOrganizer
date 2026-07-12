@@ -37,7 +37,7 @@ export const ContextBar: React.FC = () => {
       onClick={(e) => void selectIcon(icon, e.shiftKey)}
       style={{
         width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover',
-        border: isSelected ? '2px solid rgba(255,255,255,0.75)' : '2px solid transparent',
+        border: isSelected ? '2px solid var(--text-primary)' : '2px solid transparent',
         opacity: isSelected ? 1 : 0.7, cursor: 'pointer', transition: 'all 0.1s',
         transform: isSelected ? 'scale(1.1)' : 'scale(1)',
       }}
@@ -53,6 +53,10 @@ export const ContextBar: React.FC = () => {
         )}
         <span className="context-bar-title">{breadcrumb}</span>
       </div>
+
+      {/* 0711 #4: Note の選択中オブジェクト操作バーの portal 先。選択が無い間は空で高さに影響しない。
+          Create は progress-chip(context-bar-center)と共存できないため描画しない。 */}
+      {mode !== 'create' && <div id="context-bar-selection-slot" className="context-bar-selection" />}
 
       {mode === 'create' && (
         <div className="context-bar-center">

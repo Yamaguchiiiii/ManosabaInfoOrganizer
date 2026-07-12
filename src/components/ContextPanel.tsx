@@ -86,8 +86,8 @@ export const ContextPanel: React.FC = React.memo(() => {
                   onClick={() => setSkullMode(!isSkullMode)}
                   style={{
                     background: isSkullMode ? 'var(--danger, #ef4444)' : 'transparent',
-                    border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
-                    color: isSkullMode ? 'white' : '#666', fontSize: '1rem',
+                    border: '1px solid var(--border-strong)', borderRadius: '4px', cursor: 'pointer',
+                    color: isSkullMode ? 'white' : 'var(--text-disabled)', fontSize: '1rem',
                     padding: '2px 6px', lineHeight: 1, transition: 'all 0.2s'
                   }}
                   title="Toggle Death Mode"
@@ -123,7 +123,7 @@ export const ContextPanel: React.FC = React.memo(() => {
                         backgroundColor: 'var(--success, #10b981)', borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '9px', color: 'white', fontWeight: 'bold',
-                        border: '1px solid #1e1e1e', zIndex: 10
+                        border: '1px solid var(--surface-1)', zIndex: 10
                       }}>✓</div>
                     )}
                     {isSelected && selectedIcons.length > 1 && (
@@ -140,14 +140,14 @@ export const ContextPanel: React.FC = React.memo(() => {
                   <span>イベント</span>
                   {eventFilterChar && (
                     <button onClick={() => setEventFilterChar(null)} title="フィルタ解除"
-                      style={{ background: 'transparent', border: '1px solid #555', borderRadius: 4, color: '#aaa',
+                      style={{ background: 'transparent', border: '1px solid var(--border-strong)', borderRadius: 4, color: 'var(--text-secondary)',
                                cursor: 'pointer', fontSize: '0.7rem', padding: '2px 8px', lineHeight: 1 }}>
                       × 解除
                     </button>
                   )}
                 </div>
                 {eventFilterChar && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.72rem', color: '#aaa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                     <img src={`./icon/${eventFilterChar}`} style={{ width: 18, height: 18, borderRadius: '50%' }} alt="" />
                     {formatCharName(eventFilterChar)} のイベントのみ表示中
                   </div>
@@ -155,20 +155,20 @@ export const ContextPanel: React.FC = React.memo(() => {
                 <div style={{ maxHeight: '32vh', overflowY: 'auto' }}>
                   <EventList
                     events={eventFilterChar ? events.filter(e => e.charIds.includes(eventFilterChar)) : events}
-                    onJump={(t) => usePlaybackStore.getState().setCurrentTime(t)}
+                    onJump={(ev) => usePlaybackStore.getState().setCurrentTime(Math.max(0, ev.t))}
                   />
                 </div>
               </>
             )}
 
             {mode === 'create' && (
-              <div style={{ marginTop: '20px', padding: '10px', background: '#333', borderRadius: '4px' }}>
+              <div style={{ marginTop: '20px', padding: '10px', background: 'var(--surface-3)', borderRadius: '4px' }}>
                 <div className="section-title" style={{ marginTop: 0, marginBottom: '10px' }}>Create Tools</div>
                 <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.9rem' }}>
                   <input type="checkbox" checked={isGraphEditMode} onChange={(e) => setGraphEditMode(e.target.checked)} style={{ marginRight: '8px' }} />
                   Edit Map Graph
                 </label>
-                <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '5px' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '5px' }}>
                   Check to add nodes/edges.<br />Click blank: Add Node<br />Click Node: Connect Line<br />Right Click: Delete or Set Stair<br />Stair Nodes switch floor on click.
                 </div>
               </div>

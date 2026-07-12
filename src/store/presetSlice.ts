@@ -40,7 +40,9 @@ export const createPresetSlice: SliceCreator<PresetSlice> = (set) => ({
         const newId = `preset_${Date.now()}`;
         return { presets: [...state.presets, { id: newId, name: `Episode ${num}`, data: {}, deadIcons: [] }], activePresetId: newId };
     }),
-    setActivePresetId: (id) => set({ activePresetId: id }),
+    // プリセット切替時、前プリセットにしか居ないキャラでの絞り込みが残留すると
+    // 「イベントはありません」の原因が分からなくなるためクリアする（revise2 №32）
+    setActivePresetId: (id) => set({ activePresetId: id, eventFilterChar: null }),
     updatePresetName: (id, name) => set((state) => ({ presets: state.presets.map(p => p.id === id ? { ...p, name } : p) })),
     updatePresetNote: (id, note) => set((state) => ({ presets: state.presets.map(p => p.id === id ? { ...p, note } : p) })),
     deletePreset: (id) => set((state) => {
@@ -85,8 +87,22 @@ export const createPresetSlice: SliceCreator<PresetSlice> = (set) => ({
         presets: state.presets.map(p => {
             if (p.id !== presetId) return p;
             const newData = { ...p.data };
-            const timelineData: CharacterTimelineData = { path, startTime: startTIme, duration: computeDuration(path, state.nodes), waypoints, syncConstraints, startRef, showBeforeStart };
-            charIds.forEach(charId => { newData[charId] = timelineData; });
+            const duration = computeDuration(path, state.nodes);
+            // 各キャラへ独立したオブジェクトを持たせる（参照共有だと片方の変更がもう片方に波及する）。
+            // 合流相手に自分自身が入る自己参照も除去する（revise2 №8）。
+            charIds.forEach(charId => {
+                newData[charId] = {
+                    path: [...path],
+                    startTime: startTIme,
+                    duration,
+                    waypoints: waypoints.map(w => ({ ...w })),
+                    startRef: startRef ? { ...startRef } : startRef,
+                    syncConstraints: (syncConstraints ?? []).map(sc => ({
+                        ...sc, charIds: sc.charIds.filter(c => c !== charId),
+                    })).filter(sc => sc.charIds.length > 0),
+                    showBeforeStart,
+                };
+            });
             return { ...p, data: newData };
         })
     })),

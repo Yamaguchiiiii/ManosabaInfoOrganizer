@@ -5,6 +5,14 @@
 @use './components/waypoint-panel';
 @use './components/route-dock';
 
+// revise3 A-9: 手書きフォントを self-host する（旧: Google Fonts CDN 依存。
+// オフライン(Tauri)/CDN不調で描画が空白になる・見た目が環境で変わる問題の対策）。SIL OFL ライセンス。
+@font-face {
+    font-family: 'Yomogi';
+    src: url('/fonts/Yomogi-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+
 // 変数定義（値はトークンへ委譲。SCSSの color 関数を使わない箇所は CSS 変数を参照する）
 $bg-dark: var(--surface-1);
 $bg-sidebar: var(--surface-2);
@@ -12,7 +20,7 @@ $text-main: var(--text-secondary);
 $accent-color: var(--focus-strong);  // 選択/アクティブは既存の青(--focus-strong)を維持
 $border-color: var(--border-default);
 $hover-color: var(--surface-4);
-$active-bg: #37373d;
+$active-bg: var(--selected-bg);
 
 // 定数
 $max-sidebar-width: 250px;
@@ -114,10 +122,10 @@ body {
       .nav-rail-icon { font-size: 1.15rem; line-height: 1; }
       .nav-rail-label { font-size: 0.62rem; letter-spacing: 0.02em; }
 
-      &:hover { background: var(--surface-4); color: #fff; }
+      &:hover { background: var(--surface-4); color: var(--text-primary); }
       &.active {
         background: rgba(124, 92, 255, 0.15);
-        color: #fff;
+        color: var(--text-primary);
         box-shadow: inset 3px 0 0 var(--accent);
       }
     }
@@ -153,11 +161,11 @@ body {
         display: flex; align-items: center; justify-content: space-between;
         margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid $border-color;
 
-        .context-panel-title { font-size: 0.8rem; font-weight: bold; color: #ccc; }
+        .context-panel-title { font-size: 0.8rem; font-weight: bold; color: var(--text-secondary); }
         .collapse-btn {
-          background: transparent; border: 1px solid #555; border-radius: 4px;
-          color: #aaa; cursor: pointer; padding: 2px 7px; font-size: 0.75rem; line-height: 1;
-          &:hover { color: #fff; background: var(--surface-4); }
+          background: transparent; border: 1px solid var(--border-strong); border-radius: 4px;
+          color: var(--text-secondary); cursor: pointer; padding: 2px 7px; font-size: 0.75rem; line-height: 1;
+          &:hover { color: var(--text-primary); background: var(--surface-4); }
         }
       }
 
@@ -167,7 +175,7 @@ body {
         margin-top: 20px;
         margin-bottom: 10px;
         text-transform: uppercase;
-        color: #888;
+        color: var(--text-secondary);
         white-space: nowrap; // 文字が折り返されないようにする
       }
 
@@ -188,7 +196,7 @@ body {
 
         &.active {
           background-color: $active-bg;
-          color: white;
+          color: var(--text-primary);
           border-left: 3px solid $accent-color;
         }
       }
@@ -198,14 +206,14 @@ body {
         display: flex;
         flex-direction: column;
         margin-left: 20px; // インデント
-        border-left: 1px solid #555; // 縦線
+        border-left: 1px solid var(--border-strong); // 縦線
         margin-bottom: 10px;
 
         .sub-menu-item {
             position: relative;
             padding: 6px 10px 6px 15px; // 左パディングを増やして線と文字の間隔を空ける
             font-size: var(--dynamic-font-size-base);
-            color: #aaa;
+            color: var(--text-secondary);
             cursor: pointer;
             transition: all 0.2s;
             white-space: nowrap;
@@ -218,11 +226,11 @@ body {
                 left: 0;
                 width: 10px; // 線の長さ
                 height: 1px;
-                background-color: #555;
+                background-color: var(--border-strong);
             }
 
             &:hover {
-                color: #fff;
+                color: var(--text-primary);
                 background-color: rgba(255, 255, 255, 0.05);
             }
 
@@ -321,16 +329,22 @@ body {
       .context-bar-left {
         display: flex; align-items: center; gap: 8px; flex-shrink: 0;
         .expand-btn {
-          background: transparent; border: 1px solid #555; border-radius: 4px;
-          color: #aaa; cursor: pointer; padding: 2px 7px; font-size: 0.75rem; line-height: 1;
-          &:hover { color: #fff; background: var(--surface-4); }
+          background: transparent; border: 1px solid var(--border-strong); border-radius: 4px;
+          color: var(--text-secondary); cursor: pointer; padding: 2px 7px; font-size: 0.75rem; line-height: 1;
+          &:hover { color: var(--text-primary); background: var(--surface-4); }
         }
-        .context-bar-title { font-size: 0.9rem; font-weight: bold; color: #ddd; white-space: nowrap; }
+        .context-bar-title { font-size: 0.9rem; font-weight: bold; color: var(--text-primary); white-space: nowrap; }
       }
 
       .context-bar-center {
         display: flex; align-items: center; gap: 12px;
         flex: 1; min-width: 0; overflow-x: auto;
+      }
+
+      // 0711 #4: Note の選択中オブジェクト操作バーの portal 先
+      .context-bar-selection {
+        flex: 1; min-width: 0; display: flex; align-items: center;
+        overflow-x: auto; overflow-y: hidden;
       }
 
       .context-bar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
@@ -340,14 +354,14 @@ body {
         padding: 2px 8px; border-radius: 15px; flex-shrink: 0;
         .chip-label { font-size: 0.7rem; font-weight: bold; }
         &.done { background: #1e3a2f; border: 1px solid var(--success, #10b981); .chip-label { color: var(--success, #10b981); } }
-        &.todo { background: #333; border: 1px solid #555; .chip-label { color: #888; } }
+        &.todo { background: var(--surface-3); border: 1px solid var(--border-strong); .chip-label { color: var(--text-secondary); } }
       }
     }
 
     .workspace {
       flex: 1;
       position: relative;
-      background-color: #111;
+      background-color: var(--surface-0);
       overflow: hidden;
 
       .konvajs-content {
@@ -379,11 +393,11 @@ body {
     user-select: none;
 
     .appbar-menu {
-      background: transparent; border: 1px solid #555; border-radius: 6px;
-      color: #ccc; font-size: 1.15rem; cursor: pointer; padding: 4px 11px; line-height: 1;
+      background: transparent; border: 1px solid var(--border-strong); border-radius: 6px;
+      color: var(--text-secondary); font-size: 1.15rem; cursor: pointer; padding: 4px 11px; line-height: 1;
       min-height: 34px;
     }
-    .appbar-title { font-weight: bold; color: #ddd; font-size: 0.95rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .appbar-title { font-weight: bold; color: var(--text-primary); font-size: 0.95rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .appbar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   }
 
@@ -414,7 +428,7 @@ body {
       .tab-icon { font-size: 1.3rem; line-height: 1; }
       .tab-label { font-size: 0.68rem; }
 
-      &.active { color: #fff; .tab-icon { filter: drop-shadow(0 0 6px var(--accent, #7c5cff)); } }
+      &.active { color: var(--text-primary); .tab-icon { filter: drop-shadow(0 0 6px var(--accent, #7c5cff)); } }
       &:disabled { opacity: 0.6; }
     }
   }
@@ -432,7 +446,7 @@ body {
   button {
     flex: 1;
     background: var(--surface-3);
-    border: 1px solid #555;
+    border: 1px solid var(--border-strong);
     color: var(--text-secondary);
     border-radius: 6px;
     padding: 8px 0;
@@ -443,7 +457,7 @@ body {
     &.active {
       background: rgba(124, 92, 255, 0.15);
       border-color: var(--accent);
-      color: #fff;
+      color: var(--text-primary);
     }
   }
 }
@@ -473,11 +487,20 @@ body {
     border-top: 1px solid var(--border-default);
 
     &.collapsed {
-      flex: 0 0 32px;
+      flex: 0 0 36px;   // 旧 32px。行に操作バー(32px)が入るため 36px に統一
+    }
+
+    // 0711_2 #2: 折りたたみボタン + 選択バーの1行（高さ固定でレイアウトを動かさない）
+    .note-collapse-row {
+      flex: 0 0 36px;
+      display: flex;
+      align-items: stretch;
+      min-width: 0;
+      background: var(--surface-2);
     }
 
     .note-collapse-bar {
-      flex: 0 0 32px;
+      flex: 0 0 auto;   // 旧: flex: 0 0 32px（縦積み時代の名残）。幅は内容ぶんだけに
       background: var(--surface-2);
       border: none;
       color: var(--text-secondary);
@@ -485,6 +508,16 @@ body {
       text-align: left;
       padding: 0 12px;
       cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .note-selection-slot {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;                    // ボタンが多い時は横スクロール
+      -webkit-overflow-scrolling: touch;
     }
 
     .note-body {
@@ -497,9 +530,27 @@ body {
 
   .animate-mobile-playbar {
     flex-shrink: 0;
-    background: #222;
-    border-top: 1px solid #444;
+    background: var(--surface-3);
+    border-top: 1px solid var(--border-default);
     max-height: 34vh;
     overflow-y: auto;
   }
+}
+
+// タッチ環境ではボタン類の最小ヒット領域を 40px 角へ底上げ（revise3 B-8）
+@media (pointer: coarse) {
+    .char-sidebar .shapes-grid button,
+    .char-sidebar .tool-buttons > button { min-height: 40px; }
+    .note-selection-slot button, .note-selection-slot input[type='color'] { min-height: 32px; min-width: 32px; }
+    input[type='range'] { min-height: 32px; }   // つまみ自体の拡大は accent-color 依存で可
+}
+
+// Animate のイベント一覧（EventList）。hover はテーマ変数で（0711 #6 のセピア対応を兼ねる）
+.event-list-item {
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  &:hover { background: var(--surface-4); }
 }

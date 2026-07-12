@@ -11,6 +11,8 @@ export const TOUR_TARGETS = {
     helpButton: 'help-button',
     // ガイド付きチュートリアル（#06/30-2 hands-on）で使う追加ターゲット
     noteCharacterPicker: 'note-character-picker',
+    // モバイル: 上部バーの ☰（文脈シートを開くボタン）。0711_2 #3
+    mobileMenu: 'mobile-menu',
 } as const;
 
 export type TourTargetId = (typeof TOUR_TARGETS)[keyof typeof TOUR_TARGETS];

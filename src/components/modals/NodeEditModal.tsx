@@ -30,7 +30,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#333', padding: '20px', borderRadius: '8px', width: '300px', color: 'white' }}>
+      <div style={{ background: 'var(--surface-3, #333)', padding: '20px', borderRadius: '8px', width: '300px', color: 'var(--text-primary, #fff)' }}>
         <h3>Edit Node</h3>
         
         <div style={{ marginBottom: '15px' }}>
@@ -68,7 +68,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button onClick={onDelete} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
-          <button onClick={onClose} style={{ background: '#666', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={onClose} style={{ background: 'var(--surface-4, #666)', color: 'var(--text-primary, #fff)', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
           {/* ▼▼▼ 修正: ここで name を第3引数として渡す必要があります ▼▼▼ */}
           <button onClick={() => onSave(type, floor, name)} style={{ background: '#007acc', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
         </div>

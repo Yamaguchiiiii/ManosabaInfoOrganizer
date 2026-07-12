@@ -50,7 +50,7 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({ open, steps, onClo
         const switching = step.mode && useAppStore.getState().mode !== step.mode;
         if (switching && step.mode) setMode(step.mode);
         // 遅延マウントする対象（操作盤やCanvas）にも追従するよう、複数回リトライ計測する。
-        const delays = switching ? [380, 600, 900, 1300] : [0, 120, 400, 800];
+        const delays = switching ? [380, 600, 900, 1300, 2000, 3000] : [0, 120, 400, 800];
         delays.forEach(d => timers.push(setTimeout(() => measure(), d)));
         return () => timers.forEach(clearTimeout);
     }, [open, index, step, setMode, measure]);
@@ -107,7 +107,7 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({ open, steps, onClo
             <div
                 style={{
                     position: 'absolute', top: cardTop, left: cardLeft, width: CARD_W,
-                    background: '#252526', color: '#e6e6e6',
+                    background: 'var(--surface-2)', color: 'var(--text-primary)',
                     border: '1px solid #007acc', borderRadius: 12,
                     boxShadow: '0 12px 40px rgba(0,0,0,0.55)', padding: 16,
                 }}
@@ -115,13 +115,13 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({ open, steps, onClo
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                     <div style={{ display: 'flex', gap: 5 }}>
                         {steps.map((_, i) => (
-                            <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: i === index ? '#007acc' : '#555' }} />
+                            <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: i === index ? '#007acc' : 'var(--border-strong)' }} />
                         ))}
                     </div>
-                    <span style={{ fontSize: '0.75rem', color: '#888' }}>{index + 1} / {steps.length}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{index + 1} / {steps.length}</span>
                 </div>
-                <div style={{ fontWeight: 'bold', fontSize: '1rem', marginBottom: 6, color: '#fff' }}>{step.title}</div>
-                <div style={{ fontSize: '0.85rem', lineHeight: 1.6, color: '#cfcfcf' }}>{step.body}</div>
+                <div style={{ fontWeight: 'bold', fontSize: '1rem', marginBottom: 6, color: 'var(--text-primary)' }}>{step.title}</div>
+                <div style={{ fontSize: '0.85rem', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{step.body}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
                     <button onClick={onClose} style={btnGhost}>スキップ</button>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -136,7 +136,7 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({ open, steps, onClo
 };
 
 const btnGhost: React.CSSProperties = {
-    background: 'transparent', border: '1px solid #555', color: '#bbb',
+    background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)',
     padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem',
 };
 const btnPrimary: React.CSSProperties = {

@@ -203,6 +203,7 @@ export const CreateView: React.FC<CreateViewProps> = ({
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
+          if (useAppStore.getState().dialog) return; // ダイアログ表示中は背後のUndo等を無効化（revise2 №29）
           if ((e.ctrlKey || e.metaKey) && e.key === 'z' && isGraphEditMode) { e.preventDefault(); undo(); }
           if (e.key === 'Escape' && isGraphEditMode && connectingNodeId) {
               setConnectingNodeId(null);
@@ -424,6 +425,26 @@ export const CreateView: React.FC<CreateViewProps> = ({
                         onHover={setActiveFloor}
                     />
                 </div>
+                {/* 0711 #7: オーバーレイをやめ通常フローの下ペインに。マップは上ペインで常時可視 */}
+                <WaypointPanel
+                    isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
+                    highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
+                    waypoints={waypoints}
+                    suggestionTargetIndex={suggestionTargetIndex}
+                    startRef={startRef} setStartRef={setStartRef}
+                    showBeforeStart={showBeforeStart} setShowBeforeStart={setShowBeforeStart}
+                    startRefCharOptions={startRefCharOptions} startRefNodeOptions={startRefNodeOptions}
+                    handleWaypointChange={handleWaypointChange} setSuggestionTargetIndex={setSuggestionTargetIndex}
+                    handleSyncTime={handleSyncTime} handleRemoveWaypoint={handleRemoveWaypoint}
+                    handleAddWaypoint={handleAddWaypoint} handleSavePath={handleSavePath}
+                    handleEditPath={handleEditPath} handleDeletePath={handleDeletePath}
+                    syncConstraints={syncConstraints}
+                    onRemoveSyncConstraint={handleRemoveSyncConstraint}
+                    variant="dock"
+                    matchedNodes={matchedNodes}
+                    otherNodes={otherNodes}
+                    handleSelectSuggestion={handleSelectSuggestion}
+                />
             </div>
         ) : (
             /* 4ペイン(2x2): Animateと同じ配置。各ペインが自前のStage/ズームを持ち、
@@ -444,25 +465,6 @@ export const CreateView: React.FC<CreateViewProps> = ({
             </div>
         )}
 
-        {/* U1: デスクトップは右のRouteDockに統合。モバイルは20.md #5のbottom variantを継続。 */}
-        {isMobile && (
-            <WaypointPanel
-                isGraphEditMode={isGraphEditMode} selectedIcons={selectedIcons}
-                highlightedPath={displayPath} savedPathData={savedPathData} isEditing={isEditing}
-                waypoints={waypoints}
-                suggestionTargetIndex={suggestionTargetIndex}
-                startRef={startRef} setStartRef={setStartRef}
-                showBeforeStart={showBeforeStart} setShowBeforeStart={setShowBeforeStart}
-                startRefCharOptions={startRefCharOptions} startRefNodeOptions={startRefNodeOptions}
-                handleWaypointChange={handleWaypointChange} setSuggestionTargetIndex={setSuggestionTargetIndex}
-                handleSyncTime={handleSyncTime} handleRemoveWaypoint={handleRemoveWaypoint}
-                handleAddWaypoint={handleAddWaypoint} handleSavePath={handleSavePath}
-                handleEditPath={handleEditPath} handleDeletePath={handleDeletePath}
-                syncConstraints={syncConstraints}
-                onRemoveSyncConstraint={handleRemoveSyncConstraint}
-                variant="bottom"
-            />
-        )}
       </div>
 
       {!isMobile && (

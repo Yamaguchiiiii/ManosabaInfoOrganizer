@@ -57,7 +57,7 @@ export const DialogHost: React.FC = () => {
                 }}
             >
                 {dialog.title && (
-                    <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem', color: '#fff' }}>{dialog.title}</h3>
+                    <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem', color: 'var(--text-primary, #fff)' }}>{dialog.title}</h3>
                 )}
                 <p style={{ margin: '0 0 20px', fontSize: '0.92rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                     {dialog.message}

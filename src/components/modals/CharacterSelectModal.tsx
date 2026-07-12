@@ -48,7 +48,7 @@ export const CharacterSelectModal: React.FC<CharacterSelectModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         style={{ width: '500px', maxWidth: '90vw' }}
       >
-        <h3 style={{ color: 'white', borderBottom: '1px solid #444', paddingBottom: '10px', marginBottom: '20px' }}>
+        <h3 style={{ color: 'var(--text-primary, #fff)', borderBottom: '1px solid var(--border-strong, #444)', paddingBottom: '10px', marginBottom: '20px' }}>
             {isMultiSelect ? "Select Characters (Batch Save)" : "Select Character"}
         </h3>
         
@@ -104,25 +104,25 @@ export const CharacterSelectModal: React.FC<CharacterSelectModalProps> = ({
         </div>
 
         <div className="modal-actions" style={{ marginTop: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: '0.9rem', color: '#ccc'}}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #ccc)'}}>
                 {isMultiSelect ? `${selectedIcons.length} characters selected` : ""}
             </div>
             <div style={{ display: 'flex', gap: '10px'}}>
-                <button 
-                    className="btn-cancel" 
+                <button
+                    className="btn-cancel"
                     onClick={onClose}
-                    style={{ background: 'transparent', border: '1px solid #555', color: '#ccc', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
+                    style={{ background: 'transparent', border: '1px solid var(--border-strong, #555)', color: 'var(--text-secondary, #ccc)', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                 >
                     Cancel
                 </button>
                 {isMultiSelect && (
-                    <button 
-                        className="btn-save" 
+                    <button
+                        className="btn-save"
                         onClick={handleConfirm}
                         disabled={selectedIcons.length === 0}
-                        style={{ 
-                            background: selectedIcons.length === 0 ? '#444' : '#007acc', 
-                            color: 'white', border: 'none', padding: '8px 20px', borderRadius: '4px', 
+                        style={{
+                            background: selectedIcons.length === 0 ? 'var(--surface-4, #444)' : '#007acc',
+                            color: 'white', border: 'none', padding: '8px 20px', borderRadius: '4px',
                             cursor: selectedIcons.length === 0 ? 'not-allowed' : 'pointer',
                             fontWeight: 'bold'
                         }}

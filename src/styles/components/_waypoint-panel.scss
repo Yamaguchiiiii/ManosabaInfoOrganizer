@@ -36,6 +36,23 @@
     }
   }
 
+  // 0711 #7: モバイルCreateの2ペイン化。オーバーレイをやめ、マップと縦に並ぶ通常フローの下ペイン。
+  &--dock {
+    position: static;
+    flex: 0 0 auto;
+    max-height: 48%;      // 展開時も上ペイン(マップ)を最低半分残す
+    overflow-y: auto;
+    max-width: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+
+    &.is-collapsed {
+      max-height: none;   // ヘッダ1行のみ
+    }
+  }
+
   // 数値入力のスピンボタンを消す（旧: コンポーネント内 <style> タグ）
   input[type='number']::-webkit-inner-spin-button,
   input[type='number']::-webkit-outer-spin-button {

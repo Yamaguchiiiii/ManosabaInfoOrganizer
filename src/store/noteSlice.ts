@@ -48,6 +48,13 @@ const updateCanvasState = (
     return { notes: newNotes };
 };
 
+// 対象キャンバスを読むだけのセレクタ（存在チェック用・updateCanvasState と同じ解決規則）revise3 A-4
+const readCanvas = (state: AppState, targetType: NoteTargetType, targetId: string): CanvasState | undefined =>
+    targetType === 'overview' ? state.notes.overviewCanvas
+    : targetType === 'preset' ? (state.notes.presets || {})[targetId]
+    : targetType === 'character' ? (state.notes.characters || {})[targetId]
+    : state.notes.miscPages?.find(p => p.id === targetId)?.canvas;
+
 export interface NoteSlice {
     notes: NoteData;
     noteHistory: NoteData[];
@@ -128,11 +135,15 @@ export const createNoteSlice: SliceCreator<NoteSlice> = (set, get) => ({
     },
     updateNoteObject: (targetType, targetId, objId, attrs, skipHistory = false) => {
         if (!get()._hasHydrated) return;
+        // revise3 A-4: 対象が存在しないなら履歴も state 更新も行わない（空 undo ステップ防止）
+        if (!readCanvas(get(), targetType, targetId)?.objects.some(o => o.id === objId)) return;
         if (!skipHistory) get().saveNoteHistory();
         set((state) => updateCanvasState(state, targetType, targetId, (canvas) => ({ ...canvas, objects: canvas.objects.map(o => o.id === objId ? { ...o, ...attrs } : o) })));
     },
     updateNoteObjects: (targetType, targetId, updates, skipHistory = false) => {
         if (!get()._hasHydrated) return;
+        const ids = updates.map(u => u.id);
+        if (!readCanvas(get(), targetType, targetId)?.objects.some(o => ids.includes(o.id))) return;
         if (!skipHistory) get().saveNoteHistory();
         set((state) => updateCanvasState(state, targetType, targetId, (canvas) => {
             const newObjects = canvas.objects.map(o => {
@@ -144,13 +155,16 @@ export const createNoteSlice: SliceCreator<NoteSlice> = (set, get) => ({
     },
     removeNoteObject: (targetType, targetId, objId) => {
         if (!get()._hasHydrated) return;
+        if (!readCanvas(get(), targetType, targetId)?.objects.some(o => o.id === objId)) return;
         get().saveNoteHistory();
         set((state) => updateCanvasState(state, targetType, targetId, (canvas) => ({ ...canvas, objects: canvas.objects.filter(o => o.id !== objId) })));
     },
     removeNoteObjects: (targetType, targetId, objIds) => {
         if (!get()._hasHydrated) return;
+        const canvas = readCanvas(get(), targetType, targetId);
+        if (!canvas || !canvas.objects.some(o => objIds.includes(o.id))) return;  // 変更なし→履歴も積まない
         get().saveNoteHistory();
-        set((state) => updateCanvasState(state, targetType, targetId, (canvas) => ({ ...canvas, objects: canvas.objects.filter(o => !objIds.includes(o.id)) })));
+        set((state) => updateCanvasState(state, targetType, targetId, (c) => ({ ...c, objects: c.objects.filter(o => !objIds.includes(o.id)) })));
     },
     addNoteAsset: (targetType, targetId, asset) => {
         if (!get()._hasHydrated) return;
@@ -182,18 +196,30 @@ export const createNoteSlice: SliceCreator<NoteSlice> = (set, get) => ({
     },
     reorderNoteObject: (targetType, targetId, objId, direction) => {
         if (!get()._hasHydrated) return;
+        const canvas0 = readCanvas(get(), targetType, targetId);
+        const idx0 = canvas0?.objects.findIndex(o => o.id === objId) ?? -1;
+        if (!canvas0 || idx0 === -1) return;
         get().saveNoteHistory();
-        set((state) => updateCanvasState(state, targetType, targetId, (canvas) => {
-            const objs = [...canvas.objects];
-            const idx = objs.findIndex(o => o.id === objId);
-            if (idx === -1) return canvas;
-            const [item] = objs.splice(idx, 1);
-            if (direction === 'front') objs.push(item);
-            else if (direction === 'back') objs.unshift(item);
-            else if (direction === 'up' && idx < objs.length) objs.splice(idx + 1, 0, item);
-            else if (direction === 'down' && idx > 0) objs.splice(idx - 1, 0, item);
-            else objs.splice(idx, 0, item);
-            return { ...canvas, objects: objs };
+        set((state) => updateCanvasState(state, targetType, targetId, (c) => {
+            const objs = [...c.objects];
+            const i = objs.findIndex(o => o.id === objId);
+            if (i === -1) return c;
+            // revise3 A-6: objects は4ペイン分が混載しているため、隣接要素が別ペインだと
+            // 描画順が変わらず「効かない」ように見える。同一ペイン内の前後要素を基準に移動する。
+            const pane = objs[i].canvasIndex || 0;
+            const [item] = objs.splice(i, 1);
+            if (direction === 'front') { objs.push(item); return { ...c, objects: objs }; }
+            if (direction === 'back') { objs.unshift(item); return { ...c, objects: objs }; }
+            if (direction === 'up') {
+                let j = i; // splice 後、旧 i 位置以降が「自分より後ろ」
+                while (j < objs.length && (objs[j].canvasIndex || 0) !== pane) j++;
+                objs.splice(Math.min(j + 1, objs.length), 0, item);
+            } else {
+                let j = i - 1;
+                while (j >= 0 && (objs[j].canvasIndex || 0) !== pane) j--;
+                objs.splice(Math.max(j, 0), 0, item);
+            }
+            return { ...c, objects: objs };
         }));
     },
 

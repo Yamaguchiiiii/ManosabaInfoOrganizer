@@ -37,8 +37,8 @@ export const NoteSearchBox: React.FC = () => {
                 title="ノートを検索"
                 aria-label="ノートを検索"
                 style={{
-                    background: open ? 'rgba(102,179,255,0.2)' : 'transparent', border: '1px solid #555',
-                    borderRadius: '4px', color: open ? '#66b3ff' : '#ccc', padding: '4px 8px', cursor: 'pointer', fontSize: '0.9rem',
+                    background: open ? 'rgba(102,179,255,0.2)' : 'transparent', border: '1px solid var(--border-strong)',
+                    borderRadius: '4px', color: open ? 'var(--focus)' : 'var(--text-secondary)', padding: '4px 8px', cursor: 'pointer', fontSize: '0.9rem',
                 }}
             >
                 🔍
@@ -46,7 +46,7 @@ export const NoteSearchBox: React.FC = () => {
             {open && (
                 <div style={{
                     position: 'absolute', top: 'calc(100% + 6px)', right: 0, width: '280px', maxWidth: '85vw', maxHeight: '360px',
-                    background: '#1e1e1e', border: '1px solid #444', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    background: 'var(--surface-1)', border: '1px solid var(--border-strong)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                     zIndex: 6000, display: 'flex', flexDirection: 'column', overflow: 'hidden',
                 }}>
                     <input
@@ -54,20 +54,20 @@ export const NoteSearchBox: React.FC = () => {
                         value={query}
                         onChange={e => setQuery(e.target.value)}
                         placeholder="ノート内のテキストを検索..."
-                        style={{ background: '#2a2a2a', border: 'none', borderBottom: '1px solid #444', color: 'white', padding: '10px 12px', fontSize: '0.85rem', outline: 'none' }}
+                        style={{ background: 'var(--surface-3)', border: 'none', borderBottom: '1px solid var(--border-strong)', color: 'var(--text-primary)', padding: '10px 12px', fontSize: '0.85rem', outline: 'none' }}
                     />
                     {query.trim() !== '' && (
                         <div style={{ overflowY: 'auto', maxHeight: '300px' }}>
                             {hits.length === 0 ? (
-                                <div style={{ padding: '14px 12px', color: '#777', fontSize: '0.8rem', textAlign: 'center' }}>見つかりません</div>
+                                <div style={{ padding: '14px 12px', color: 'var(--text-disabled)', fontSize: '0.8rem', textAlign: 'center' }}>見つかりません</div>
                             ) : hits.map((hit, i) => (
                                 <div
                                     key={`${hit.targetType}-${hit.targetId}-${hit.objId ?? i}`}
                                     onClick={() => handleSelect(hit)}
-                                    style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #2a2a2a' }}
+                                    style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--surface-3)' }}
                                 >
-                                    <div style={{ fontSize: '0.7rem', color: '#66b3ff', marginBottom: 2 }}>{hit.title}</div>
-                                    <div style={{ fontSize: '0.8rem', color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hit.snippet}</div>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--focus)', marginBottom: 2 }}>{hit.title}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hit.snippet}</div>
                                 </div>
                             ))}
                         </div>

@@ -27,8 +27,8 @@ export const LoadingScreen: React.FC<{ text?: string; overlay?: boolean; visible
                 alignItems: 'center',
                 height: overlay ? undefined : '100vh',
                 width: overlay ? undefined : '100vw',
-                backgroundColor: '#1e1e1e',
-                color: '#ccc',
+                backgroundColor: 'var(--surface-1, #1e1e1e)',
+                color: 'var(--text-secondary, #ccc)',
                 fontFamily: 'monospace',
                 gap: '24px',
                 zIndex: 4000, // DialogHost(zIndex:5000) より下、コンテンツより上

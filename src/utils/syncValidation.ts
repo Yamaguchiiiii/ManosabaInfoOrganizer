@@ -68,6 +68,50 @@ export const validatePresetSync = (
 
     // 3. 物理的に不可能な合流（区間の要求速度が通常の3倍超）
     const resolved = resolveStartTimes(data, nodes);
+
+    // 3a. 過去向きの合流（アンカーが無効化される制約）を error で明示。0711 最重要3
+    charIds.forEach(id => {
+        const syncs = data[id].syncConstraints;
+        if (!syncs || syncs.length === 0) return;
+        const cd = { ...data[id], startTime: resolved[id] ?? data[id].startTime ?? 0 };
+        const cached = precomputePath(cd.path, nodes);
+        const mapped = syncs.map(sc => {
+            const occ = sc.occurrence ?? 0;
+            let count = 0, idx = -1;
+            for (let i = 0; i < cached.pathNodes.length; i++) {
+                if (cached.pathNodes[i].id === sc.waypointId) { if (count === occ) { idx = i; break; } count++; }
+            }
+            if (idx === -1) idx = cached.pathNodes.findIndex(n => n.id === sc.waypointId);
+            return { idx, sc };
+        }).filter(m => m.idx > 0).sort((a, b) => a.idx - b.idx);
+        let prevTime = cd.startTime ?? 0;
+        let prevCum = 0;
+        for (const { idx, sc } of mapped) {
+            const cum = cached.cumulative[idx] ?? cached.totalDistance;
+            if (cum <= prevCum + 0.001) continue;
+            if (sc.meetingTime <= prevTime) {
+                issues.push({ level: 'error', charId: id,
+                    message: `「${sc.waypointName}」の合流時刻(${Math.round(sc.meetingTime)}fr)が直前の予定より過去のため無効化されます。syncを設定し直してください。` });
+                continue;
+            }
+            prevTime = sc.meetingTime; prevCum = cum;
+        }
+    });
+
+    // 3b. 合流時刻に相手が地点に居ない（相手の経路を後から変えた場合のスタレ検出を兼ねる）
+    charIds.forEach(id => {
+        (data[id].syncConstraints || []).forEach(sc => {
+            sc.charIds.forEach(cid => {
+                if (!data[cid]) return; // 参照切れは既存チェック(2)が出す
+                const visits = getNodeVisitTimes({ ...data[cid], startTime: resolved[cid] ?? data[cid].startTime ?? 0 }, sc.waypointId, nodes);
+                const TOL = 60; // 1秒の許容
+                const ok = visits.some(v => sc.meetingTime >= v.arrival - TOL && sc.meetingTime <= v.departure + TOL);
+                if (!ok) issues.push({ level: 'warn', charId: id,
+                    message: `「${sc.waypointName}」の合流時刻に ${formatCharName(cid)} はその地点に居ません（相手の経路が変わった可能性）。` });
+            });
+        });
+    });
+
     charIds.forEach(id => {
         const cd = { ...data[id], startTime: resolved[id] ?? data[id].startTime ?? 0 };
         const cached = precomputePath(cd.path, nodes);

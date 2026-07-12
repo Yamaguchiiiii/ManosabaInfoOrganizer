@@ -27,8 +27,8 @@ export const FollowConfirmModal: React.FC<{
 
     return (
         <div className="modal-overlay" style={{ zIndex: 2000, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div className="modal-content" style={{ backgroundColor: '#1e1e1e', padding: '20px', borderRadius: '8px', border: '1px solid #444', width: '450px', maxWidth: '90vw', color: '#ccc' }}>
-                <h3 style={{ marginTop: 0, borderBottom: '1px solid #444', paddingBottom: '10px', color: '#fff' }}>
+            <div className="modal-content" style={{ backgroundColor: 'var(--surface-1, #1e1e1e)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border-strong, #444)', width: '450px', maxWidth: '90vw', color: 'var(--text-secondary, #ccc)' }}>
+                <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border-strong, #444)', paddingBottom: '10px', color: 'var(--text-primary, #fff)' }}>
                     行動を共にする (Sync & Follow)
                 </h3>
                 <p style={{ fontSize: '0.95rem', lineHeight: 1.5 }}>
@@ -37,8 +37,8 @@ export const FollowConfirmModal: React.FC<{
                     共にする場合は、どこまで同行するか選択してください。
                 </p>
 
-                <div style={{ maxHeight: '200px', overflowY: 'auto', margin: '15px 0', border: '1px solid #444', borderRadius: '4px', padding: '10px', background: '#252526' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', padding: '8px', cursor: 'pointer', borderBottom: '1px solid #333' }}>
+                <div style={{ maxHeight: '200px', overflowY: 'auto', margin: '15px 0', border: '1px solid var(--border-strong, #444)', borderRadius: '4px', padding: '10px', background: 'var(--surface-2, #252526)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', padding: '8px', cursor: 'pointer', borderBottom: '1px solid var(--border-default, #333)' }}>
                         <input
                             type="radio"
                             name="follow"
@@ -49,7 +49,7 @@ export const FollowConfirmModal: React.FC<{
                         <span>同行しない（ここで別れる）</span>
                     </label>
                     {info.subsequentWaypoints.map((wp, i) => (
-                        <label key={i} style={{ display: 'flex', alignItems: 'center', padding: '8px', cursor: 'pointer', borderBottom: i === info.subsequentWaypoints.length - 1 ? 'none' : '1px solid #333' }}>
+                        <label key={i} style={{ display: 'flex', alignItems: 'center', padding: '8px', cursor: 'pointer', borderBottom: i === info.subsequentWaypoints.length - 1 ? 'none' : '1px solid var(--border-default, #333)' }}>
                             <input
                                 type="radio"
                                 name="follow"
@@ -63,7 +63,7 @@ export const FollowConfirmModal: React.FC<{
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                    <button onClick={onClose} style={{ background: '#444', border: '1px solid #555', color: 'white', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+                    <button onClick={onClose} style={{ background: 'var(--surface-4, #444)', border: '1px solid var(--border-strong, #555)', color: 'white', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
                         キャンセル
                     </button>
                     <button

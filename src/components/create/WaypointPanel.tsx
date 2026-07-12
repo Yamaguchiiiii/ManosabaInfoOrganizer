@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { Waypoint, SyncConstraint, StartRef } from '../../store';
+import { MapNode, Waypoint, SyncConstraint, StartRef } from '../../store';
 import { SEGMENT_COLORS } from '../../utils/mapDrawUtils';
+import { formatTime } from '../../utils/timeFormat';
+import { formatCharName } from '../../utils/charName';
+import { NodeCandidateList } from './NodeCandidateList';
 
 export type { SyncConstraint };
 
@@ -30,8 +33,13 @@ interface WaypointPanelProps {
     handleDeletePath: () => void;
     syncConstraints: SyncConstraint[];
     onRemoveSyncConstraint: (index: number) => void;
-    // モバイル/縦1x4では floating がマップに被るため、下部の折りたたみバーに切り替える（20.md #5）
-    variant?: 'floating' | 'bottom';
+    // モバイル/縦1x4では floating がマップに被るため、下部の折りたたみバーに切り替える（20.md #5）。
+    // dock: 0711 #7 の2ペイン化。オーバーレイをやめ通常フローの下ペインに置き、マップを常時可視にする。
+    variant?: 'floating' | 'bottom' | 'dock';
+    // dock 用: 地点入力の候補一覧（NodeCandidateList）を body 内に統合表示する
+    matchedNodes?: MapNode[];
+    otherNodes?: MapNode[];
+    handleSelectSuggestion?: (n: MapNode) => void;
 }
 
 export const WaypointPanel: React.FC<WaypointPanelProps> = ({
@@ -41,17 +49,21 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
     waypoints, suggestionTargetIndex, handleWaypointChange, setSuggestionTargetIndex,
     handleSyncTime, handleRemoveWaypoint, handleAddWaypoint,
     handleSavePath, handleEditPath, handleDeletePath,
-    syncConstraints, onRemoveSyncConstraint, variant = 'floating'
+    syncConstraints, onRemoveSyncConstraint, variant = 'floating',
+    matchedNodes = [], otherNodes = [], handleSelectSuggestion,
 }) => {
-    const [collapsed, setCollapsed] = useState(variant === 'bottom'); // bottom は既定折りたたみ
+    const [collapsed, setCollapsed] = useState(variant !== 'floating'); // bottom/dock は既定折りたたみ
 
     if (isGraphEditMode) return null;
     if (selectedIcons.length === 0 && highlightedPath.length === 0) return null;
 
+    const selectedNodeId = (suggestionTargetIndex !== null && waypoints[suggestionTargetIndex]) ? (waypoints[suggestionTargetIndex].id || "") : "";
+
     const rootClassName = [
         'waypoint-panel',
         variant === 'bottom' && 'waypoint-panel--bottom',
-        variant === 'bottom' && collapsed && 'is-collapsed',
+        variant === 'dock' && 'waypoint-panel--dock',
+        (variant === 'bottom' || variant === 'dock') && collapsed && 'is-collapsed',
         savedPathData && 'is-saved',
     ].filter(Boolean).join(' ');
 
@@ -70,9 +82,14 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                     {/* 開始条件（数値delayの代替）: 「基準キャラが地点に到達後 +N」 */}
                     <div className="waypoint-panel__start-condition">
                         <span className="waypoint-panel__start-condition-title">開始条件</span>
+                        {/* sync 設定中は resolveStartTimes が startRef を無視するため無効を明示する（revise2 №10） */}
+                        {syncConstraints.length > 0 && (
+                            <span className="waypoint-panel__start-condition-text">sync 設定中は開始時刻が合流で決まるため使えません</span>
+                        )}
                         <div className="waypoint-panel__start-condition-row">
                             <select
                                 className="waypoint-panel__select"
+                                disabled={syncConstraints.length > 0}
                                 value={startRef?.charId ?? ''}
                                 onChange={(e) => {
                                     const cid = e.target.value;
@@ -89,6 +106,7 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                     <span className="waypoint-panel__start-condition-text">が</span>
                                     <select
                                         className="waypoint-panel__select"
+                                        disabled={syncConstraints.length > 0}
                                         value={startRef.nodeId ? `${startRef.nodeId}#${startRef.occurrence}` : ''}
                                         onChange={(e) => {
                                             const v = e.target.value;
@@ -104,6 +122,7 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                     </select>
                                     <select
                                         className="waypoint-panel__select"
+                                        disabled={syncConstraints.length > 0}
                                         value={startRef.phase ?? 'arrival'}
                                         onChange={(e) => setStartRef({ ...startRef, phase: e.target.value as 'arrival' | 'departure' })}
                                     >
@@ -113,6 +132,7 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                     <input
                                         className="waypoint-panel__delay-input"
                                         type="number" min="0" value={startRef.extraDelay}
+                                        disabled={syncConstraints.length > 0}
                                         onChange={(e) => setStartRef({ ...startRef, extraDelay: parseFloat(e.target.value) || 0 })}
                                         onFocus={(e) => e.target.select()}
                                     />
@@ -174,6 +194,18 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                     })}
                     <button className="waypoint-panel__add-stop" onClick={handleAddWaypoint}>+ Add Stop</button>
 
+                    {/* dock: 地点入力にフォーカスがある間、候補一覧を body 内に自動展開する（0711 #7） */}
+                    {variant === 'dock' && suggestionTargetIndex !== null && handleSelectSuggestion && (
+                        <div style={{ maxHeight: '30vh', overflowY: 'auto' }}>
+                            <NodeCandidateList
+                                matchedNodes={matchedNodes}
+                                otherNodes={otherNodes}
+                                selectedNodeId={selectedNodeId}
+                                onSelect={handleSelectSuggestion}
+                            />
+                        </div>
+                    )}
+
                     {syncConstraints.length > 0 && (
                         <div className="waypoint-panel__sync-constraints">
                             <div className="waypoint-panel__sync-constraints-title">Sync Constraints:</div>
@@ -186,8 +218,11 @@ export const WaypointPanel: React.FC<WaypointPanelProps> = ({
                                             <span className="waypoint-panel__sync-name">
                                                 {sc.waypointName}
                                             </span>
-                                            <span className="waypoint-panel__sync-meta">
-                                                {Math.round(sc.meetingTime)}fr{sc.charIds.length > 0 && ` · ${sc.charIds.length}char`}
+                                            <span
+                                                className="waypoint-panel__sync-meta"
+                                                title={`${formatTime(Math.max(0, sc.meetingTime))} · ${sc.charIds.map(formatCharName).join('・')}${sc.occurrence !== undefined ? `（自分の${sc.occurrence + 1}回目の訪問）` : ''}`}
+                                            >
+                                                {formatTime(Math.max(0, sc.meetingTime))} · {sc.charIds.map(formatCharName).join('・')}
                                             </span>
                                         </div>
                                         {isAnchor && (

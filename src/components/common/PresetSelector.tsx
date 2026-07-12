@@ -33,7 +33,7 @@ export const PresetSelector: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <span style={{ fontSize: '0.85rem', color: '#888' }}>Timeline:</span>
+      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Timeline:</span>
       
       {isEditing ? (
         <input 
@@ -43,7 +43,7 @@ export const PresetSelector: React.FC = () => {
           onBlur={handleRenameSave}
           onKeyDown={(e) => { if (e.nativeEvent.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') handleRenameSave(); }}
           style={{ 
-            background: '#222', border: '1px solid #007acc', color: 'white', 
+            background: 'var(--surface-2)', border: '1px solid #007acc', color: 'var(--text-primary)', 
             padding: '4px 8px', borderRadius: '4px', outline: 'none', fontSize: '0.9rem'
           }}
         />
@@ -58,9 +58,9 @@ export const PresetSelector: React.FC = () => {
               }
           }}
           style={{
-              background: '#333',
-              color: 'white',
-              border: '1px solid #555',
+              background: 'var(--surface-3)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-strong)',
               padding: '4px 8px',
               borderRadius: '4px',
               fontSize: '0.9rem',
@@ -83,7 +83,7 @@ export const PresetSelector: React.FC = () => {
                   onClick={handleRenameStart}
                   title="Rename"
                   style={{
-                      background: 'transparent', border: 'none', color: '#aaa', 
+                      background: 'transparent', border: 'none', color: 'var(--text-secondary)', 
                       cursor: 'pointer', padding: '4px', fontSize: '1rem'
                   }}
               >
@@ -93,7 +93,7 @@ export const PresetSelector: React.FC = () => {
                   onClick={() => duplicatePreset(activePresetId)}
                   title="複製"
                   style={{
-                      background: 'transparent', border: 'none', color: '#aaa',
+                      background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                       cursor: 'pointer', padding: '4px', fontSize: '1rem'
                   }}
               >
@@ -104,7 +104,7 @@ export const PresetSelector: React.FC = () => {
                       onClick={handleDelete}
                       title="Delete"
                       style={{
-                          background: 'transparent', border: 'none', color: '#aaa', 
+                          background: 'transparent', border: 'none', color: 'var(--text-secondary)', 
                           cursor: 'pointer', padding: '4px', fontSize: '1rem'
                       }}
                   >

@@ -1,5 +1,5 @@
 import { MapNode } from '../store';
-import { getNodeVisitTimes, normalizeTimelineData } from './animationUtils';
+import { getNodeVisitTimesAnchored, normalizeTimelineData } from './animationUtils';
 
 // 遭遇（同室）自動検出（refactoring B-6）。
 // 「誰と誰がいつ同じ部屋に居たか」は本作の推理の核。各キャラの room 滞在区間を求め、
@@ -29,7 +29,9 @@ export const detectEncounters = (
         const cd = { ...base, startTime: resolvedStarts[charId] ?? base.startTime ?? 0 };
         const roomIds = [...new Set(cd.path)].filter(id => nodeMap[id]?.type === 'room');
         roomIds.forEach(nid => {
-            getNodeVisitTimes(cd, nid, nodes).forEach(v => {
+            // sync（アンカー）反映済みの時刻で滞在区間を計算する（revise2 №2: 旧は duration 按分で
+            // sync ありキャラの実際の同室判定とズレていた）
+            getNodeVisitTimesAnchored(cd, nid, nodes).forEach(v => {
                 (perNode[nid] ||= []).push({ charId, start: v.arrival, end: v.departure });
             });
         });

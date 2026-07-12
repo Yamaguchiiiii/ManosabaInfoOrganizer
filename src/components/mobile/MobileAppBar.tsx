@@ -2,6 +2,7 @@ import React from 'react';
 import { useAppStore } from '../../store';
 import { SaveStatusIndicator } from '../common/SaveStatusIndicator';
 import { NoteSearchBox } from '../common/NoteSearchBox';
+import { TOUR_TARGETS } from '../tutorial/tourTargets';
 
 interface MobileAppBarProps {
   onOpenContext: () => void;
@@ -22,7 +23,7 @@ export const MobileAppBar: React.FC<MobileAppBarProps> = ({ onOpenContext }) => 
 
   return (
     <header className="mobile-appbar">
-      <button className="appbar-menu" onClick={onOpenContext} title="メニュー" aria-label="メニュー">☰</button>
+      <button className="appbar-menu" data-tour={TOUR_TARGETS.mobileMenu} onClick={onOpenContext} title="メニュー" aria-label="メニュー">☰</button>
       <span className="appbar-title">{title}</span>
       <div className="appbar-right"><NoteSearchBox /><SaveStatusIndicator /></div>
     </header>

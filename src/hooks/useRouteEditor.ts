@@ -3,14 +3,17 @@ import {
     useAppStore, MapNode, MapEdge, Waypoint, StartRef, AnimationPreset, DialogRequest, computeDuration,
 } from '../store';
 import {
-    calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeArrivalOccurrences, resolveStartTimes,
+    calculateNodeArrivalTime, calculateArrivalTimeAtIndex, getNodeVisitOccurrences, resolveStartTimes,
+    precomputePath,
 } from '../utils/animationUtils';
+import { MOVEMENT_SPEED_PX_PER_SEC, TARGET_FPS } from '../constants';
 import { SyncConstraint } from '../components/create/WaypointPanel';
 import { FollowTargetInfo, FollowWaypoint } from '../components/create/FollowConfirmModal';
 import { MergeCandidate } from '../components/modals/MergeModal';
 import { setNavigationGuard } from '../services/navigationGuard';
 import { toast } from '../services/toast';
 import { validatePresetSync } from '../utils/syncValidation';
+import { formatCharName } from '../utils/charName';
 import { useWaypointPath } from './useWaypointPath';
 
 const floorOrder: Record<string, number> = { 'B1': 0, '1F': 1, '2F': 2 };
@@ -33,6 +36,22 @@ const resolveWaypointPathIndices = (path: string[], wps: Waypoint[]): number[] =
         if (idx !== -1) from = idx + 1;
     }
     return indices;
+};
+
+// sync 制約群から「アンカーにすべき制約」を選ぶ = 経路上で最も手前（pathIndex最小）のもの。
+// handleEditPath / handleRemoveSyncConstraint / handleMergeConfirm の3箇所で使う共通ロジック
+// （旧: 各所がバラバラに「制約先頭」を使っており、pathIndex が無いフォールバックで
+// startTime がずれていた。revise2 №6）
+const pickAnchorTarget = (constraints: SyncConstraint[], path: string[]): { waypointId: string; meetingTime: number; pathIndex: number } | null => {
+    if (constraints.length === 0) return null;
+    const idxOf = (sc: SyncConstraint) => {
+        const occ = sc.occurrence ?? 0; let cnt = 0;
+        for (let i = 0; i < path.length; i++) { if (path[i] === sc.waypointId) { if (cnt === occ) return i; cnt++; } }
+        return path.indexOf(sc.waypointId);
+    };
+    let earliest = constraints[0]; let earliestIdx = idxOf(earliest);
+    constraints.forEach(c => { const pi = idxOf(c); if (pi >= 0 && (earliestIdx < 0 || pi < earliestIdx)) { earliest = c; earliestIdx = pi; } });
+    return { waypointId: earliest.waypointId, meetingTime: earliest.meetingTime, pathIndex: earliestIdx };
 };
 
 interface UseRouteEditorArgs {
@@ -64,6 +83,10 @@ export const useRouteEditor = ({
     showConfirm, showAlert, showDialog, setConnectingNodeId,
 }: UseRouteEditorArgs) => {
     const pendingSaveResolveRef = useRef<((ok: boolean) => void) | null>(null);
+    // 最重要3: 自分の既存 sync 制約から求めた「今回の地点で許される合流時刻の範囲」。
+    // handleSyncTime で計算し、handleMergeConfirm の最終検証で使う。
+    const lowerBoundRef = useRef<number>(-Infinity);
+    const upperBoundRef = useRef<number>(Infinity);
 
     const [isCharModalOpen, setIsCharModalOpen] = useState(false);
     const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -329,14 +352,12 @@ export const useRouteEditor = ({
             setWaypoints([{ id: '', name: '', stayTime: 0 }, { id: '', name: '', stayTime: 0 }]);
         }
 
-        // 保存済みのSync制約を復元し、先頭をアンカーとしてsyncTargetに設定する
+        // 保存済みのSync制約を復元し、経路上で最も手前の制約をアンカーとしてsyncTargetに設定する
         const restoredConstraints: SyncConstraint[] = currentData.syncConstraints || [];
         setSyncConstraints(restoredConstraints);
-        if (restoredConstraints.length > 0) {
-            setSyncTarget({ waypointId: restoredConstraints[0].waypointId, meetingTime: restoredConstraints[0].meetingTime });
-        } else {
-            setSyncTarget(null);
-        }
+        const restoredPath = currentData.path || [];
+        const anchor = pickAnchorTarget(restoredConstraints, restoredPath);
+        setSyncTarget(anchor ? { waypointId: anchor.waypointId, meetingTime: anchor.meetingTime, pathIndex: anchor.pathIndex >= 0 ? anchor.pathIndex : undefined } : null);
         setStartTime(currentData.startTime || 0);
         setStartRef(currentData.startRef ? { ...currentData.startRef, phase: currentData.startRef.phase ?? 'arrival' } : null);
         setShowBeforeStart(currentData.showBeforeStart ?? true);
@@ -378,33 +399,82 @@ export const useRouteEditor = ({
 
         // 相手キャラの実開始時刻は startRef により動的に決まるため、保存済み startTime ではなく
         // 解決後の開始時刻で到達時刻を計算する（startRef を使う相手とも正しく合流できるように）。#sync-startref
-        const resolvedStarts = resolveStartTimes(activePreset.data, nodes);
+        //
+        // ただし resolveStartTimes が見るのは保存済みの activePreset.data のため、未保存の
+        // 編集中経路（今 sync しようとしている自分）は反映されない。その結果、自分を startRef で
+        // 参照する相手キャラの解決開始時刻が古いままになり、この地点での相手の到達/出発帯（feasible
+        // 判定）がズレて「その場では sync できないが、一度保存すると同じ地点で sync できる」不具合に
+        // なる。編集中の自分を保存後と同じ状態で重ねてから解決する。
+        const liveData: Record<string, unknown> = { ...activePreset.data };
+        if (selectedIcons.length > 0) {
+            const myLiveEntry = {
+                path: displayPath,
+                startTime,
+                duration: computeDuration(displayPath, nodes),
+                waypoints,
+                syncConstraints,
+                startRef: startRef ?? undefined,
+                showBeforeStart,
+            };
+            selectedIcons.forEach(cid => { liveData[cid] = myLiveEntry; });
+        }
+        const resolvedStarts = resolveStartTimes(liveData, nodes);
 
+        // 自分の既存 sync 制約から、今回の地点(myPathIndex)で許される合流時刻の範囲を求める。
+        // 手前の制約: その時刻 + 通常速度での移動時間より早くは着けない（下限）
+        // 後の制約:   そこへ通常速度で間に合う時刻まで（上限）
+        // 最初の sync（既存制約なし）は startTime 側が自由に動くため無制限。0711 最重要3
+        const spf = MOVEMENT_SPEED_PX_PER_SEC / TARGET_FPS;
+        const cached = precomputePath(displayPath, nodes);
+        const idxOfConstraint = (sc: SyncConstraint): number => {
+            const occ = sc.occurrence ?? 0; let cnt = 0;
+            for (let i = 0; i < displayPath.length; i++) {
+                if (displayPath[i] === sc.waypointId) { if (cnt === occ) return i; cnt++; }
+            }
+            return displayPath.indexOf(sc.waypointId);
+        };
+        let lowerBound = -Infinity, upperBound = Infinity;
+        if (myPathIndex >= 0) {
+            syncConstraints.forEach(sc => {
+                const i = idxOfConstraint(sc);
+                if (i < 0 || i === myPathIndex) return;
+                const dist = Math.abs((cached.cumulative[myPathIndex] ?? 0) - (cached.cumulative[i] ?? 0));
+                if (i < myPathIndex) lowerBound = Math.max(lowerBound, sc.meetingTime + dist / spf);
+                else upperBound = Math.min(upperBound, sc.meetingTime - dist / spf);
+            });
+        }
+        lowerBoundRef.current = lowerBound;
+        upperBoundRef.current = upperBound;
+
+        const deadIcons = activePreset.deadIcons || [];
         const candidates: MergeCandidate[] = [];
         Object.entries(activePreset.data).forEach(([cid, data]) => {
             if (selectedIcons.includes(cid)) return;
+            if (deadIcons.includes(cid)) return; // 死亡キャラは合流候補に出さない（revise2 №9）
             const resolvedStart = resolvedStarts[cid] ?? (data.startTime || 0);
             const cData = { ...data, startTime: resolvedStart };
-            // 相手キャラがこの地点を通る「全ての訪問」を取得し、自分の到達時刻に最も近い訪問を合流点に選ぶ。
-            // 従来は indexOf(最初の訪問)固定だったため、同一地点を複数回通る複雑Syncで時刻がずれていた。
-            // 最も近い訪問を選ぶことで、相手の他の予定（別Sync等）を壊しにくくなる。
-            const occurrences = getNodeArrivalOccurrences(cData, waypointId, nodes);
-            if (occurrences.length === 0) return;
-            let best = occurrences[0];
-            for (let k = 1; k < occurrences.length; k++) {
-                if (Math.abs(occurrences[k].arrival - myAbsArrival) < Math.abs(best.arrival - myAbsArrival)) {
-                    best = occurrences[k];
-                }
-            }
-            const currentStart = cData.startTime || 0;
-            candidates.push({
-                charId: cid,
-                arrivalTime: best.arrival,
-                currentStartTime: currentStart,
-                travelTime: best.arrival - currentStart,
-                data: cData,
-                pathIndex: best.pathIndex,
+            // 相手キャラがこの地点を通る「全ての訪問」を列挙し、自分の既存syncと両立できるか(feasible)を
+            // 判定した上でユーザーに選ばせる（旧: 最近接1件を自動選択していたため、実現不能な合流
+            // 「訪問はt=0の1回だけなのに自動選択され破綻」に気づけなかった。0711 症状5・最重要3）。
+            const visits = getNodeVisitOccurrences(cData, waypointId, nodes);
+            if (visits.length === 0) return;
+            const occurrences = visits.map(v => ({
+                ...v,
+                // 合流時刻 t は「P が着ける最早 = max(lowerBound, 相手到達)」以上。相手は必要なら W で
+                // 待てる（sync 相互化）ので、その t が P の上限（次の合流予定）以内なら合流可能。
+                // 相手が P より速く先に立ち去るケース（旧: 実現不能で弾いていた）も、相手側に「W で
+                // 待つ」制約を作って成立させる。相手が P の上限より後にしか来ない場合だけ不可。
+                feasible: Math.max(lowerBound, v.arrival) <= upperBound + 0.5,
+                // 相手が P の最早到達より前に立ち去る＝相手を待たせる必要がある訪問（UI 表示用）
+                needsWait: v.departure < lowerBound - 0.5,
+            }));
+            let defaultIndex = -1, bestDiff = Infinity;
+            occurrences.forEach((o, i) => {
+                if (!o.feasible) return;
+                const d = Math.abs(o.arrival - myAbsArrival);
+                if (d < bestDiff) { bestDiff = d; defaultIndex = i; }
             });
+            candidates.push({ charId: cid, occurrences, defaultIndex, myAbsArrival, data: cData });
         });
 
         if (!candidates.length) { showAlert(`「${waypointName}」を通る他のキャラクターが見つかりませんでした。`); return; }
@@ -415,18 +485,79 @@ export const useRouteEditor = ({
         setIsMergeModalOpen(true);
     };
 
-    const handleMergeConfirm = async (selectedIds: string[]) => {
-        const targets = mergeCandidates.filter(c => selectedIds.includes(c.charId));
-        if (targets.length === 0) {
+    const handleMergeConfirm = async (selected: { charId: string; pathIndex: number; arrival: number; departure: number }[]) => {
+        if (selected.length === 0) {
             setIsMergeModalOpen(false);
             return;
         }
 
-        if (!isEditing) setIsEditing(true);
+        // 全員が揃っていられる合流時刻 = 「各選択訪問の到達」と「自分が通常速度で着ける下限」の最大
+        let meetingTime = Math.max(...selected.map(s => s.arrival));
+        if (Number.isFinite(lowerBoundRef.current)) meetingTime = Math.max(meetingTime, lowerBoundRef.current);
 
-        // 「自分が相手(同行先)に合わせる」: 合流時刻は相手の到達時刻に揃える。相手は変更しない。
-        // 複数選択時は全員が揃う最も遅い到達に合わせる。#sync-startref
-        const meetingTime = Math.max(...targets.map(t => t.arrivalTime));
+        // P 自身が後の合流予定に間に合わなくなる場合だけ不可（上限）。
+        if (meetingTime > upperBoundRef.current + 0.5) {
+            await showAlert('この地点での合流時刻が、あなたの後の合流予定に間に合いません。訪問の選択を見直してください。', 'sync エラー');
+            return;
+        }
+
+        // sync 相互化: meetingTime に W へ居られない相手（P より先に立ち去る相手）には、相手側にも
+        // 「W で meetingTime まで待つ」合流制約を作って合流を成立させる。従来は「相手が先に通り過ぎる」
+        // ケースを実現不能として弾き、ユーザーが相手側を手動で時間合わせするまで sync できなかった。
+        // ただし相手が W より後に別の合流予定を持ち、待たせるとそれに間に合わなくなる場合は中断する
+        // （相手の既存予定は壊さない）。相手側の検証を全員通してから保存する（片側だけ保存を防止）。
+        const spf = MOVEMENT_SPEED_PX_PER_SEC / TARGET_FPS;
+        const reciprocalSaves: (() => void)[] = [];
+        for (const s of selected) {
+            if (meetingTime <= s.departure + 0.5) continue; // 相手は自然に居る → 待たせ不要
+            const qRaw = mergeCandidates.find(c => c.charId === s.charId)?.data;
+            if (!qRaw || !qRaw.path || qRaw.path.length === 0) continue;
+            const qPath = qRaw.path;
+            const qWaypoints = qRaw.waypoints || [];
+            const qCached = precomputePath(qPath, nodes);
+            const qOccurrence = qPath.slice(0, s.pathIndex).filter(id => id === mergeTargetWaypointId).length;
+            const existing = qRaw.syncConstraints || [];
+            const idxOfQ = (sc: SyncConstraint): number => {
+                const occ = sc.occurrence ?? 0; let cnt = 0;
+                for (let i = 0; i < qPath.length; i++) { if (qPath[i] === sc.waypointId) { if (cnt === occ) return i; cnt++; } }
+                return qPath.indexOf(sc.waypointId);
+            };
+            // 相手の「W より後」の既存合流に、W で待たせても通常速度で間に合うか
+            const blocked = existing.some(sc => {
+                const li = idxOfQ(sc);
+                if (li <= s.pathIndex) return false;
+                const dist = Math.abs((qCached.cumulative[li] ?? 0) - (qCached.cumulative[s.pathIndex] ?? 0));
+                return meetingTime + dist / spf > sc.meetingTime + 0.5;
+            });
+            if (blocked) {
+                await showAlert(`${formatCharName(s.charId)} はこの後に別の合流予定があり、ここで待たせると間に合いません。別の訪問を選ぶか、先に ${formatCharName(s.charId)} 側の予定を調整してください。`, 'sync エラー');
+                return;
+            }
+            const qConstraint: SyncConstraint = {
+                waypointId: mergeTargetWaypointId,
+                waypointName: mergeTargetWaypointName,
+                meetingTime,
+                charIds: [...selectedIcons],
+                occurrence: qOccurrence,
+            };
+            const ei = existing.findIndex(c => c.waypointId === mergeTargetWaypointId && (c.occurrence ?? 0) === qOccurrence);
+            const qConstraints = ei !== -1 ? existing.map((c, i) => i === ei ? qConstraint : c) : [...existing, qConstraint];
+            // 相手の開始時刻を「最も手前のアンカー」から解決し直す（P と同じ方式）
+            const qAnchor = pickAnchorTarget(qConstraints, qPath);
+            let qStartTime = qRaw.startTime ?? 0;
+            if (qAnchor) {
+                const tempQ = { path: qPath, startTime: 0, duration: computeDuration(qPath, nodes), waypoints: qWaypoints };
+                const tt = qAnchor.pathIndex >= 0
+                    ? calculateArrivalTimeAtIndex(tempQ, qAnchor.pathIndex, nodes)
+                    : calculateNodeArrivalTime(tempQ, qAnchor.waypointId, nodes);
+                if (tt !== null) qStartTime = qAnchor.meetingTime - tt;
+            }
+            const qValidWp = qWaypoints.filter(w => w.id !== '');
+            reciprocalSaves.push(() => saveCharacterAnimation(activePresetId, s.charId, qPath, qValidWp, qStartTime, qConstraints, qRaw.startRef ?? null, qRaw.showBeforeStart ?? true));
+        }
+        reciprocalSaves.forEach(fn => fn());
+
+        if (!isEditing) setIsEditing(true);
 
         // この合流が自経路の waypoint の何回目の訪問か（複数地点sync の時刻アンカー解決に使う）
         const myOccurrence = displayPath
@@ -437,7 +568,7 @@ export const useRouteEditor = ({
             waypointId: mergeTargetWaypointId,
             waypointName: mergeTargetWaypointName,
             meetingTime,
-            charIds: targets.map(t => t.charId),
+            charIds: selected.map(s => s.charId),
             occurrence: myOccurrence,
         };
         const existingIdx = syncConstraints.findIndex(c => c.waypointId === mergeTargetWaypointId && (c.occurrence ?? 0) === myOccurrence);
@@ -448,14 +579,8 @@ export const useRouteEditor = ({
 
         // 複数地点sync: 開始時刻は「最も手前の合流地点」に揃える（最初の区間は通常速度）。
         // それ以降の区間は Animate 側がアンカー間で速度を変えて各合流時刻を満たす。
-        const idxOf = (sc: SyncConstraint) => {
-            const occ = sc.occurrence ?? 0; let cnt = 0;
-            for (let i = 0; i < displayPath.length; i++) { if (displayPath[i] === sc.waypointId) { if (cnt === occ) return i; cnt++; } }
-            return displayPath.indexOf(sc.waypointId);
-        };
-        let earliest = nextConstraints[0]; let earliestIdx = idxOf(earliest);
-        nextConstraints.forEach(c => { const pi = idxOf(c); if (pi >= 0 && (earliestIdx < 0 || pi < earliestIdx)) { earliest = c; earliestIdx = pi; } });
-        setSyncTarget({ waypointId: earliest.waypointId, meetingTime: earliest.meetingTime, pathIndex: earliestIdx >= 0 ? earliestIdx : undefined });
+        const anchor = pickAnchorTarget(nextConstraints, displayPath);
+        setSyncTarget(anchor ? { waypointId: anchor.waypointId, meetingTime: anchor.meetingTime, pathIndex: anchor.pathIndex >= 0 ? anchor.pathIndex : undefined } : null);
 
         setIsMergeModalOpen(false);
 
@@ -470,17 +595,18 @@ export const useRouteEditor = ({
                 nodeId: mergeTargetWaypointId,
                 nodeName: mergeTargetWaypointName,
                 time: meetingTime,
-                charIds: [...selectedIcons, ...targets.map(t => t.charId)],
+                charIds: [...selectedIcons, ...selected.map(s => s.charId)],
             });
         }
 
-        const followTarget = targets[0];
-        const targetWaypoints: Waypoint[] = followTarget.data.waypoints || [];
-        const targetPath: string[] = followTarget.data.path || [];
+        const followTarget = selected[0];
+        const followData = mergeCandidates.find(c => c.charId === followTarget.charId)?.data;
+        const targetWaypoints: Waypoint[] = followData?.waypoints || [];
+        const targetPath: string[] = followData?.path || [];
 
-        // 合流地点は handleSyncTime で選んだ訪問（オカレンス）に揃える。
+        // 合流地点は handleSyncTime/MergeModal で選んだ訪問（オカレンス）に揃える。
         // これにより「同行できる以降の経由地」も正しい訪問以降だけが対象になる。
-        const targetPathIndex = followTarget.pathIndex ?? targetPath.indexOf(mergeTargetWaypointId);
+        const targetPathIndex = followTarget.pathIndex;
 
         if (targetPathIndex !== -1) {
             const wpIndices = resolveWaypointPathIndices(targetPath, targetWaypoints);
@@ -517,11 +643,14 @@ export const useRouteEditor = ({
     const handleRemoveSyncConstraint = (index: number) => {
         setSyncConstraints(prev => {
             const next = prev.filter((_, i) => i !== index);
-            // アンカーは常に先頭の制約。削除後に残っていれば先頭をsyncTargetに設定する
-            if (next.length > 0) {
-                setSyncTarget({ waypointId: next[0].waypointId, meetingTime: next[0].meetingTime });
+            // アンカーは経路上最も手前の制約（pickAnchorTarget, revise2 №6）
+            const anchor = pickAnchorTarget(next, displayPath);
+            if (anchor) {
+                setSyncTarget({ waypointId: anchor.waypointId, meetingTime: anchor.meetingTime, pathIndex: anchor.pathIndex >= 0 ? anchor.pathIndex : undefined });
             } else {
                 setSyncTarget(null);
+                // sync が無くなったのに startTime が残ると「謎の待機」になる（revise2 №7）
+                setStartTime(0);
             }
             return next;
         });

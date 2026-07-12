@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { MapNode, Waypoint, StartRef } from '../../store';
+import { MapNode, Waypoint, StartRef, useAppStore } from '../../store';
 import { SyncConstraint } from './WaypointPanel';
 import { NodeCandidateList } from './NodeCandidateList';
 import { SEGMENT_COLORS } from '../../utils/mapDrawUtils';
+import { formatTime } from '../../utils/timeFormat';
+import { formatCharName } from '../../utils/charName';
+import { usePresetSyncIssues } from '../../hooks/usePresetSyncIssues';
 
 interface RouteDockProps {
     isGraphEditMode: boolean;
@@ -47,6 +50,8 @@ export const RouteDock: React.FC<RouteDockProps> = ({
     matchedNodes, otherNodes, handleSelectSuggestion,
 }) => {
     const [collapsed, setCollapsed] = useState(false);
+    const showAlert = useAppStore(s => s.showAlert);
+    const syncIssues = usePresetSyncIssues();
 
     if (isGraphEditMode) return null;
     if (selectedIcons.length === 0 && highlightedPath.length === 0) return null;
@@ -67,6 +72,19 @@ export const RouteDock: React.FC<RouteDockProps> = ({
                 <span className="route-dock__title">
                     経路 {waypoints.filter(w => w.id).length}地点{syncConstraints.length > 0 && ` / sync ${syncConstraints.length}`}
                 </span>
+                {/* sync 整合性の常設警告バッジ（revise2 №12） */}
+                {syncIssues.length > 0 && (
+                    <span
+                        onClick={() => showAlert(syncIssues.map(i => '• ' + i.message).join('\n'), 'sync 警告')}
+                        title="クリックで詳細を表示"
+                        style={{
+                            color: syncIssues.some(i => i.level === 'error') ? 'var(--danger, #ef4444)' : 'var(--warning, #f59e0b)',
+                            cursor: 'pointer', fontSize: '0.8rem', marginLeft: 6,
+                        }}
+                    >
+                        ⚠ {syncIssues.length}
+                    </span>
+                )}
                 <button className="route-dock__collapse-btn" onClick={() => setCollapsed(true)} title="経路パネルを閉じる">▸</button>
             </div>
 
@@ -76,9 +94,15 @@ export const RouteDock: React.FC<RouteDockProps> = ({
                         {/* 開始条件（数値delayの代替）: 「基準キャラが地点に到達後 +N」 */}
                         <div className="route-dock__section">
                             <span className="route-dock__section-title">開始条件</span>
+                            {/* sync 設定中は resolveStartTimes が startRef を無視するため、操作しても無言で無視される。
+                                無効を明示する（revise2 №10） */}
+                            {syncConstraints.length > 0 && (
+                                <span className="route-dock__start-condition-text">sync 設定中は開始時刻が合流で決まるため使えません</span>
+                            )}
                             <div className="route-dock__start-condition-row">
                                 <select
                                     className="route-dock__select"
+                                    disabled={syncConstraints.length > 0}
                                     value={startRef?.charId ?? ''}
                                     onChange={(e) => {
                                         const cid = e.target.value;
@@ -94,6 +118,7 @@ export const RouteDock: React.FC<RouteDockProps> = ({
                                         <span className="route-dock__start-condition-text">が</span>
                                         <select
                                             className="route-dock__select"
+                                            disabled={syncConstraints.length > 0}
                                             value={startRef.nodeId ? `${startRef.nodeId}#${startRef.occurrence}` : ''}
                                             onChange={(e) => {
                                                 const v = e.target.value;
@@ -109,6 +134,7 @@ export const RouteDock: React.FC<RouteDockProps> = ({
                                         </select>
                                         <select
                                             className="route-dock__select"
+                                            disabled={syncConstraints.length > 0}
                                             value={startRef.phase ?? 'arrival'}
                                             onChange={(e) => setStartRef({ ...startRef, phase: e.target.value as 'arrival' | 'departure' })}
                                         >
@@ -118,6 +144,7 @@ export const RouteDock: React.FC<RouteDockProps> = ({
                                         <input
                                             className="route-dock__delay-input"
                                             type="number" min="0" value={startRef.extraDelay}
+                                            disabled={syncConstraints.length > 0}
                                             onChange={(e) => setStartRef({ ...startRef, extraDelay: parseFloat(e.target.value) || 0 })}
                                             onFocus={(e) => e.target.select()}
                                         />
@@ -209,8 +236,11 @@ export const RouteDock: React.FC<RouteDockProps> = ({
                                             <span className="route-dock__sync-icon">⏱</span>
                                             <div className="route-dock__sync-info">
                                                 <span className="route-dock__sync-name">{sc.waypointName}</span>
-                                                <span className="route-dock__sync-meta">
-                                                    {Math.round(sc.meetingTime)}fr{sc.charIds.length > 0 && ` · ${sc.charIds.length}char`}
+                                                <span
+                                                    className="route-dock__sync-meta"
+                                                    title={`${formatTime(Math.max(0, sc.meetingTime))} · ${sc.charIds.map(formatCharName).join('・')}${sc.occurrence !== undefined ? `（自分の${sc.occurrence + 1}回目の訪問）` : ''}`}
+                                                >
+                                                    {formatTime(Math.max(0, sc.meetingTime))} · {sc.charIds.map(formatCharName).join('・')}
                                                 </span>
                                             </div>
                                             {isAnchor && <span className="route-dock__sync-anchor-badge">anchor</span>}

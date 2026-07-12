@@ -6,6 +6,7 @@ import { useViewport } from '../hooks/useViewport';
 import { formatCharName } from '../utils/charName';
 import { getImageSizeFromUrl } from '../utils/imageUtils';
 import { CanvasWorkspace } from './note/CanvasWorkspace';
+import { genObjId } from './note/noteConstants';
 import '../styles/NoteView.scss';
 
 export const NoteView: React.FC = React.memo(() => {
@@ -44,21 +45,9 @@ export const NoteView: React.FC = React.memo(() => {
         }
     }, [activeNoteTab, displayTab]);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
-            if (activeNoteTab === 'character' && e.target === document.body) {
-                if (e.key.toLowerCase() === 'a' || e.key === 'ArrowLeft') {
-                    setActualCharIndex((actualCharIndex - 1 + ICON_FILES.length) % ICON_FILES.length);
-                }
-                if (e.key.toLowerCase() === 'd' || e.key === 'ArrowRight') {
-                    setActualCharIndex((actualCharIndex + 1) % ICON_FILES.length);
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeNoteTab, actualCharIndex, setActualCharIndex]);
+    // 旧: 独自リスナーが配置/描画中かどうかを知らず、描画中にA/Dを押すとキャラが切り替わり
+    // 描きかけが消えていた。CanvasWorkspace(character) へ onSwitchChar として渡し、
+    // useNoteKeyboard の既存ガード（placementMode/shapeContextMenu/isDrawingRef）に統合した（revise2 №15）。
 
     useEffect(() => {
         if (!actualPresetId && activePresetId) {
@@ -133,7 +122,7 @@ export const NoteView: React.FC = React.memo(() => {
             // キャンバス論理高さを基準に左下に上半身が見える位置（下半分がキャンバス外）
             const canvasLogicalHeight = NOTE_CANVAS.CHAR_LOGICAL_H;
             addNoteObject('character', selectedChar, {
-                id: `default_char_${Date.now()}`,
+                id: genObjId('default_char'),
                 type: 'image',
                 x: 0,
                 y: canvasLogicalHeight - size.height / 2,
@@ -166,12 +155,12 @@ export const NoteView: React.FC = React.memo(() => {
                         compactMode={isMobile}
                         initialSelectId={initialSelectIdFor('preset', actualPresetId)}
                         headerBar={isMobile ? (
-                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', minWidth: '160px' }}>
+                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', padding: '6px 10px', borderRadius: '4px', minWidth: '160px' }}>
                                 {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         ) : undefined}
                         sidebarHeader={
-                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '6px 10px', borderRadius: '4px', width: '100%' }}>
+                            <select value={actualPresetId} onChange={e => setActualPresetId(e.target.value)} style={{ background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', padding: '6px 10px', borderRadius: '4px', width: '100%' }}>
                                 {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         }
@@ -186,13 +175,14 @@ export const NoteView: React.FC = React.memo(() => {
                         sidebarHeaderDivider={false}
                         compactMode={isMobile}
                         initialSelectId={initialSelectIdFor('character', selectedChar)}
+                        onSwitchChar={(d) => setActualCharIndex((actualCharIndex + d + ICON_FILES.length) % ICON_FILES.length)}
                         headerBar={isMobile ? (
                             // モバイル: 見切れていた横スクロール15個をやめ、現在キャラ+名前+変更ボタンに（20.md #07/04-7）
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <img src={`./icon/${selectedChar}`} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--focus, #66b3ff)' }} />
-                                <span style={{ color: '#ddd', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{formatCharName(selectedChar)}</span>
+                                <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{formatCharName(selectedChar)}</span>
                                 <button onClick={() => setMobileSheetOpen(true)}
-                                    style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 36 }}>
+                                    style={{ background: 'var(--surface-4)', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', minHeight: 36 }}>
                                     変更
                                 </button>
                             </div>
@@ -211,7 +201,7 @@ export const NoteView: React.FC = React.memo(() => {
                                             style={{
                                                 width: '100%', aspectRatio: '1', overflow: 'hidden',
                                                 cursor: 'pointer', boxSizing: 'border-box',
-                                                border: actualCharIndex === idx ? '2px solid #66b3ff' : '2px solid transparent',
+                                                border: actualCharIndex === idx ? '2px solid var(--focus)' : '2px solid transparent',
                                                 opacity: actualCharIndex === idx ? 1 : 0.55,
                                                 boxShadow: actualCharIndex === idx ? '0 0 8px rgba(0,122,204,0.5)' : 'none',
                                                 transition: 'all 0.15s'
@@ -251,13 +241,13 @@ export const NoteView: React.FC = React.memo(() => {
                                                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                                                 if (e.key === 'Escape') setRenamingPageId(null);
                                             }}
-                                            style={{ minWidth: '150px', background: '#333', color: 'white', border: '1px solid var(--focus-strong, #007acc)', padding: '6px 8px', borderRadius: '4px' }}
+                                            style={{ minWidth: '150px', background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--focus-strong, #007acc)', padding: '6px 8px', borderRadius: '4px' }}
                                         />
                                     ) : (
                                         <select
                                             value={actualMiscPageId || ''}
                                             onChange={e => setActualMiscPageId(e.target.value)}
-                                            style={{ minWidth: '150px', background: '#333', color: 'white', border: '1px solid #555', padding: '6px 8px', borderRadius: '4px' }}
+                                            style={{ minWidth: '150px', background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', padding: '6px 8px', borderRadius: '4px' }}
                                         >
                                             {notes.miscPages!.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                                         </select>
@@ -268,7 +258,7 @@ export const NoteView: React.FC = React.memo(() => {
                                             const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
                                             if (page) { setRenamingPageId(page.id); setRenameInputValue(page.title); }
                                         }}
-                                        style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', flexShrink: 0, minHeight: 40 }}>✏️</button>
+                                        style={{ background: 'var(--surface-4)', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', padding: '5px 11px', borderRadius: '4px', cursor: 'pointer', flexShrink: 0, minHeight: 40 }}>✏️</button>
                                     <button title="削除" onClick={async () => {
                                             if (await showConfirm("このノートを削除しますか？")) {
                                                 deleteMiscPage(actualMiscPageId as string);
@@ -284,7 +274,7 @@ export const NoteView: React.FC = React.memo(() => {
                                         <select
                                             value={actualMiscPageId || ''}
                                             onChange={e => setActualMiscPageId(e.target.value)}
-                                            style={{ flex: 1, minWidth: 0, background: '#333', color: 'white', border: '1px solid #555', padding: '6px 8px', borderRadius: '4px' }}
+                                            style={{ flex: 1, minWidth: 0, background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', padding: '6px 8px', borderRadius: '4px' }}
                                         >
                                             {notes.miscPages!.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                                         </select>
@@ -309,7 +299,7 @@ export const NoteView: React.FC = React.memo(() => {
                                                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                                                 if (e.key === 'Escape') setRenamingPageId(null);
                                             }}
-                                            style={{ background: '#333', color: 'white', border: '1px solid #007acc', padding: '5px 8px', borderRadius: '4px', width: '100%', boxSizing: 'border-box' }}
+                                            style={{ background: 'var(--surface-3)', color: 'var(--text-primary)', border: '1px solid #007acc', padding: '5px 8px', borderRadius: '4px', width: '100%', boxSizing: 'border-box' }}
                                         />
                                     ) : (
                                         <div style={{ display: 'flex', gap: '5px' }}>
@@ -318,7 +308,7 @@ export const NoteView: React.FC = React.memo(() => {
                                                     const page = notes.miscPages?.find(p => p.id === actualMiscPageId);
                                                     if (page) { setRenamingPageId(page.id); setRenameInputValue(page.title); }
                                                 }}
-                                                style={{ flex: 1, background: '#444', border: '1px solid #555', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                style={{ flex: 1, background: 'var(--surface-4)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                 title="名前を変更"
                                             >✏️ Rename</button>
                                             <button
@@ -328,7 +318,7 @@ export const NoteView: React.FC = React.memo(() => {
                                                         setActualMiscPageId(null);
                                                     }
                                                 }}
-                                                style={{ flex: 1, background: '#ef4444', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                style={{ flex: 1, background: 'var(--danger, #ef4444)', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                 title="削除"
                                             >🗑️ Delete</button>
                                         </div>
@@ -338,7 +328,7 @@ export const NoteView: React.FC = React.memo(() => {
                         />
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px' }}>
-                            <div style={{ color: '#666', fontSize: '1.2rem' }}>No misc notes available.</div>
+                            <div style={{ color: 'var(--text-disabled)', fontSize: '1.2rem' }}>No misc notes available.</div>
                             <button
                                 onClick={() => addMiscPage("New Page")}
                                 style={{ background: 'var(--accent, #7c5cff)', border: 'none', color: 'white', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}

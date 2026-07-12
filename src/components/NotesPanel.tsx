@@ -8,7 +8,7 @@ export const NotesPanel = React.memo(() => {
 
   return (
     // ヘッダーバー(事件ノート/プリセット名)は廃止し、Canvasがセル全体を使う。
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1e1e1e', zIndex: 10 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--canvas-margin, #1e1e1e)', zIndex: 10 }}>
       {activePresetId ? (
           <CanvasWorkspace
               targetType="preset"

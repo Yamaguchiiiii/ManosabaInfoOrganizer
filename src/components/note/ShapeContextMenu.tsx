@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { NoteObject, NoteTargetType } from '../../store';
-import { ExtendedNoteObjectType } from './noteConstants';
+import { ExtendedNoteObjectType, genObjId } from './noteConstants';
 
 export interface ShapeContextMenuState {
     id: string;
@@ -30,12 +30,25 @@ interface ShapeContextMenuProps {
 export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
     menu, setMenu, targetType, displayTargetId, updateNoteObject, updateNoteObjects,
     commitThrottled, saveHistoryOnceThenSkip, reorderNoteObject, selectedIds,
-}) => (
+}) => {
+    // revise3 B-5: 画面端に開くと操作不能領域へはみ出すため、実測してクランプする
+    const ref = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState({ x: menu.x, y: menu.y });
+    useLayoutEffect(() => {
+        const el = ref.current; if (!el) return;
+        const r = el.getBoundingClientRect();
+        setPos({
+            x: Math.min(menu.x, window.innerWidth - r.width - 8),
+            y: Math.min(menu.y, window.innerHeight - r.height - 8),
+        });
+    }, [menu.x, menu.y, menu.type]);
+    return (
     <div
+        ref={ref}
         style={{
-            position: 'fixed', top: menu.y, left: menu.x,
-            background: '#2d2d2d', border: '1px solid #444', borderRadius: '8px',
-            padding: '15px', zIndex: 1000, color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', width: '200px'
+            position: 'fixed', top: Math.max(8, pos.y), left: Math.max(8, pos.x),
+            background: 'var(--surface-3)', border: '1px solid var(--border-default)', borderRadius: '8px',
+            padding: '15px', zIndex: 1000, color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', width: '200px'
         }}
         onClick={(e) => e.stopPropagation()}
     >
@@ -50,7 +63,7 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
                         setMenu(prev => prev ? { ...prev, lineStyle: val } : null);
                         updateNoteObject(targetType, displayTargetId, menu.id, { lineStyle: val as 'normal' | 'marker' | 'pen' }, true);
                     }}
-                    style={{ width: '100%', marginBottom: '10px', background: '#222', color: 'white', border: '1px solid #555', padding: '4px', borderRadius: '3px' }}
+                    style={{ width: '100%', marginBottom: '10px', background: 'var(--surface-2)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', padding: '4px', borderRadius: '3px' }}
                 >
                     <option value="normal">Normal</option>
                     <option value="marker">Marker</option>
@@ -101,7 +114,7 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
                             setMenu(prev => prev ? { ...prev, fill: 'transparent' } : null);
                             updateNoteObject(targetType, displayTargetId, menu.id, { fill: 'transparent' }, true);
                         }}
-                        style={{ background: '#444', border: '1px solid #666', color: '#ccc', fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}
+                        style={{ background: 'var(--surface-4)', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}
                     >
                         No Fill
                     </button>
@@ -123,14 +136,14 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
             </>
         )}
 
-        <div style={{ borderTop: '1px solid #444', marginTop: '10px', paddingTop: '10px' }}>
-            <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: '#aaa' }}>Layer</div>
+        <div style={{ borderTop: '1px solid var(--border-default)', marginTop: '10px', paddingTop: '10px' }}>
+            <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: 'var(--text-secondary)' }}>Layer</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
                 {(['front', 'up', 'down', 'back'] as const).map((dir) => (
                     <button
                         key={dir}
                         onClick={() => { reorderNoteObject(targetType, displayTargetId, menu.id, dir); setMenu(null); }}
-                        style={{ background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                        style={{ background: 'var(--surface-4)', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                     >
                         {dir === 'front' ? '最前面' : dir === 'back' ? '最背面' : dir === 'up' ? '前へ' : '後へ'}
                     </button>
@@ -138,19 +151,20 @@ export const ShapeContextMenu: React.FC<ShapeContextMenuProps> = ({
             </div>
         </div>
         {selectedIds.length >= 2 && (
-            <div style={{ borderTop: '1px solid #444', marginTop: '10px', paddingTop: '10px' }}>
-                <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: '#aaa' }}>Group</div>
+            <div style={{ borderTop: '1px solid var(--border-default)', marginTop: '10px', paddingTop: '10px' }}>
+                <div style={{ fontSize: '0.85rem', marginBottom: '5px', color: 'var(--text-secondary)' }}>Group</div>
                 <button
                     onClick={() => {
-                        const newGroupId = `group_${Date.now()}`;
+                        const newGroupId = genObjId('group');
                         updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
                         setMenu(null);
                     }}
-                    style={{ width: '100%', background: '#3a3a3a', border: '1px solid #555', color: '#ccc', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                    style={{ width: '100%', background: 'var(--surface-4)', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                 >
                     グループ化
                 </button>
             </div>
         )}
     </div>
-);
+    );
+};

@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
     normalizeTimelineData,
     getNodeVisitTimes,
-    getNodeArrivalOccurrences,
+    getNodeVisitOccurrences,
     resolveStartTimes,
+    computeAnchors,
+    precomputePath,
 } from '../animationUtils';
 import type { MapNode, CharacterTimelineData } from '../../store';
 
@@ -46,14 +48,47 @@ describe('getNodeVisitTimes', () => {
     });
 });
 
-describe('getNodeArrivalOccurrences', () => {
+describe('getNodeVisitOccurrences', () => {
     it('同一地点を複数回訪れる経路で全訪問を時系列順に返す', () => {
         // P->Q->R->Q: Q を2回訪問（距離 100,100,100 = 300, duration=300）
         const cd: CharacterTimelineData = { path: ['P', 'Q', 'R', 'Q'], startTime: 0, duration: 300 };
-        const occ = getNodeArrivalOccurrences(cd, 'Q', nodes);
+        const occ = getNodeVisitOccurrences(cd, 'Q', nodes);
         expect(occ.map(o => o.pathIndex)).toEqual([1, 3]);
         expect(occ[0].arrival).toBeCloseTo(100);
         expect(occ[1].arrival).toBeCloseTo(300);
+    });
+    it('滞在（連続重複）は1訪問に集約する', () => {
+        const cd: CharacterTimelineData = { path: ['P', 'Q', 'Q', 'R'], startTime: 0, duration: 250 };
+        const occ = getNodeVisitOccurrences(cd, 'Q', nodes);
+        expect(occ).toHaveLength(1);
+        expect(occ[0].arrival).toBeCloseTo(100);
+        expect(occ[0].departure).toBeCloseTo(150);
+    });
+});
+
+describe('computeAnchors', () => {
+    // 3ノード直線マップ(P-Q-R、各区間100px)を使う
+    it('過去向きの合流時刻のアンカーは無効化される（瞬間移動しない）', () => {
+        const cd: CharacterTimelineData = {
+            path: ['P', 'Q', 'R'], startTime: 100, duration: 200,
+            syncConstraints: [{ waypointId: 'Q', waypointName: 'Q', meetingTime: 0, charIds: ['X'] }],
+        };
+        const cached = precomputePath(cd.path, nodes);
+        const anchors = computeAnchors(cd, cached);
+        // 過去向き(meetingTime=0 < startTime=100)は無効化され、[start, end] の2点のみになる
+        expect(anchors).toHaveLength(2);
+        expect(anchors[0]).toEqual({ cumDist: 0, time: 100 });
+        expect(anchors[1].cumDist).toBeCloseTo(cached.totalDistance);
+    });
+    it('未来向きの合流時刻はアンカーになる', () => {
+        const cd: CharacterTimelineData = {
+            path: ['P', 'Q', 'R'], startTime: 0, duration: 200,
+            syncConstraints: [{ waypointId: 'Q', waypointName: 'Q', meetingTime: 500, charIds: ['X'] }],
+        };
+        const cached = precomputePath(cd.path, nodes);
+        const anchors = computeAnchors(cd, cached);
+        expect(anchors).toHaveLength(3);
+        expect(anchors[1].time).toBeCloseTo(500);
     });
 });
 

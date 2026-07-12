@@ -25,6 +25,10 @@
   --danger: #ef4444;
   --success: #10b981;
   --warning: #f59e0b;
+  --talk: #2fd0d0;               /* 会話イベント（イベント一覧/シークバー/ガント共通） */
+  --talk-strong: #178c8c;
+  --selected-bg: #37373d;        /* Note ページ選択の強調背景（0711 #6） */
+  --canvas-margin: #1e1e1e;      /* revise3 B-15: Note/Animate ペインの暗色余白（紙面周囲）。紙面色(#ECD2B3)は対象外 */
 
   /* 寸法 */
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
@@ -52,4 +56,6 @@
   --surface-0: #efe6d8; --surface-1: #f5ecdd; --surface-2: #eadfca; --surface-3: #e0d3b8; --surface-4: #d5c6a8;
   --border-default: #c2b299; --border-strong: #a08e6f;
   --text-primary: #3a3226; --text-secondary: #6b5f4b; --text-disabled: #a09173;
+  --selected-bg: #d5c6a8;
+  --canvas-margin: #d8c6ae;      /* revise3 B-15: セピアでは暗すぎない値に */
 }

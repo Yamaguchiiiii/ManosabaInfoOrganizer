@@ -47,7 +47,8 @@ export const useAnimationPositions = (
         lastTsRef.current = null;
         maxDurationRef.current = 0;
         lastWrittenTimeRef.current = 0;
-        usePlaybackStore.setState({ currentTime: 0 });
+        // 再生中にプリセットを切り替えると新プリセットが勝手に頭から再生されていた（revise2 №11）
+        usePlaybackStore.setState({ currentTime: 0, isPlaying: false });
 
         if (!activePreset) return;
 

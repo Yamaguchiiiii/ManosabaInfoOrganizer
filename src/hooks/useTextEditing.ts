@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, MutableRefObject } from 'react';
-import { NoteObject, NoteTargetType } from '../store';
+import { NoteObject, NoteTargetType, useAppStore } from '../store';
 
 export interface UseTextEditingResult {
     editingTextId: string | null;
@@ -36,8 +36,21 @@ export const useTextEditing = (
         const id = editingTextIdRef.current;
         if (!id) return;
         editingTextIdRef.current = null; // 二重コミット防止（mousedown と blur の両方から呼ばれ得る）
-        updateNoteObject(targetType, displayTargetId, id, { text: editingTextValueRef.current }, true);
-        saveNoteHistory();
+        // 変更前スナップショットを積んでからコミットする（56db688 のピッカー修正と同じ規約）。
+        // 値が変わっていない場合は履歴も更新も行わない（空 undo ステップ防止）。revise3 A-2
+        const cur = useAppStore.getState();
+        const find = (): string | undefined => {
+            const notes = cur.notes;
+            const canvas = targetType === 'overview' ? notes.overviewCanvas
+                : targetType === 'preset' ? notes.presets?.[displayTargetId]
+                : targetType === 'character' ? notes.characters?.[displayTargetId]
+                : notes.miscPages?.find(p => p.id === displayTargetId)?.canvas;
+            return canvas?.objects.find(o => o.id === id)?.text;
+        };
+        if (find() !== editingTextValueRef.current) {
+            saveNoteHistory();
+            updateNoteObject(targetType, displayTargetId, id, { text: editingTextValueRef.current }, true);
+        }
         setEditingTextId(null);
     }, [targetType, displayTargetId, updateNoteObject, saveNoteHistory]);
 

@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { useAppStore } from '../store';
+import { useAppStore, MapNode, FloorId } from '../store';
 import { computePresetTiming } from '../utils/presetTiming';
 import { detectEncounters } from '../utils/encounterDetection';
-import { normalizeTimelineData } from '../utils/animationUtils';
+import { normalizeTimelineData, calculateRawPositionCached, precomputePath, computeAnchors } from '../utils/animationUtils';
 
 export interface TimedEvent {
     kind: 'talk' | 'auto-talk' | 'pass';   // 💬明示会話 / 💬同室検出 / ⚇遭遇(syncすれ違い)
@@ -10,6 +10,8 @@ export interface TimedEvent {
     charIds: string[];
     t: number;                              // 正規化済みフレーム（ジャンプ先）
     tEnd?: number;                          // auto-talk の帯表示用
+    // 0711_2 #4: 発生地点のフロア（モバイルAnimateのマップ切替用）。ノード不明時のみ undefined
+    floor?: FloorId;
 }
 
 // アクティブプリセットの「⚇遭遇(syncすれ違い)」「💬会話(同室自動検出+明示記録)」を
@@ -26,24 +28,36 @@ export const usePresetEvents = (): { maxDuration: number; offset: number; events
         const { offset, maxDuration, resolvedStarts } = computePresetTiming(activePreset.data, nodes);
         const events: TimedEvent[] = [];
 
-        // ⚇ 遭遇: 各キャラの syncConstraints（すれ違い/合流の瞬間）
+        // ⚇ 遭遇: 実際にその時刻へ到達できる制約だけをイベント化する（無効化された合流の偽表示防止）。
+        // 21§E-5 でアンカーが過去向き合流を無効化するため、無効化された制約はそのまま出すと
+        // 「実際には誰も出会わない」偽イベントになる（0711 最重要3・revise2 №4）。
+        const nodeMap: Record<string, MapNode> = {}; nodes.forEach(n => { nodeMap[n.id] = n; });
         const seen = new Set<string>();   // 相互syncの重複除去
         Object.entries(activePreset.data).forEach(([id, raw]) => {
             const base = normalizeTimelineData(raw);
-            (base?.syncConstraints || []).forEach(sc => {
+            if (!base) return;
+            const cd = { ...base, startTime: resolvedStarts[id] ?? base.startTime ?? 0 };
+            const cached = precomputePath(cd.path, nodes);
+            const anchors = computeAnchors(cd, cached);
+            (base.syncConstraints || []).forEach(sc => {
+                const pos = calculateRawPositionCached(cd, sc.meetingTime, cached, anchors);
+                const node = nodeMap[sc.waypointId];
+                const there = pos && node && pos.floor === node.floor
+                    && Math.hypot(pos.x - node.x, pos.y - node.y) < 10;   // 論理10px以内なら滞在中とみなす
+                if (!there) return;   // 無効化された合流 → イベント化しない（保存時に validate が error を出す）
                 const chars = [id, ...sc.charIds];
                 const key = `${Math.round(sc.meetingTime)}:${sc.waypointId}:${[...chars].sort().join(',')}`;
                 if (seen.has(key)) return;
                 seen.add(key);
-                events.push({ kind: 'pass', label: sc.waypointName, charIds: chars, t: sc.meetingTime - offset });
+                events.push({ kind: 'pass', label: sc.waypointName, charIds: chars, t: sc.meetingTime - offset, floor: node.floor });
             });
         });
         // 💬 会話（同室の自動検出）
         detectEncounters(activePreset.data, nodes, resolvedStarts).forEach(e =>
-            events.push({ kind: 'auto-talk', label: e.nodeName, charIds: e.charIds, t: e.start - offset, tEnd: e.end - offset }));
+            events.push({ kind: 'auto-talk', label: e.nodeName, charIds: e.charIds, t: e.start - offset, tEnd: e.end - offset, floor: nodeMap[e.nodeId]?.floor }));
         // 💬 会話（明示・#8）
         (activePreset.events || []).forEach(ev =>
-            events.push({ kind: 'talk', label: ev.nodeName, charIds: ev.charIds, t: ev.time - offset }));
+            events.push({ kind: 'talk', label: ev.nodeName, charIds: ev.charIds, t: ev.time - offset, floor: nodeMap[ev.nodeId]?.floor }));
 
         return {
             maxDuration, offset,

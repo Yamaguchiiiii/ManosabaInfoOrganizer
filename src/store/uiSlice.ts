@@ -57,6 +57,10 @@ export interface UiSlice {
     // F3: ノート全文検索のジャンプ先（persist除外・NoteViewが消費後にnullへ戻す）
     pendingNoteFocus: PendingNoteFocus | null; setPendingNoteFocus: (f: PendingNoteFocus | null) => void;
 
+    // ヘルプドロワー/チュートリアルツアーが開いているか（persist除外）。開いている間は
+    // 背後のキャンバスショートカット(Delete/Ctrl+Z等)を無効化する（revise3 A-12）。
+    helpOverlayOpen: boolean; setHelpOverlayOpen: (v: boolean) => void;
+
     _hasHydrated: boolean;
     setHasHydrated: (state: boolean) => void;
 }
@@ -142,6 +146,8 @@ export const createUiSlice: SliceCreator<UiSlice> = (set, get) => ({
     noteClipboard: [], setNoteClipboard: (objs) => set({ noteClipboard: objs }),
 
     pendingNoteFocus: null, setPendingNoteFocus: (f) => set({ pendingNoteFocus: f }),
+
+    helpOverlayOpen: false, setHelpOverlayOpen: (v) => set({ helpOverlayOpen: v }),
 
     _hasHydrated: false,
     setHasHydrated: (state) => set({ _hasHydrated: state }),

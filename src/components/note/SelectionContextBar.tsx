@@ -1,4 +1,5 @@
 import React from 'react';
+import { ColorSwatches } from './ColorSwatches';
 
 interface SelectionContextBarProps {
     count: number;
@@ -15,12 +16,21 @@ interface SelectionContextBarProps {
     canUngroup: boolean;
     onUngroup: () => void;
     onDelete: () => void;
+    // 0711 #4 追加
+    keepRatioVisible: boolean;            // 単独選択の image のみ true
+    keepRatioChecked: boolean;
+    onToggleKeepRatio: (v: boolean) => void;
+    onCopy: () => void;
+    onCut: () => void;
+    onPaste: () => void;
+    pasteEnabled: boolean;
+    variant: 'topbar' | 'overlay';        // topbar=ContextBar内 / overlay=compactのCanvas上端
 }
 
-const dividerStyle: React.CSSProperties = { width: 1, alignSelf: 'stretch', margin: '7px 2px', background: '#444', flexShrink: 0 };
+const dividerStyle: React.CSSProperties = { width: 1, alignSelf: 'stretch', margin: '7px 2px', background: 'var(--border-default, #444)', flexShrink: 0 };
 const segBtnStyle: React.CSSProperties = {
-    background: '#3a3a3a', border: '1px solid #555', color: '#ccc', borderRadius: '4px',
-    cursor: 'pointer', fontSize: '0.78rem', padding: '3px 8px', whiteSpace: 'nowrap', flexShrink: 0,
+    background: 'var(--surface-4, #3a3a3a)', border: '1px solid var(--border-strong, #555)', color: 'var(--text-secondary, #ccc)', borderRadius: '4px',
+    cursor: 'pointer', fontSize: '0.78rem', padding: '5px 10px', minHeight: 28, whiteSpace: 'nowrap', flexShrink: 0,
 };
 
 // U3: キャンバス上端の選択中オブジェクト操作バー（右クリックメニューと同じハンドラを共有し、
@@ -28,13 +38,18 @@ const segBtnStyle: React.CSSProperties = {
 export const SelectionContextBar: React.FC<SelectionContextBarProps> = ({
     count, colorValue, onColorChange, widthValue, onWidthChange,
     canReorder, onReorderBack, onReorderFront, canGroup, onGroup, canUngroup, onUngroup, onDelete,
+    keepRatioVisible, keepRatioChecked, onToggleKeepRatio, onCopy, onCut, onPaste, pasteEnabled, variant,
 }) => (
-    <div style={{
+    <div style={variant === 'topbar' ? {
+        height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
+        padding: '0 4px', background: 'transparent', borderBottom: 'none',
+        fontSize: '0.8rem', color: 'var(--text-secondary, #ccc)', overflowX: 'auto', boxSizing: 'border-box',
+    } : {
         height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
-        padding: '0 10px', background: 'rgba(30,30,30,0.95)', borderBottom: '1px solid #444',
-        fontSize: '0.8rem', color: '#ccc', overflowX: 'auto', boxSizing: 'border-box',
+        padding: '0 10px', background: 'var(--surface-2, rgba(30,30,30,0.95))', borderBottom: '1px solid var(--border-default, #444)',
+        fontSize: '0.8rem', color: 'var(--text-secondary, #ccc)', overflowX: 'auto', boxSizing: 'border-box',
     }}>
-        <span style={{ whiteSpace: 'nowrap', color: '#aaa', flexShrink: 0 }}>{count}個選択</span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary, #aaa)', flexShrink: 0 }}>{count}個選択</span>
 
         {colorValue !== null && (
             <>
@@ -46,6 +61,8 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = ({
                     title="色"
                     style={{ width: 26, height: 24, border: 'none', cursor: 'pointer', background: 'none', padding: 0, flexShrink: 0 }}
                 />
+                {/* revise3 B-13: 定番色への即時切替（undo は onColorChange と同じ経路なので1回で戻る） */}
+                <ColorSwatches value={colorValue} onPick={onColorChange} />
             </>
         )}
 
@@ -79,6 +96,20 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = ({
                 {canUngroup && <button onClick={onUngroup} style={segBtnStyle}>解除</button>}
             </>
         )}
+
+        {keepRatioVisible && (
+            <>
+                <div style={dividerStyle} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={keepRatioChecked} onChange={e => onToggleKeepRatio(e.target.checked)} />
+                    比率維持
+                </label>
+            </>
+        )}
+        <div style={dividerStyle} />
+        <button onClick={onCopy} style={segBtnStyle} title="コピー (Ctrl+C)">⧉</button>
+        <button onClick={onCut} style={segBtnStyle} title="切り取り (Ctrl+X)">✂</button>
+        <button onClick={onPaste} disabled={!pasteEnabled} style={{ ...segBtnStyle, opacity: pasteEnabled ? 1 : 0.4 }} title="貼り付け (Ctrl+V)">⎘</button>
 
         <div style={dividerStyle} />
         <button

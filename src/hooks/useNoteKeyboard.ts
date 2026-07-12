@@ -1,6 +1,6 @@
 import { useEffect, MutableRefObject } from 'react';
-import { NoteObject, NoteTargetType } from '../store';
-import { PlacementMode } from '../components/note/noteConstants';
+import { NoteObject, NoteTargetType, useAppStore } from '../store';
+import { PlacementMode, genObjId } from '../components/note/noteConstants';
 import { ShapeContextMenuState } from '../components/note/ShapeContextMenu';
 
 interface UseNoteKeyboardArgs {
@@ -22,6 +22,8 @@ interface UseNoteKeyboardArgs {
     shapeContextMenu: ShapeContextMenuState | null;
     isDrawingRef: MutableRefObject<boolean>;
     setCurrentCanvasIndex: (updater: (prev: number) => number) => void;
+    // キャラクターノートのみ渡される。A/D・←/→でのキャラ切替（revise2 №15）
+    onSwitchChar?: (dir: -1 | 1) => void;
 }
 
 // CanvasWorkspace のキーボードショートカット（undo/redo/コピペ/削除/グループ化/ペイン切替）。
@@ -29,17 +31,26 @@ export const useNoteKeyboard = ({
     editingTextId, setPlacementMode, undoNote, redoNote,
     selectedIds, setSelectedIds, updateNoteObjects, removeNoteObjects, targetType, displayTargetId,
     handleCopySelected, handleCutSelected, handlePasteClipboard, clipboard,
-    placementMode, shapeContextMenu, isDrawingRef, setCurrentCanvasIndex,
+    placementMode, shapeContextMenu, isDrawingRef, setCurrentCanvasIndex, onSwitchChar,
 }: UseNoteKeyboardArgs): void => {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // IME変換中（日本語入力中）はショートカットを発火させない（半角/全角や変換キーを奪わない）。
             if (e.isComposing || e.keyCode === 229) return;
+            // ダイアログ表示中はグローバルショートカットを無効化する（背後で削除等が誤発火しないように。revise2 №29）
+            if (useAppStore.getState().dialog) return;
+            // revise3 A-12: ヘルプドロワー/チュートリアルツアー表示中は背後のキャンバスへ効かせない
+            if (useAppStore.getState().helpOverlayOpen) return;
             if (e.key === 'Escape') {
                 setPlacementMode(null);
                 return;
             }
-            if (e.target !== document.body) return;
+            // 旧: document.body フォーカス限定だったため、ツールボタンやセグメントボタンを
+            // クリックした直後（フォーカスがボタンに残る）はコピー等が無反応になっていた（revise2 №21）。
+            // 編集可能要素（テキスト入力・スライダー等）にフォーカスがある時だけショートカットを譲る。
+            const targetEl = e.target as HTMLElement | null;
+            const targetTag = targetEl?.tagName;
+            if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT' || targetEl?.isContentEditable) return;
             if (editingTextId) return;
 
             // Ctrl+Z: 取り消し / Ctrl+Shift+Z・Ctrl+Y: やり直し（Redo）。#refactoring B-2
@@ -59,7 +70,7 @@ export const useNoteKeyboard = ({
             if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
                 e.preventDefault();
                 if (selectedIds.length < 2) return;
-                const newGroupId = `group_${Date.now()}`;
+                const newGroupId = genObjId('group');
                 updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
                 return;
             }
@@ -93,9 +104,12 @@ export const useNoteKeyboard = ({
                 return;
             }
 
-            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
-                removeNoteObjects(targetType, displayTargetId, selectedIds);
-                setSelectedIds([]);
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                if (selectedIds.length > 0) {
+                    removeNoteObjects(targetType, displayTargetId, selectedIds);
+                    setSelectedIds([]);
+                }
             }
 
             if (!placementMode && !shapeContextMenu && !isDrawingRef.current) {
@@ -107,9 +121,13 @@ export const useNoteKeyboard = ({
                     setCurrentCanvasIndex(prev => (prev + 1) % 4);
                     setSelectedIds([]);
                 }
+                // 旧: NoteView.tsx 側の独自リスナーが配置/描画中かどうかを知らず、
+                // 描きかけのフリーハンド中にA/Dを押すとキャラが切り替わり描画が消えていた（revise2 №15）
+                if (onSwitchChar && (e.key.toLowerCase() === 'a' || e.key === 'ArrowLeft')) onSwitchChar(-1);
+                if (onSwitchChar && (e.key.toLowerCase() === 'd' || e.key === 'ArrowRight')) onSwitchChar(1);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, redoNote, clipboard, handleCopySelected, handlePasteClipboard, handleCutSelected, setPlacementMode, setSelectedIds, isDrawingRef, setCurrentCanvasIndex]);
+    }, [selectedIds, displayTargetId, targetType, updateNoteObjects, removeNoteObjects, editingTextId, placementMode, shapeContextMenu, undoNote, redoNote, clipboard, handleCopySelected, handlePasteClipboard, handleCutSelected, setPlacementMode, setSelectedIds, isDrawingRef, setCurrentCanvasIndex, onSwitchChar]);
 };

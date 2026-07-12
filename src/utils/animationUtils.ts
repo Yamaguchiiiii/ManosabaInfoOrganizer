@@ -210,7 +210,9 @@ export interface TimeAnchor { cumDist: number; time: number; }
 
 // charData(startTime/duration/syncConstraints) と cached からアンカー列を作る。
 // 合流が無ければ [start, end]（従来の一定速度）。合流があれば各合流地点を時刻アンカーにし、
-// 末尾区間は通常速度。時刻は単調増加にクランプ（手前への合流時刻は無効）。
+// 末尾区間は通常速度。過去向き（直前のアンカーより早い）合流時刻は無効化（アンカーにしない）。
+// 旧実装は prevTime+1 に丸めており、1フレームでの瞬間移動を生んでいた（0711 最重要3）。
+// 無効化された制約は保存時検証(syncValidation)で error として提示する。
 export const computeAnchors = (charData: CharacterTimelineData, cached: PrecomputedPath): TimeAnchor[] => {
     const startTime = charData.startTime ?? 0;
     const { cumulative, totalDistance, pathNodes } = cached;
@@ -240,10 +242,9 @@ export const computeAnchors = (charData: CharacterTimelineData, cached: Precompu
     for (const m of mapped) {
         const cum = cumulative[m.idx] ?? totalDistance;
         if (cum <= prevCum + 0.001) continue; // 同一/手前の地点は無視
-        let t = m.time;
-        if (t <= prevTime) t = prevTime + 1; // 単調増加クランプ
-        anchors.push({ cumDist: cum, time: t });
-        prevTime = t; prevCum = cum;
+        if (m.time <= prevTime) continue; // 過去向きの合流は満たせない → このアンカーを無効化（丸めない）
+        anchors.push({ cumDist: cum, time: m.time });
+        prevTime = m.time; prevCum = cum;
     }
 
     // 末尾区間は通常速度
@@ -254,6 +255,21 @@ export const computeAnchors = (charData: CharacterTimelineData, cached: Precompu
         anchors.push({ cumDist: totalDistance, time: last.time + Math.max(remTime, 1) });
     }
     return anchors;
+};
+
+// アンカー列（sync 反映済み）から、累積距離 cum に到達する時刻を求める（区間ごとの速度差を反映）。
+// anchors が2点（start/end）のみなら、duration での線形按分と一致する。
+export const timeAtCumDist = (anchors: TimeAnchor[], cum: number): number => {
+    if (anchors.length === 0) return 0;
+    if (cum <= anchors[0].cumDist) return anchors[0].time;
+    for (let i = 0; i < anchors.length - 1; i++) {
+        const a = anchors[i], b = anchors[i + 1];
+        if (cum <= b.cumDist) {
+            const t = b.cumDist > a.cumDist ? (cum - a.cumDist) / (b.cumDist - a.cumDist) : 1;
+            return a.time + (b.time - a.time) * t;
+        }
+    }
+    return anchors[anchors.length - 1].time;
 };
 
 export const calculateRawPositionCached = (
@@ -457,60 +473,16 @@ export const calculateNodeArrivalTime = (
     return calculateArrivalTimeAtIndex(charData, targetIndex, allNodes);
 };
 
-// 指定ノードへの「全オカレンス（訪問）」の到達時刻を返す。
-// 同一地点を複数回訪れる経路で、どの訪問に合流するかを選べるようにするための関数。
-// arrival は startTime を含む絶対時刻（プリセット全体の時間軸）。
-export const getNodeArrivalOccurrences = (
+// 指定ノードへの「訪問」ごとに (path上のブロック先頭index, 到達時刻, 出発時刻) を返す。
+// 滞在（pathの連続重複）は1訪問に集約する。旧 getNodeArrivalOccurrences は集約しておらず、
+// 滞在フレーム数ぶん同じ地点が重複列挙されていた（0711 #5 / revise2 №5）ため、この関数に統合した。
+// duration の線形按分（sync 未反映）で計算する。sync を反映した時刻が要る場合は
+// getNodeVisitTimesAnchored を使うこと（同室検出・ガントバー・startRef 解決など）。
+export const getNodeVisitOccurrences = (
     charData: CharacterTimelineData,
     targetNodeId: string,
     allNodes: MapNode[]
-): { pathIndex: number; arrival: number }[] => {
-    const { path, startTime, duration } = charData;
-    if (!path || path.length === 0) return [];
-
-    const nodesMap: Record<string, MapNode> = {};
-    allNodes.forEach(n => { nodesMap[n.id] = n; });
-
-    // セグメント距離と総距離を 1 回だけ計算（calculateArrivalTimeAtIndex と同じ距離定義）
-    const segDist: number[] = [];
-    let totalDist = 0;
-    for (let i = 0; i < path.length - 1; i++) {
-        const a = nodesMap[path[i]];
-        const b = nodesMap[path[i + 1]];
-        let d = 0;
-        if (a && b) {
-            if (a.id === b.id) {
-                d = WAIT_VIRTUAL_DISTANCE;
-            } else {
-                const isStairJump = (a.type === 'stair' && b.type === 'stair');
-                const isFloorChange = (a.floor !== b.floor);
-                d = (isStairJump || isFloorChange) ? 0 : getDistance(a, b);
-            }
-        }
-        segDist.push(d);
-        totalDist += d;
-    }
-
-    const result: { pathIndex: number; arrival: number }[] = [];
-    let cum = 0; // path[i] までの累積距離
-    for (let i = 0; i < path.length; i++) {
-        if (path[i] === targetNodeId) {
-            const arrival = (totalDist === 0) ? startTime : startTime + duration * (cum / totalDist);
-            result.push({ pathIndex: i, arrival });
-        }
-        if (i < segDist.length) cum += segDist[i];
-    }
-    return result;
-};
-
-// 指定ノードへの「訪問（visit）」ごとに到達時刻と出発時刻を返す。
-// 滞在(stayTime)は path 上の連続重複ノードで表現されるため、連続重複は1訪問に集約し、
-// arrival=ブロック先頭の時刻、departure=ブロック末尾の時刻（＝滞在後に動き出す時刻）とする。
-export const getNodeVisitTimes = (
-    charData: CharacterTimelineData,
-    targetNodeId: string,
-    allNodes: MapNode[]
-): { arrival: number; departure: number }[] => {
+): { pathIndex: number; arrival: number; departure: number }[] => {
     const { path, startTime, duration } = charData;
     if (!path || path.length === 0) return [];
 
@@ -544,14 +516,57 @@ export const getNodeVisitTimes = (
     }
     const timeAt = (c: number) => (totalDist === 0) ? startTime : startTime + duration * (c / totalDist);
 
-    const visits: { arrival: number; departure: number }[] = [];
+    const visits: { pathIndex: number; arrival: number; departure: number }[] = [];
     let i = 0;
     while (i < path.length) {
         if (path[i] === targetNodeId) {
             const startIdx = i;
             let endIdx = i;
             while (endIdx + 1 < path.length && path[endIdx + 1] === targetNodeId) endIdx++;
-            visits.push({ arrival: timeAt(cumAt[startIdx]), departure: timeAt(cumAt[endIdx]) });
+            visits.push({ pathIndex: startIdx, arrival: timeAt(cumAt[startIdx]), departure: timeAt(cumAt[endIdx]) });
+            i = endIdx + 1;
+        } else {
+            i++;
+        }
+    }
+    return visits;
+};
+
+// 指定ノードへの「訪問（visit）」ごとに到達時刻と出発時刻を返す（pathIndex を落とした簡易版）。
+// 滞在(stayTime)は path 上の連続重複ノードで表現されるため、連続重複は1訪問に集約し、
+// arrival=ブロック先頭の時刻、departure=ブロック末尾の時刻（＝滞在後に動き出す時刻）とする。
+export const getNodeVisitTimes = (
+    charData: CharacterTimelineData,
+    targetNodeId: string,
+    allNodes: MapNode[]
+): { arrival: number; departure: number }[] =>
+    getNodeVisitOccurrences(charData, targetNodeId, allNodes).map(({ arrival, departure }) => ({ arrival, departure }));
+
+// 指定ノードへの「訪問」ごとの到達/出発時刻を、sync（アンカー）を反映して返す。
+// getNodeVisitTimes は duration の線形按分（sync 未反映）のため、sync ありキャラでは
+// 実際の移動（アンカー間で速度が変わる）と滞在帯・同室検出・開始条件の基準時刻がズレていた
+// （0711に近い領域の実バグ・revise2 №1/№2/№3）。
+export const getNodeVisitTimesAnchored = (
+    charData: CharacterTimelineData,
+    targetNodeId: string,
+    allNodes: MapNode[] | Record<string, MapNode>
+): { arrival: number; departure: number }[] => {
+    if (!charData.path || charData.path.length === 0) return [];
+    const cached = precomputePath(charData.path, allNodes);
+    const anchors = computeAnchors(charData, cached);
+    const { pathNodes, cumulative } = cached;
+
+    const visits: { arrival: number; departure: number }[] = [];
+    let i = 0;
+    while (i < pathNodes.length) {
+        if (pathNodes[i].id === targetNodeId) {
+            const startIdx = i;
+            let endIdx = i;
+            while (endIdx + 1 < pathNodes.length && pathNodes[endIdx + 1].id === targetNodeId) endIdx++;
+            visits.push({
+                arrival: timeAtCumDist(anchors, cumulative[startIdx]),
+                departure: timeAtCumDist(anchors, cumulative[endIdx]),
+            });
             i = endIdx + 1;
         } else {
             i++;
@@ -602,7 +617,9 @@ export const resolveStartTimes = (
         const refData = data[ref.charId];
         if (refData && ref.charId !== charId) {
             const refStart = resolve(ref.charId);
-            const visits = getNodeVisitTimes({ ...refData, startTime: refStart }, ref.nodeId, allNodes);
+            // 基準キャラが sync で速度の変わる区間を持つ場合、その実際の到達/出発時刻で解決する
+            // （duration の線形按分だと sync ありキャラの開始条件がズレていた。revise2 №3）
+            const visits = getNodeVisitTimesAnchored({ ...refData, startTime: refStart }, ref.nodeId, allNodes);
             if (visits.length > 0) {
                 const idx = Math.min(Math.max(ref.occurrence || 0, 0), visits.length - 1);
                 const base = ref.phase === 'departure' ? visits[idx].departure : visits[idx].arrival;

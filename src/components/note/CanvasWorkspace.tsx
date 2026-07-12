@@ -7,7 +7,7 @@ import { NOTE_CANVAS } from '../../constants';
 import { putAsset } from '../../services/assetStore';
 import { toast } from '../../services/toast';
 import { downloadDataUrl } from '../../utils/download';
-import { HANDWRITING_FONT, applyChaikin, CHARACTER_PORTRAITS, ExtendedNoteObjectType, FreehandSettings, PlacementMode } from './noteConstants';
+import { HANDWRITING_FONT, applyChaikin, CHARACTER_PORTRAITS, ExtendedNoteObjectType, FreehandSettings, PlacementMode, genObjId, PLACEMENT_LABELS } from './noteConstants';
 import { getImageSizeFromUrl, processFile } from '../../utils/imageUtils';
 import { URLImage, EditableText, ShapeObject } from './NoteObjectComponents';
 import { ImageGalleryWindow } from './ImageGalleryWindow';
@@ -19,6 +19,7 @@ import { useNoteClipboard } from '../../hooks/useNoteClipboard';
 import { useNoteKeyboard } from '../../hooks/useNoteKeyboard';
 import { useTextEditing } from '../../hooks/useTextEditing';
 import { useNoteHistoryBatch } from '../../hooks/useNoteHistoryBatch';
+import { useViewport } from '../../hooks/useViewport';
 
 // 論理キャンバスの基準サイズ・compact ツールバー最小幅は constants.ts の NOTE_CANVAS に集約（#A-8-6）。
 const COMPACT_SIDE_MIN = NOTE_CANVAS.COMPACT_SIDE_MIN;
@@ -63,23 +64,15 @@ export interface CanvasWorkspaceProps {
     headerBar?: React.ReactNode;
     // F3: ノート全文検索からのジャンプ先オブジェクトID。マウント/切替時に選択状態へ反映する。
     initialSelectId?: string;
+    // キャラクターノートのみ渡される。A/D・←/→でのキャラ切替（revise2 №15: 描画中の誤発火防止のため
+    // useNoteKeyboard の既存ガードに統合する）。
+    onSwitchChar?: (dir: -1 | 1) => void;
 }
 
-export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false, headerBar, initialSelectId }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader, sidebarHeaderDivider = true, compactMode = false, headerBar, initialSelectId, onSwitchChar }: CanvasWorkspaceProps) => {
 
     const [displayTargetId, setDisplayTargetId] = useState(targetId);
     const [canvasOpacity, setCanvasOpacity] = useState(1);
-
-    useEffect(() => {
-        if (targetId !== displayTargetId) {
-            setCanvasOpacity(0);
-            const timer = setTimeout(() => {
-                setDisplayTargetId(targetId);
-                setTimeout(() => setCanvasOpacity(1), 50);
-            }, 200);
-            return () => clearTimeout(timer);
-        }
-    }, [targetId, displayTargetId]);
 
     const targetData = useAppStore(state => {
         if (targetType === 'overview') return state.notes.overviewCanvas;
@@ -111,24 +104,38 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const [galleryPos, setGalleryPos] = useState<{ x: number, y: number } | null>(null);
     const [isDraggingGallery, setIsDraggingGallery] = useState(false);
     const galleryDragRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
-    const handleGalleryDragStart = (e: React.MouseEvent) => {
+    // revise3 B-6: mousedown+mousemove はタッチで動かせないため Pointer Events へ統一
+    const handleGalleryDragStart = (e: React.PointerEvent) => {
         const start = galleryPos ?? { x: window.innerWidth - 222, y: window.innerHeight - 16 - Math.round(window.innerHeight * 0.45) };
         setIsDraggingGallery(true);
         galleryDragRef.current = { x: e.clientX, y: e.clientY, posX: start.x, posY: start.y };
         if (!galleryPos) setGalleryPos(start);
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     };
     useEffect(() => {
         if (!isDraggingGallery) return;
-        const onMove = (e: MouseEvent) => {
+        const onMove = (e: PointerEvent) => {
             const dx = e.clientX - galleryDragRef.current.x;
             const dy = e.clientY - galleryDragRef.current.y;
             setGalleryPos({ x: galleryDragRef.current.posX + dx, y: galleryDragRef.current.posY + dy });
         };
         const onUp = () => setIsDraggingGallery(false);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
     }, [isDraggingGallery]);
+
+    // ウィンドウを縮めても画像一覧が画面外に取り残されないようにする（revise2 №18）
+    useEffect(() => {
+        const onResize = () => {
+            setGalleryPos(p => p && ({
+                x: Math.min(Math.max(0, p.x), window.innerWidth - 60),
+                y: Math.min(Math.max(0, p.y), window.innerHeight - 40),
+            }));
+        };
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
 
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const {
@@ -136,6 +143,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         editingTextValueRef, editingTextIdRef, editingTextBoundsRef, finishTextEditing,
     } = useTextEditing(targetType, displayTargetId, updateNoteObject, saveNoteHistory);
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+    // 0711_2 #1: 縮尺(effScale)の基準寸。ウィンドウ自体のリサイズ（ブラウザズーム含む）と
+    // ノート切替のときだけ更新し、パネル開閉などウィンドウ不変のコンテナ変化では据え置く。
+    // 据え置き中は縮尺を変えず、紙面は常にセルいっぱいに描く（差分は紙面の広がり/隠れで吸収）。
+    const [stableSize, setStableSize] = useState({ width: 0, height: 0, winW: 0, winH: 0 });
 
     const [placementMode, setPlacementMode] = useState<PlacementMode>(null);
     const [freehandSettings, setFreehandSettings] = useState<FreehandSettings>({
@@ -159,20 +170,55 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const drawingNodeRef = useRef<Konva.Shape | null>(null);
     // 各ペインの Konva.Stage 参照。ブラウザズーム時に pixelRatio を再適用して画質劣化(#6)を防ぐ。
     const stageRefs = useRef<(Konva.Stage | null)[]>([null, null, null, null]);
+    // 複数/グループドラッグ確定の冪等性のため、ドラッグ開始時点の座標を基準として固定する。
+    // ドラッグ中に store が更新される（色ドラッグの遅延コミット等）と closure の obj/objects が
+    // 新しくなり、同一 mouseup 内の複数 dragend で差分が二重適用され得るため（revise2 №16）。
+    const dragBaseRef = useRef<Map<string, { x: number; y: number }> | null>(null);
 
     const { saveHistoryOnceThenSkip, commitThrottled } = useNoteHistoryBatch(saveNoteHistory);
     const [drawingActive, setDrawingActive] = useState(false);
 
     const [shapeContextMenu, setShapeContextMenu] = useState<ShapeContextMenuState | null>(null);
-    const [assetContextMenu, setAssetContextMenu] = useState<{ index: number, x: number, y: number } | null>(null);
+    const [assetContextMenu, setAssetContextMenu] = useState<{ asset: string, x: number, y: number } | null>(null);
+
+    // ノート切替時に前ノートの選択・編集・メニュー状態を持ち越さない（revise3 A-3）。
+    // finishTextEditing は displayTargetId で closure しているため、setDisplayTargetId の
+    // 「直前」に呼び、旧ノートの編集内容が旧IDのうちにコミットされるようにする。
+    useEffect(() => {
+        if (targetId !== displayTargetId) {
+            setCanvasOpacity(0);
+            const timer = setTimeout(() => {
+                finishTextEditing();          // 旧ノートの編集を旧IDのうちに確定
+                setSelectedIds([]);
+                setShapeContextMenu(null);
+                setAssetContextMenu(null);
+                setPlacementMode(null);
+                setDisplayTargetId(targetId);
+                setTimeout(() => setCanvasOpacity(1), 50);
+            }, 200);
+            return () => clearTimeout(timer);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [targetId, displayTargetId, finishTextEditing]);
 
     const [isFontLoaded, setIsFontLoaded] = useState(false);
+
+    // revise3 B-3: モバイルの Canvas にピンチズーム/パンを追加する。effScale はそのまま（デスクトップの
+    // 「全体が常に見える」レイアウトは崩さない）で、compactMode(タッチ)時だけ Layer に合成適用する。
+    const [touchView, setTouchView] = useState({ scale: 1, x: 0, y: 0 });
+    const pinchRef = useRef<{ startDist: number, startScale: number, startMidX: number, startMidY: number, startViewX: number, startViewY: number } | null>(null);
+    const lastTapRef = useRef(0);
+    useEffect(() => { setTouchView({ scale: 1, x: 0, y: 0 }); }, [displayTargetId, currentCanvasIndex]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null);
     const trRefs = useRef<(Konva.Transformer | null)[]>([null, null, null, null]);
     // 4ペインそれぞれの DOM 要素。ペインをまたぐドラッグ移動(#4)のヒットテストに使う
     const paneRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
+    // revise3 B-9: 4面ペインのダブルクリック/ダブルタップ判定用
+    const lastPaneTapRef = useRef<{ index: number, t: number }>({ index: -1, t: 0 });
+    // revise3 B-4: 図形の長押し（500ms）で ShapeContextMenu を開くための共有タイマー
+    const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null, x: number, y: number }>({ timer: null, x: 0, y: 0 });
 
     const objects = targetData?.objects || [];
     const assets = targetData?.assets || [];
@@ -207,15 +253,22 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         const container = canvasContainerRef.current;
         if (!container) return;
 
+        // ノート切替で新しい紙面に合わせ直す（stableSize を初期化）
+        setStableSize({ width: 0, height: 0, winW: 0, winH: 0 });
+
         const observer = new ResizeObserver((entries) => {
             for (const entry of entries) {
                 const newWidth = Math.round(entry.contentRect.width);
                 const newHeight = Math.round(entry.contentRect.height);
-                setCanvasSize(prev => {
-                    if (Math.abs(prev.width - newWidth) < 2 && Math.abs(prev.height - newHeight) < 2) {
-                        return prev;
+                // revise3 A-13: 完全一致のみスキップ（2px 閾値だとリサイザーを1px刻みで動かした際に
+                // Stage とコンテナが最大2px弱ズレたままになる。Math.round 済みなので同値スキップで十分）。
+                setCanvasSize(prev => (prev.width === newWidth && prev.height === newHeight) ? prev : { width: newWidth, height: newHeight });
+                setStableSize(prev => {
+                    const winW = window.innerWidth, winH = window.innerHeight;
+                    if (prev.width === 0 || prev.winW !== winW || prev.winH !== winH) {
+                        return { width: newWidth, height: newHeight, winW, winH };
                     }
-                    return { width: newWidth, height: newHeight };
+                    return prev;    // ウィンドウ不変のコンテナ変化（パネル開閉等）→ 縮尺据え置き
                 });
             }
         });
@@ -225,14 +278,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     }, [targetType, targetId]);
 
     useEffect(() => {
-        if (!document.getElementById('yomogi-font')) {
-            const link = document.createElement('link');
-            link.id = 'yomogi-font';
-            link.href = 'https://fonts.googleapis.com/css2?family=Yomogi&display=swap';
-            link.rel = 'stylesheet';
-            document.head.appendChild(link);
-        }
-        document.fonts.ready.then(() => setIsFontLoaded(true));
+        let done = false;
+        const finish = () => { if (!done) { done = true; setIsFontLoaded(true); } };
+        // FontFaceSet で明示ロード。1.5s で諦めて代替フォントのまま描画を開始する（revise3 A-9）
+        document.fonts.load('24px "Yomogi"').then(finish).catch(finish);
+        const t = setTimeout(finish, 1500);
+        return () => clearTimeout(t);
     }, []);
 
     // #06/28-3:58-6: ブラウザのズームイン時、Konvaキャンバスのバックバッファ解像度(pixelRatio)は
@@ -269,7 +320,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
     // 1ペインを「選択枠なし」で dataURL 化する（紙面背景はまだ乗せない）。事件ノート(preset)は
     // 論理1200×800を常に2400×1600で出力（ズーム非依存）。それ以外は表示範囲を2倍解像度で出力。
-    const capturePane = useCallback((index: number): string | null => {
+    const capturePane = useCallback((index: number): { url: string; k: number } | null => {
         const stage = stageRefs.current[index];
         const layer = stage?.getLayers()[0];
         if (!stage || !layer) return null;
@@ -279,9 +330,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         excluded.forEach(n => n.visible(false));
         layer.batchDraw();
         try {
-            return targetType === 'preset'
-                ? stage.toDataURL({ pixelRatio: 2 / s, mimeType: 'image/png' })
-                : stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
+            // fill系(全体/キャラ/メモ)も preset 同様、論理基準(2/s)で出力する。旧: pixelRatio 2 固定は
+            // Stage の物理px がウィンドウ寸に依存するため、同じノートでも書き出し解像度が
+            // ウィンドウサイズで変わっていた（revise2 №19）。21§A の安定化と合わせてウィンドウ非依存になる。
+            // revise3 A-10: 論理×2 を基本に、出力長辺が 4096px を超える場合は縮める（巨大ウィンドウでの
+            // メモリ急増/toDataURL失敗対策）。drawPaper の方眼ピッチを出力と一致させるため k を返す。
+            const logicalW = stage.width() / s, logicalH = stage.height() / s;
+            const ratio = Math.min(2, 4096 / Math.max(logicalW, logicalH));
+            return { url: stage.toDataURL({ pixelRatio: ratio / s, mimeType: 'image/png' }), k: ratio };
         } finally {
             excluded.forEach(n => n.visible(true));
             layer.batchDraw();
@@ -292,6 +348,24 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     const loadImage = (url: string) => new Promise<HTMLImageElement>((res, rej) => {
         const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url;
     });
+
+    // 0711_2 #5: 紙面（方眼つき）を 2D canvas に描く。k = 出力px/論理px。
+    // capturePane の pixelRatio(2/s) と Layer scale(s) が相殺するため、書き出しは常に k=2。
+    // 見た目は画面の CSS 背景（24pxピッチ・3-3破線・#C2B2A1・各セルの上辺/左辺）に一致させる。
+    const drawPaper = (ctx: CanvasRenderingContext2D, w: number, h: number, k: number) => {
+        ctx.fillStyle = '#ECD2B3';
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#C2B2A1';
+        ctx.lineWidth = k;
+        ctx.setLineDash([3 * k, 3 * k]);
+        for (let x = 0; x <= w; x += 24 * k) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        }
+        for (let y = 0; y <= h; y += 24 * k) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+    };
 
     // キャンバスを PNG として書き出す（B-4 / 20.md #2）。4ペイン表示中は「4ペイン全体 / 現在のペイン」を選べる。
     // 紙面(方眼色)背景は CSS 背景で toDataURL に写らないため、2D canvas で合成する
@@ -313,19 +387,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         }
         try {
             if (mode === 'current') {
-                const url = capturePane(currentCanvasIndex);
-                if (!url) return;
-                const img = await loadImage(url);
+                const cap = capturePane(currentCanvasIndex);
+                if (!cap) return;
+                const img = await loadImage(cap.url);
                 const c = document.createElement('canvas');
                 c.width = img.naturalWidth; c.height = img.naturalHeight;
                 const ctx = c.getContext('2d')!;
-                ctx.fillStyle = '#ECD2B3'; ctx.fillRect(0, 0, c.width, c.height);
+                drawPaper(ctx, c.width, c.height, cap.k);
                 ctx.drawImage(img, 0, 0);
                 downloadDataUrl(c.toDataURL('image/png'), `manosaba-note-${targetType}-${Date.now()}.png`);
             } else {
-                const urls = [0, 1, 2, 3].map(capturePane);
-                if (urls.some(u => !u)) { toast.error('ペインの取得に失敗しました'); return; }
-                const imgs = await Promise.all((urls as string[]).map(loadImage));
+                const caps = [0, 1, 2, 3].map(capturePane);
+                if (caps.some(u => !u)) { toast.error('ペインの取得に失敗しました'); return; }
+                const validCaps = caps as { url: string; k: number }[];
+                const imgs = await Promise.all(validCaps.map(cap => loadImage(cap.url)));
                 // グリッド中は4ペインのセル寸が同一 → 出力も同一サイズ
                 const w = imgs[0].naturalWidth, h = imgs[0].naturalHeight, GAP = 8;
                 const c = document.createElement('canvas');
@@ -335,7 +410,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 imgs.forEach((img, i) => {
                     const col = i % 2, row = Math.floor(i / 2);
                     const x = col * (w + GAP), y = row * (h + GAP);
-                    ctx.fillStyle = '#ECD2B3'; ctx.fillRect(x, y, w, h);
+                    ctx.save();
+                    ctx.translate(x, y);
+                    drawPaper(ctx, w, h, validCaps[i].k);
+                    ctx.restore();
                     ctx.drawImage(img, x, y);
                 });
                 downloadDataUrl(c.toDataURL('image/png'), `manosaba-note-${targetType}-all-${Date.now()}.png`);
@@ -349,7 +427,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // オブジェクトのドラッグ確定処理（#4: 4ペインをまたぐ移動に対応）。
     // グリッド編集中に別ペイン上でドロップされたら、対象（グループなら全メンバー）を
     // 移動先キャンバスへ付け替える。同一ペイン内なら通常の移動として確定する。
+    // revise3 A-11: ドラッグ中はフローティングテキストツールバーの位置が Konva ノードの再レンダリングに
+    // 追従しないため、ドラッグ中だけ非表示にする（旧位置に残る不具合の最小修正）。
+    const [draggingSelection, setDraggingSelection] = useState(false);
+
     const handleObjectDragEnd = useCallback((e: Konva.KonvaEventObject<DragEvent>, obj: NoteObject, sourceIndex: number, _scale: number) => {
+        setDraggingSelection(false);
         const evt: MouseEvent | undefined = e?.evt;
         const rawX = e.target.x();
         const rawY = e.target.y();
@@ -359,6 +442,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         const clampX = (v: number) => clampRange ? Math.max(0, Math.min(CANVAS_BASE_W, v)) : v;
         const clampY = (v: number) => clampRange ? Math.max(0, Math.min(CANVAS_BASE_H, v)) : v;
 
+        // ドラッグ開始時点の座標を基準にする（revise2 №16）。onDragStart で必ず設定されるが、
+        // 万一未設定なら現在の store 値へフォールバックする。
+        const baseOf = (id: string, cur: { x?: number; y?: number }) =>
+            dragBaseRef.current?.get(id) ?? { x: cur.x ?? 0, y: cur.y ?? 0 };
+        const objBase = baseOf(obj.id, obj);
+
         // dx,dy だけ移動する。グループならグループ全員（同ペイン）、それ以外は自分のみ。
         // extra に canvasIndex を含めると移動先ペインへ付け替える。
         const applyMove = (dx: number, dy: number, extra: Partial<NoteObject> = {}) => {
@@ -366,9 +455,9 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             if (obj.groupId) {
                 const groupObjs = objects.filter(o => (o.canvasIndex || 0) === sourceIndex && o.groupId === obj.groupId);
                 updateNoteObjects(targetType, displayTargetId,
-                    groupObjs.map(m => ({ id: m.id, attrs: { x: (m.x ?? 0) + dx, y: (m.y ?? 0) + dy, ...extra } })));
+                    groupObjs.map(m => { const b = baseOf(m.id, m); return { id: m.id, attrs: { x: b.x + dx, y: b.y + dy, ...extra } }; }));
             } else {
-                updateNoteObject(targetType, displayTargetId, obj.id, { x: (obj.x ?? 0) + dx, y: (obj.y ?? 0) + dy, ...extra }, true);
+                updateNoteObject(targetType, displayTargetId, obj.id, { x: objBase.x + dx, y: objBase.y + dy, ...extra }, true);
             }
         };
 
@@ -395,7 +484,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     // 画面→移動先Layerの論理座標
                     const newX = clampX((screenX - tgtBox.left - tLayer.x()) / tLayer.scaleX());
                     const newY = clampY((screenY - tgtBox.top - tLayer.y()) / tLayer.scaleY());
-                    applyMove(newX - (obj.x ?? 0), newY - (obj.y ?? 0), { canvasIndex: targetPane });
+                    applyMove(newX - objBase.x, newY - objBase.y, { canvasIndex: targetPane });
                     return;
                 }
             }
@@ -405,14 +494,14 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         // F5: スナップONなら方眼(24px)ピッチに丸める（跨ぎ移動の画面座標変換には使わない rawX/Y のみ対象）。
         const snappedX = snapOn ? Math.round(rawX / 24) * 24 : rawX;
         const snappedY = snapOn ? Math.round(rawY / 24) * 24 : rawY;
-        applyMove(clampX(snappedX) - (obj.x ?? 0), clampY(snappedY) - (obj.y ?? 0));
+        applyMove(clampX(snappedX) - objBase.x, clampY(snappedY) - objBase.y);
     }, [isGridMode, isGridEditMode, compactMode, objects, updateNoteObject, updateNoteObjects, targetType, displayTargetId, snapOn]);
 
     useNoteKeyboard({
         editingTextId, setPlacementMode, undoNote, redoNote,
         selectedIds, setSelectedIds, updateNoteObjects, removeNoteObjects, targetType, displayTargetId,
         handleCopySelected, handleCutSelected, handlePasteClipboard, clipboard,
-        placementMode, shapeContextMenu, isDrawingRef, setCurrentCanvasIndex,
+        placementMode, shapeContextMenu, isDrawingRef, setCurrentCanvasIndex, onSwitchChar,
     });
 
     useEffect(() => {
@@ -440,8 +529,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         return () => clearTimeout(timer);
     }, [selectedIds, objectsLength, currentCanvasIndex, isGridMode, isGridEditMode]);
 
+    // revise3 B-1: 同じツールをもう一度押すと解除するトグル化。フリーハンド描き終え後も
+    // placementMode が残る仕様のため、ソフトキーボードの無いタッチ端末で解除できなくなるのを防ぐ。
     const startPlacement = (type: ExtendedNoteObjectType, data?: string) => {
-        setPlacementMode({ type, data });
+        setPlacementMode(prev => (prev?.type === type && prev?.data === data) ? null : { type, data });
         setSelectedIds([]);
     };
 
@@ -466,19 +557,43 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         e.preventDefault();
         const files = e.dataTransfer.files;
         if (!(files && files.length > 0 && files[0].type.startsWith('image/'))) return;
+
+        // ドロップされた画面座標を、該当ペインの Layer 論理座標へ変換する（revise3 A-1）。
+        // 旧: offsetX/Y（コンテナ画面px）をそのまま論理座標にしていたため、縮尺ぶんズレていた。
+        let dropIndex = currentCanvasIndex;
+        let pos = { x: 100, y: 100 };   // 変換不能時のフォールバック
+        const paneHit = paneRefs.current.findIndex(div => {
+            if (!div) return false;
+            const r = div.getBoundingClientRect();
+            return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        });
+        if (paneHit !== -1) dropIndex = paneHit;
+        const stage = stageRefs.current[dropIndex];
+        const layer = stage?.getLayers()[0];
+        if (stage && layer) {
+            const box = stage.container().getBoundingClientRect();
+            pos = {
+                x: (e.clientX - box.left - layer.x()) / (layer.scaleX() || 1),
+                y: (e.clientY - box.top - layer.y()) / (layer.scaleY() || 1),
+            };
+        }
+        if (targetType === 'preset') {   // 基準範囲クランプ（クリック配置と同じ制約）
+            pos.x = Math.max(0, Math.min(CANVAS_BASE_W, pos.x));
+            pos.y = Math.max(0, Math.min(CANVAS_BASE_H, pos.y));
+        }
         try {
             const { blob, width, height } = await processFile(files[0]);
             const key = await putAsset(blob);
             addNoteAsset(targetType, displayTargetId, key);
             addNoteObject(targetType, displayTargetId, {
-                id: `img_${Date.now()}`,
+                id: genObjId('img'),
                 type: 'image',
-                x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY,
+                x: pos.x, y: pos.y,
                 width, height,
                 content: key,
                 rotation: 0, scaleX: 1, scaleY: 1,
                 keepRatio: true,
-                canvasIndex: currentCanvasIndex
+                canvasIndex: dropIndex
             });
         } catch {
             toast.error('画像を保存できませんでした（空き容量不足の可能性）。ヘルプからバックアップの書き出しをおすすめします。');
@@ -486,8 +601,12 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         }
     };
 
-    const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>, index: number, _scale: number) => {
-        if (e.evt.button !== 0) return;
+    const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>, index: number, _scale: number) => {
+        // TouchEvent には button が無く undefined になる。タッチは常に許可し、マウスは左クリックのみ許可する
+        // （revise2 №22: 旧実装は button!==0 が常に真になりタッチ操作が全て無視されていた）。
+        const isTouch = typeof TouchEvent !== 'undefined' && e.evt instanceof TouchEvent;
+        if (isTouch && (e.evt as TouchEvent).touches.length > 1) return;   // マルチタッチはジェスチャ予約（revise3 A-15）
+        if (!isTouch && (e.evt as MouseEvent).button !== 0) return;
 
         if (placementMode) {
             // レイヤーのローカル(=論理)座標。Layerのscale(compactの基準範囲フィット)を自動で吸収する。
@@ -510,7 +629,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 isDrawingRef.current = true;
                 const isFreehand = placementMode.type === 'freehand';
                 drawingShapeInfoRef.current = {
-                    id: `${placementMode.type}_${Date.now()}`,
+                    id: genObjId(placementMode.type),
                     type: placementMode.type,
                     x: pos.x, y: pos.y,
                     points: isFreehand ? [0, 0] : [0, 0, 0, 0],
@@ -530,7 +649,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 const px = pos.x, py = pos.y;
                 getImageSizeFromUrl(content, 300).then(({ width, height }) => {
                     addNoteObject(targetType, displayTargetId, {
-                        id: `image_${Date.now()}`, type: 'image',
+                        id: genObjId('image'), type: 'image',
                         x: px, y: py, width, height, content,
                         rotation: 0, scaleX: 1, scaleY: 1, keepRatio: true, canvasIndex: index,
                     });
@@ -555,7 +674,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             }
 
             // text のみ即時配置
-            const baseId = `${placementMode.type}_${Date.now()}`;
+            const baseId = genObjId(placementMode.type);
             let newObj: NoteObject | null = null;
             if (placementMode.type === 'text') {
                 newObj = { id: baseId, type: 'text', x: pos.x, y: pos.y, text: 'Text', fontSize: 24, fontWeight: 'normal', fill: '#000000', rotation: 0, scaleX: 1, scaleY: 1 };
@@ -587,7 +706,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         }
     };
 
-    const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>, index: number, _scale: number) => {
+    const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>, index: number, _scale: number) => {
+        const isTouchMove = typeof TouchEvent !== 'undefined' && e.evt instanceof TouchEvent;
+        if (isTouchMove && (e.evt as TouchEvent).touches.length > 1) return;   // revise3 A-15
+        // revise3 B-4: 10px以上動いたら長押し判定をキャンセル（ドラッグ開始とみなす）
+        if (isTouchMove && longPressRef.current.timer) {
+            const t = (e.evt as TouchEvent).touches[0];
+            if (t && Math.hypot(t.clientX - longPressRef.current.x, t.clientY - longPressRef.current.y) > 10) {
+                clearTimeout(longPressRef.current.timer);
+                longPressRef.current.timer = null;
+            }
+        }
         if (isDrawingRef.current && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index) {
             const layer = e.target.getStage()?.getLayers()[0];
             const logicalPos = layer?.getRelativePointerPosition();
@@ -649,72 +778,97 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         }
     };
 
-    const handleStageMouseUp = async (e: Konva.KonvaEventObject<MouseEvent>, index: number, _scale: number) => {
-        if (isDrawingRef.current && drawingShapeInfoRef.current) {
-            isDrawingRef.current = false;
-            const type = drawingShapeInfoRef.current.type as string;
+    // 描画中の図形/フリーハンドを確定する（revise3 A-5: Stage 上の mouseup と window 側の
+    // フォールバック mouseup/touchend の両方から呼べるよう handleStageMouseUp から抽出）。
+    const commitDrawing = async (index: number) => {
+        if (!(isDrawingRef.current && drawingShapeInfoRef.current)) return;
+        isDrawingRef.current = false;
+        const type = drawingShapeInfoRef.current.type as string;
 
-            if (['rect', 'circle', 'triangle', 'image'].includes(type)) {
-                const dragW = drawingShapeInfoRef.current.width as number;
-                const dragH = drawingShapeInfoRef.current.height as number;
-                const isDrag = dragW >= 5 && dragH >= 5;
-                const baseId = `${type}_${Date.now()}`;
-                const startX = drawingShapeInfoRef.current._startX as number;
-                const startY = drawingShapeInfoRef.current._startY as number;
-                let newObj: NoteObject;
+        if (['rect', 'circle', 'triangle', 'image'].includes(type)) {
+            const dragW = drawingShapeInfoRef.current.width as number;
+            const dragH = drawingShapeInfoRef.current.height as number;
+            const isDrag = dragW >= 5 && dragH >= 5;
+            const baseId = genObjId(type);
+            const startX = drawingShapeInfoRef.current._startX as number;
+            const startY = drawingShapeInfoRef.current._startY as number;
+            let newObj: NoteObject;
 
-                if (isDrag) {
-                    // Circle/RegularPolygon は x,y が中心座標のためバウンディングボックス左上から補正
-                    const isCentered = type === 'circle' || type === 'triangle';
-                    newObj = {
-                        id: baseId,
-                        type: type as NoteObjectType,
-                        x: isCentered
-                            ? (drawingShapeInfoRef.current.x as number) + dragW / 2
-                            : (drawingShapeInfoRef.current.x as number),
-                        y: isCentered
-                            ? (drawingShapeInfoRef.current.y as number) + dragH / 2
-                            : (drawingShapeInfoRef.current.y as number),
-                        width: dragW,
-                        height: dragH,
-                        fill: '#A8D5BA',
-                        stroke: '#000000',
-                        strokeWidth: 2,
-                        rotation: 0, scaleX: 1, scaleY: 1,
-                        canvasIndex: index,
-                        content: type === 'image' ? drawingShapeInfoRef.current.content as string : undefined,
-                        keepRatio: type === 'image' ? true : undefined,
-                    };
-                } else if (type === 'image') {
-                    const content = drawingShapeInfoRef.current.content as string;
-                    const { width, height } = await getImageSizeFromUrl(content, 300);
-                    newObj = { id: baseId, type: 'image', x: startX, y: startY, width, height, content, rotation: 0, scaleX: 1, scaleY: 1, keepRatio: true, canvasIndex: index };
-                } else {
-                    newObj = { id: baseId, type: type as NoteObjectType, x: startX, y: startY, fill: '#A8D5BA', stroke: '#000000', strokeWidth: 2, rotation: 0, scaleX: 1, scaleY: 1, canvasIndex: index };
-                }
-
-                drawingShapeInfoRef.current = null;
-                setDrawingActive(false);
-                addNoteObject(targetType, displayTargetId, newObj);
-                setPlacementMode(null);
-                return;
+            if (isDrag) {
+                // Circle/RegularPolygon は x,y が中心座標のためバウンディングボックス左上から補正
+                const isCentered = type === 'circle' || type === 'triangle';
+                const d = Math.min(dragW, dragH);   // 正円/正三角の直径（revise3 A-7）
+                newObj = {
+                    id: baseId,
+                    type: type as NoteObjectType,
+                    x: isCentered
+                        ? (drawingShapeInfoRef.current.x as number) + dragW / 2
+                        : (drawingShapeInfoRef.current.x as number),
+                    y: isCentered
+                        ? (drawingShapeInfoRef.current.y as number) + dragH / 2
+                        : (drawingShapeInfoRef.current.y as number),
+                    width: isCentered ? d : dragW,
+                    height: isCentered ? d : dragH,
+                    fill: '#A8D5BA',
+                    stroke: '#000000',
+                    strokeWidth: 2,
+                    rotation: 0, scaleX: 1, scaleY: 1,
+                    canvasIndex: index,
+                    content: type === 'image' ? drawingShapeInfoRef.current.content as string : undefined,
+                    keepRatio: type === 'image' ? true : undefined,
+                };
+            } else if (type === 'image') {
+                const content = drawingShapeInfoRef.current.content as string;
+                const { width, height } = await getImageSizeFromUrl(content, 300);
+                newObj = { id: baseId, type: 'image', x: startX, y: startY, width, height, content, rotation: 0, scaleX: 1, scaleY: 1, keepRatio: true, canvasIndex: index };
+            } else {
+                newObj = { id: baseId, type: type as NoteObjectType, x: startX, y: startY, fill: '#A8D5BA', stroke: '#000000', strokeWidth: 2, rotation: 0, scaleX: 1, scaleY: 1, canvasIndex: index };
             }
 
-            const isFreehand = type === 'freehand';
-            const finalPoints = (isFreehand && freehandSettings.stabilization > 0)
-                ? applyChaikin(drawingShapeInfoRef.current.points as number[], freehandSettings.stabilization)
-                : drawingShapeInfoRef.current.points;
-            addNoteObject(targetType, displayTargetId, {
-                ...drawingShapeInfoRef.current,
-                id: `${type}_${Date.now()}`,
-                points: finalPoints
-            });
             drawingShapeInfoRef.current = null;
             setDrawingActive(false);
+            addNoteObject(targetType, displayTargetId, newObj);
+            setPlacementMode(null);
+            return;
+        }
 
-            if (type !== 'freehand') {
-                setPlacementMode(null);
+        const isFreehand = type === 'freehand';
+        const finalPoints = (isFreehand && freehandSettings.stabilization > 0)
+            ? applyChaikin(drawingShapeInfoRef.current.points as number[], freehandSettings.stabilization)
+            : drawingShapeInfoRef.current.points;
+        addNoteObject(targetType, displayTargetId, {
+            ...drawingShapeInfoRef.current,
+            id: genObjId(type),
+            points: finalPoints
+        });
+        drawingShapeInfoRef.current = null;
+        setDrawingActive(false);
+
+        if (type !== 'freehand') {
+            setPlacementMode(null);
+        }
+    };
+
+    // Stage 外で指/ボタンが離された場合も描画・範囲選択を確定する（revise3 A-5）
+    useEffect(() => {
+        if (!drawingActive && !selectionRect.visible) return;
+        const finish = () => {
+            if (isDrawingRef.current && drawingShapeInfoRef.current) {
+                void commitDrawing(drawingShapeInfoRef.current.canvasIndex ?? currentCanvasIndex);
             }
+            setSelectionRect(prev => prev.visible ? { ...prev, visible: false } : prev);
+        };
+        window.addEventListener('mouseup', finish);
+        window.addEventListener('touchend', finish);
+        return () => { window.removeEventListener('mouseup', finish); window.removeEventListener('touchend', finish); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [drawingActive, selectionRect.visible]);
+
+    const handleStageMouseUp = async (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>, index: number, _scale: number) => {
+        // revise3 B-4: 指が離れたら長押し判定を打ち切る
+        if (longPressRef.current.timer) { clearTimeout(longPressRef.current.timer); longPressRef.current.timer = null; }
+        if (isDrawingRef.current && drawingShapeInfoRef.current) {
+            await commitDrawing(index);
             return;
         }
 
@@ -733,13 +887,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
         const newSelectedIds: string[] = [];
         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
+        const layer = e.target.getStage()?.getLayers()[0];
         objs.forEach(obj => {
             const node = e.target.getStage()?.findOne(`#${obj.id}`);
-            if (node) {
-                if (obj.x >= box.x && obj.x <= box.x + box.width && obj.y >= box.y && obj.y <= box.y + box.height) {
-                    newSelectedIds.push(obj.id);
-                }
-            }
+            if (!node || !layer) return;
+            // 論理座標系（Layer 相対）の実寸ボックスで交差判定（回転・スケール・種別差を吸収）。
+            // 旧: オブジェクト原点(x,y)の包含判定だったため、矩形の右下だけ囲む・線の途中だけ囲む・
+            // 回転済み図形などで「見えているのに選択されない」不具合があった（revise2 №13）。
+            const r = node.getClientRect({ relativeTo: layer });
+            const hit = r.x < box.x + box.width && r.x + r.width > box.x
+                     && r.y < box.y + box.height && r.y + r.height > box.y;
+            if (hit) newSelectedIds.push(obj.id);
         });
         setSelectedIds(newSelectedIds);
     };
@@ -805,7 +963,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         updateNoteObject(targetType, displayTargetId, selectedIds[0], { keepRatio: checked });
     };
     const handleGroupSelected = () => {
-        const newGroupId = `group_${Date.now()}`;
+        const newGroupId = genObjId('group');
         updateNoteObjects(targetType, displayTargetId, selectedIds.map(id => ({ id, attrs: { groupId: newGroupId } })));
     };
     const handleUngroupSelected = () => {
@@ -813,6 +971,32 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         setSelectedIds([]);
     };
     const handleDeleteSelected = () => { removeNoteObjects(targetType, displayTargetId, selectedIds); setSelectedIds([]); };
+
+    // revise2 №20: fill系ノートは広いウィンドウで置いたオブジェクトが、狭いウィンドウでは
+    // ビューポート外＝見えない/クリック不能になる。21§A の論理ビューポートと同じ基準寸から
+    // 現在ペインのビューポート外にあるオブジェクトを画面内へ回収する。
+    const handleGatherOutside = () => {
+        let viewW = CANVAS_BASE_W, viewH = CANVAS_BASE_H;
+        if (targetType !== 'preset') {
+            const useStable = !compactMode && stableSize.width > 0;
+            const baseAreaW = Math.max(1, useStable ? stableSize.width : canvasSize.width);
+            const baseAreaH = Math.max(1, useStable ? stableSize.height : canvasSize.height);
+            const logicalScale = Math.min(baseAreaW / CANVAS_BASE_W, baseAreaH / CANVAS_BASE_H);
+            // 0711_2 #1: 回収先は「現在実際に見えている論理範囲」= コンテナ実寸 / 安定縮尺
+            viewW = Math.max(1, canvasSize.width) / logicalScale;
+            viewH = Math.max(1, canvasSize.height) / logicalScale;
+        }
+        const outside = currentCanvasObjects.filter(o =>
+            (o.x ?? 0) < 0 || (o.y ?? 0) < 0 || (o.x ?? 0) > viewW - 40 || (o.y ?? 0) > viewH - 40);
+        if (outside.length === 0) { toast.info('画面外のオブジェクトはありません'); return; }
+        saveHistoryOnceThenSkip();
+        updateNoteObjects(targetType, displayTargetId, outside.map(o => ({
+            id: o.id,
+            attrs: { x: Math.min(Math.max(0, o.x ?? 0), viewW - 100), y: Math.min(Math.max(0, o.y ?? 0), viewH - 60) },
+        })), true);
+        setSelectedIds(outside.map(o => o.id));
+        toast.success(`${outside.length}件を画面内へ回収しました`);
+    };
 
     // U3: SelectionContextBar の「色」「線幅」代表値と一括変更。text は fill、図形/線系は stroke を
     // 色として扱う（image は対象外）。ドラッグ中の間引きは ShapeContextMenu と同じ commitThrottled を使う。
@@ -833,6 +1017,47 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         commitThrottled(() => updateNoteObjects(targetType, displayTargetId, widthTargets.map(o => ({ id: o.id, attrs: { strokeWidth: val } })), true));
     };
 
+    // 0711 #4: portal 先スロット（ContextBar 内）。マウント後に一度だけ解決する
+    const [selectionSlot, setSelectionSlot] = useState<HTMLElement | null>(null);
+    useEffect(() => {
+        if (compactMode) return;
+        setSelectionSlot(document.getElementById('context-bar-selection-slot'));
+    }, [compactMode]);
+
+    // 0711_2 #2: compact(モバイルAnimate)では折りたたみ行内のスロットへ portal する。
+    // スロットが無い環境(デスクトップAnimateセル・モバイルNote)は従来の overlay。
+    const [compactSlot, setCompactSlot] = useState<HTMLElement | null>(null);
+    useEffect(() => {
+        if (!compactMode) return;
+        setCompactSlot(document.getElementById('animate-note-selection-slot'));
+    }, [compactMode]);
+
+    const selectionBar = selectedIds.length > 0 ? (
+        <SelectionContextBar
+            variant="topbar"
+            count={selectedIds.length}
+            colorValue={selectionColorValue}
+            onColorChange={handleSelectionColorChange}
+            widthValue={selectionWidthValue}
+            onWidthChange={handleSelectionWidthChange}
+            canReorder={selectedIds.length === 1 && !!selectedObject}
+            onReorderBack={() => handleReorderSelected('down')}
+            onReorderFront={() => handleReorderSelected('up')}
+            canGroup={selectedIds.length >= 2}
+            onGroup={handleGroupSelected}
+            canUngroup={!!selectedGroupId}
+            onUngroup={handleUngroupSelected}
+            onDelete={handleDeleteSelected}
+            keepRatioVisible={selectedIds.length === 1 && selectedObject?.type === 'image'}
+            keepRatioChecked={selectedObject?.keepRatio ?? true}
+            onToggleKeepRatio={handleToggleKeepRatioSelected}
+            onCopy={handleCopySelected}
+            onCut={handleCutSelected}
+            onPaste={handlePasteClipboard}
+            pasteEnabled={clipboard.length > 0}
+        />
+    ) : null;
+
     const getNodeScreenPosition = (id: string): { x: number; y: number; width: number } | null => {
         for (const tr of trRefs.current) {
             if (!tr) continue;
@@ -849,6 +1074,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     };
 
     const renderFloatingTextToolbar = () => {
+        if (draggingSelection) return null;
         if (selectedIds.length !== 1 || selectedObject?.type !== 'text') return null;
         const pos = getNodeScreenPosition(selectedIds[0]);
         if (!pos) return null;
@@ -859,13 +1085,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 position: 'fixed',
                 top: tbTop, left: tbLeft,
                 background: 'rgba(30,30,30,0.97)',
-                border: '1px solid #555',
+                border: '1px solid var(--border-strong, #555)',
                 borderRadius: '8px',
                 padding: '5px 10px',
                 display: 'flex', gap: '10px', alignItems: 'center',
                 zIndex: 999999,
                 boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-                fontSize: '0.85rem', color: '#ccc'
+                fontSize: '0.85rem', color: 'var(--text-secondary, #ccc)'
             }}>
                 <label>Size:
                     <input type="number" min="8" max="200"
@@ -874,7 +1100,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                             saveHistoryOnceThenSkip();
                             updateNoteObject(targetType, displayTargetId, selectedIds[0], { fontSize: +e.target.value }, true);
                         }}
-                        style={{ width: '50px', background: '#222', border: '1px solid #555', color: 'white', borderRadius: '3px', padding: '2px 5px', marginLeft: '5px' }}
+                        style={{ width: '50px', background: '#222', border: '1px solid var(--border-strong, #555)', color: 'white', borderRadius: '3px', padding: '2px 5px', marginLeft: '5px' }}
                     />
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -904,26 +1130,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         );
     };
 
-    const toolBtnStyle = (isActive: boolean): React.CSSProperties => ({
-        background: isActive ? 'rgba(0, 122, 204, 0.4)' : 'transparent',
-        border: isActive ? '1px solid #007acc' : '1px solid transparent',
-        color: isActive ? '#66b3ff' : '#ccc',
-        fontSize: '1rem',
-        cursor: 'pointer',
-        padding: '4px 8px',
-        borderRadius: '6px',
-        transition: 'all 0.2s',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'monospace'
-    });
-
     // Noteページの Tools 同様、テキスト付きの横長ボタン（compactの左ツールバー用）
     const toolTextBtnStyle = (isActive: boolean, disabled = false): React.CSSProperties => ({
-        background: isActive ? 'rgba(0, 122, 204, 0.2)' : '#333',
+        background: isActive ? 'rgba(0, 122, 204, 0.2)' : 'var(--surface-3, #333)',
         border: isActive ? '1px solid #007acc' : '1px solid #555',
-        color: disabled ? '#666' : (isActive ? '#66b3ff' : '#ccc'),
+        color: disabled ? '#666' : (isActive ? '#66b3ff' : 'var(--text-secondary, #ccc)'),
         boxShadow: isActive ? '0 0 8px rgba(0, 122, 204, 0.5)' : 'none',
         fontSize: '0.8rem',
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -936,6 +1147,10 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         whiteSpace: 'nowrap'
     });
 
+    // revise3 B-2: ツールバーの Undo/Redo ボタン用（useNoteKeyboard の Ctrl+Z/Y と同じ挙動）
+    const handleUndo = () => { undoNote(); setSelectedIds([]); };
+    const handleRedo = () => { redoNote(); setSelectedIds([]); };
+
     const renderPortalUI = () => {
         if (!compactMode) return null;
 
@@ -947,23 +1162,15 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     onToggleImageGallery={() => setShowImageGallery(v => !v)}
                     placementMode={placementMode}
                     onStartPlacement={(type) => startPlacement(type)}
-                    selectedIds={selectedIds}
-                    onCopy={handleCopySelected}
-                    onCut={handleCutSelected}
                     onPaste={handlePasteClipboard}
                     clipboardEmpty={clipboard.length === 0}
-                    onDelete={handleDeleteSelected}
                     onExportPng={handleExportPng}
                     freehandSettings={freehandSettings}
                     onFreehandSettingsChange={setFreehandSettings}
-                    selectedObject={selectedObject}
-                    onToggleKeepRatio={handleToggleKeepRatioSelected}
-                    onReorder={handleReorderSelected}
-                    selectedGroupId={selectedGroupId}
-                    onGroup={handleGroupSelected}
-                    onUngroup={handleUngroupSelected}
-                    toolBtnStyle={toolBtnStyle}
                     toolTextBtnStyle={toolTextBtnStyle}
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
+                    orientation={isMobileVp ? 'horizontal' : 'vertical'}
                 />
 
                 {showImageGallery && (
@@ -985,16 +1192,56 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     // ツールバー幅を一度だけ計算し、ペイン領域(panesW)をその分だけ狭める。
     // 単一表示: 3:2を高さフィットした残り幅をツールバーに（余白を埋める）。4ペイン: 固定幅。
     const COMPACT_ASPECT = CANVAS_BASE_W / CANVAS_BASE_H; // 1.5
+    // revise3 B-18: モバイルビューポートでは左ドックを畳み、下部の横スクロール列にツールを出す
+    // （ただでさえ狭い紙面を左ドックがさらに削るのを避ける）。
+    const isMobileVp = useViewport() === 'mobile';
     let compactToolbarW = 0;
-    if (compactMode) {
+    if (compactMode && !isMobileVp) {
         if (isGridMode) {
             compactToolbarW = Math.round(Math.min(150, Math.max(COMPACT_SIDE_MIN, canvasSize.width * 0.16)));
         } else {
             const canvasWAtHeightFit = canvasSize.height * COMPACT_ASPECT;
-            compactToolbarW = Math.max(COMPACT_SIDE_MIN, Math.round(canvasSize.width - canvasWAtHeightFit));
+            // revise3 B-19: 横長セルで余白がすべてツールバーに回ると間延びする。上限180pxで止め、
+            // 余りはペイン側のレターボックス余白（--canvas-margin）に回す。
+            compactToolbarW = Math.min(180, Math.max(COMPACT_SIDE_MIN, Math.round(canvasSize.width - canvasWAtHeightFit)));
         }
     }
     const panesW = Math.max(0, canvasSize.width - compactToolbarW);
+
+    // U3: 表示モード(単一/4面/編集)セグメント + 現在ペイン番号。desktop/compact-desktop は
+    // Canvas右下のフロート、モバイルは下部の専用行(flow)に置く（tools/ヘルプFABとの重なり回避）。
+    const renderViewSegment = () => (
+        <>
+            {([
+                { key: 'single', label: '1面', title: '単一表示', onSelect: () => { setIsGridMode(false); setIsGridEditMode(false); } },
+                { key: 'grid', label: '4面', title: '4ペイン表示', onSelect: () => { setIsGridMode(true); setIsGridEditMode(false); } },
+                { key: 'edit', label: '編集', title: '4ペインをまとめて編集', onSelect: () => { setIsGridMode(true); setIsGridEditMode(true); } },
+            ] as const).map(seg => {
+                const active = seg.key === 'single' ? !isGridMode : seg.key === 'grid' ? (isGridMode && !isGridEditMode) : (isGridMode && isGridEditMode);
+                return (
+                    <button
+                        key={seg.key}
+                        onClick={seg.onSelect}
+                        title={seg.title}
+                        style={{
+                            background: active ? '#007acc' : 'transparent',
+                            border: 'none', color: active ? '#fff' : '#aaa',
+                            borderRadius: '5px', padding: '6px 10px', fontSize: '0.78rem', cursor: 'pointer',
+                            fontWeight: active ? 'bold' : 'normal', minHeight: '36px',
+                        }}
+                    >
+                        {seg.label}
+                    </button>
+                );
+            })}
+            {/* revise3 B-12: 単一表示では左上ラベルの代わりに現在ペイン番号を小さく表示 */}
+            {!isGridMode && (
+                <span style={{ display: 'flex', alignItems: 'center', padding: '0 6px', fontSize: '0.72rem', color: '#888', whiteSpace: 'nowrap' }}>
+                    Canvas {currentCanvasIndex + 1}
+                </span>
+            )}
+        </>
+    );
 
     return (
         <div
@@ -1007,7 +1254,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
             {/* モバイル: プリセット/キャラ選択の横並びヘッダ（smartphone.md M1） */}
             {compactMode && headerBar && (
-                <div style={{ flexShrink: 0, display: 'flex', gap: '8px', alignItems: 'center', padding: '6px 8px', overflowX: 'auto', background: 'var(--surface-2, #252526)', borderBottom: '1px solid #333' }}>
+                <div style={{ flexShrink: 0, display: 'flex', gap: '8px', alignItems: 'center', padding: '6px 8px', overflowX: 'auto', background: 'var(--surface-2, #252526)', borderBottom: '1px solid var(--border-default, #333)' }}>
                     {headerBar}
                 </div>
             )}
@@ -1025,23 +1272,19 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     snapOn={snapOn}
                     onToggleSnap={() => setSnapOn(v => !v)}
                     selectedIds={selectedIds}
-                    selectedObject={selectedObject}
-                    onToggleKeepRatio={handleToggleKeepRatioSelected}
-                    onReorder={handleReorderSelected}
-                    selectedGroupId={selectedGroupId}
-                    onGroup={handleGroupSelected}
-                    onUngroup={handleUngroupSelected}
                     onAlignLeft={handleAlignLeft}
                     onAlignTop={handleAlignTop}
                     onDistributeHorizontal={handleDistributeHorizontal}
                     onDistributeVertical={handleDistributeVertical}
-                    onDeleteSelected={handleDeleteSelected}
                     onExportPng={handleExportPng}
+                    onGatherOutside={handleGatherOutside}
                     portraitPalette={portraitPalette}
                     assets={assets}
                     targetType={targetType}
                     characterPortraits={CHARACTER_PORTRAITS}
-                    onAssetContextMenu={(index, x, y) => setAssetContextMenu({ index, x, y })}
+                    onAssetContextMenu={(asset, x, y) => setAssetContextMenu({ asset, x, y })}
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
                 />
             )}
 
@@ -1051,7 +1294,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
                 style={{
-                    backgroundColor: '#1e1e1e',
+                    backgroundColor: 'var(--canvas-margin, #1e1e1e)',
                     backgroundImage: 'none',
                     // ▼ 修正: 外側の不要なパディングを0にして、キャンバスを枠いっぱいに広げる
                     padding: 0,
@@ -1063,34 +1306,48 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                     flexDirection: 'column',
                     opacity: canvasOpacity,
                     transition: 'opacity 0.2s ease-in-out',
-                    gridRow: '1 / -1'
+                    gridRow: '1 / -1',
+                    position: 'relative', // compact時のSelectionContextBar overlay(absolute)の基準
                 }}
             >
-                {/* U3: 選択中オブジェクトの操作バー。desktopはキャンバス上端に重ねる(overlay・レイアウト
-                    は動かさない)、compactはheaderBar直下の通常フロー(折り返し表示)で高さ36px分押し下げる。 */}
-                {selectedIds.length > 0 && (
-                    <div style={compactMode ? { flexShrink: 0 } : { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 }}>
-                        <SelectionContextBar
-                            count={selectedIds.length}
-                            colorValue={selectionColorValue}
-                            onColorChange={handleSelectionColorChange}
-                            widthValue={selectionWidthValue}
-                            onWidthChange={handleSelectionWidthChange}
-                            canReorder={selectedIds.length === 1 && !!selectedObject}
-                            onReorderBack={() => handleReorderSelected('down')}
-                            onReorderFront={() => handleReorderSelected('up')}
-                            canGroup={selectedIds.length >= 2}
-                            onGroup={handleGroupSelected}
-                            canUngroup={!!selectedGroupId}
-                            onUngroup={handleUngroupSelected}
-                            onDelete={handleDeleteSelected}
-                        />
+                {/* revise3 B-10: 配置モード中であることの常時表示 + 即時解除手段。
+                    タッチにはカーソル(crosshair)が無いため、今どのモードかを見た目で示す。 */}
+                {placementMode && (
+                    <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 30,
+                                  display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,122,204,0.9)', color: '#fff',
+                                  borderRadius: 16, padding: '4px 12px', fontSize: '0.78rem', pointerEvents: 'auto' }}>
+                        <span>{PLACEMENT_LABELS[placementMode.type] ?? placementMode.type} 配置中</span>
+                        <button onClick={() => setPlacementMode(null)}
+                            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: 0, lineHeight: 1 }}
+                            title="解除 (Esc)">✕</button>
                     </div>
                 )}
+                {/* 0711 #4: 選択中オブジェクトの操作バー。desktopはContextBar中央スロットへportal
+                    （選択の有無でレイアウトが動かない）、compactはCanvas上端へabsolute overlay
+                    （Canvas高さを変えない。旧: 通常フロー挿入で36px分押し下げていた）。 */}
+                {compactMode ? (
+                    compactSlot
+                        ? (selectedIds.length > 0 && createPortal(selectionBar, compactSlot))
+                        : (
+                            // revise3 B-7: モバイル Note（+ compact だがスロット無しの全環境）では
+                            // overlay ではなく常設の高さ36px行に置く（選択の出没でキャンバスが動かない・被らない）。
+                            <div style={{ flexShrink: 0, height: 36, display: 'flex', alignItems: 'center', overflowX: 'auto',
+                                          background: 'var(--surface-2)', borderBottom: '1px solid var(--border-default)' }}>
+                                {selectedIds.length > 0 ? selectionBar : (
+                                    <span style={{ padding: '0 10px', fontSize: '0.72rem', color: 'var(--text-disabled)', whiteSpace: 'nowrap' }}>
+                                        オブジェクトをタップで選択 / ツールをもう一度タップで解除
+                                    </span>
+                                )}
+                            </div>
+                        )
+                ) : (
+                    selectedIds.length > 0 && selectionSlot && createPortal(selectionBar, selectionSlot)
+                )}
                 <div style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%', flex: 1, minHeight: 0 }}>
-                {/* compact: 左にCanvas操作ツールバーを常設（単一表示でも4ペインでも）。#06/28-14:10-5 */}
-                {compactMode && compactToolbarW > 4 && (
-                    <div style={{ width: `${compactToolbarW}px`, flexShrink: 0, height: '100%', overflowY: 'auto', background: '#1a1a1a', borderRight: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
+                {/* compact: 左にCanvas操作ツールバーを常設（単一表示でも4ペインでも）。#06/28-14:10-5
+                    revise3 B-18: モバイルビューポートでは左ドックを畳み、下部の横スクロール列へ移す。 */}
+                {compactMode && !isMobileVp && compactToolbarW > 4 && (
+                    <div style={{ width: `${compactToolbarW}px`, flexShrink: 0, height: '100%', overflowY: 'auto', background: 'var(--surface-1, #1a1a1a)', borderRight: '1px solid var(--surface-3, #333)', display: 'flex', flexDirection: 'column' }}>
                         {renderPortalUI()}
                     </div>
                 )}
@@ -1153,13 +1410,29 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                             stageRenderW = CANVAS_BASE_W * effScale;
                             stageRenderH = CANVAS_BASE_H * effScale;
                         } else {
-                            // overview/character/misc: Stageをコンテナ実寸にして要素いっぱいに描画（fill, 余白なし）
-                            effScale = Math.min(stageWidth / CANVAS_BASE_W, stageHeight / CANVAS_BASE_H);
-                            stageRenderW = stageWidth;
+                            // 0711_2 #1: 「fill × 縮尺安定」方式。
+                            // - 縮尺(effScale)は stableSize（ウィンドウ基準の安定寸）だけから決める
+                            //   → パネル開閉ではズームしない（ウィンドウ自体のリサイズ時のみ再フィット）。
+                            // - 紙面(Stage)は常にセルいっぱい（レターボックスを作らない＝グレー余白を出さない）。
+                            //   セルが安定寸より広ければ紙面がその分広がり、狭ければ右/下端がパネルの下に隠れる
+                            //   （「机に固定された紙の上をパネルが滑る」挙動。隠れた分は 🧲回収 で戻せる）。
+                            // - stableSize == 実寸のときは旧 fill と完全一致（compact は常にこちら＝従来どおり）。
+                            const useStable = !compactMode && stableSize.width > 0;
+                            const baseAreaW = useStable ? stableSize.width : areaW;
+                            const baseAreaH = useStable ? stableSize.height : canvasSize.height;
+                            const baseCellW = Math.max(1, (isGridMode ? (baseAreaW - gapWidth) / 2 : baseAreaW) - borderWidth * 2);
+                            const baseCellH = Math.max(1, (isGridMode ? (baseAreaH - gapWidth) / 2 : baseAreaH) - borderWidth * 2);
+                            effScale = Math.min(baseCellW / CANVAS_BASE_W, baseCellH / CANVAS_BASE_H);
+                            stageRenderW = stageWidth;    // 常にセル実寸＝グレー余白なし
                             stageRenderH = stageHeight;
                         }
                         const stageOffsetX = (stageWidth - stageRenderW) / 2;
                         const stageOffsetY = (stageHeight - stageRenderH) / 2;
+                        // revise3 B-3: compact(タッチ)時のみピンチズーム/パンを合成適用する。
+                        // デスクトップ(非compact)は touchView が常に恒等のため無変化。
+                        const layerScale = effScale * (compactMode ? touchView.scale : 1);
+                        const layerX = compactMode ? touchView.x : 0;
+                        const layerY = compactMode ? touchView.y : 0;
 
                         const objs = objects.filter(o => (o.canvasIndex || 0) === index);
 
@@ -1174,30 +1447,41 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     position: 'relative',
                                     boxSizing: 'border-box',
                                     // 編集モード中はホバー効果(青枠の浮き上がり)を出さない。ペイン選択時のみホバーを示す。
-                                    border: isGridMode ? (((isHovered && !isGridEditMode) || isCurrent) ? '2px solid #007acc' : '2px solid #444') : (compactMode ? 'none' : 'none'),
+                                    border: isGridMode ? (((isHovered && !isGridEditMode) || isCurrent) ? '2px solid #007acc' : '2px solid var(--border-default, #444)') : (compactMode ? 'none' : 'none'),
                                     boxShadow: isGridMode && isHovered && !isGridEditMode ? '0 0 12px rgba(0, 122, 204, 0.8)' : 'none',
                                     transition: 'all 0.2s',
                                     overflow: 'hidden',
                                     // Note/Animate統一: セル(pane)は暗色マージン、紙面(方眼)はStage(=基準範囲)側に表示し中央配置。
-                                    backgroundColor: '#1e1e1e',
+                                    backgroundColor: 'var(--canvas-margin, #1e1e1e)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center'
                                 }}
+                                title={isGridMode && !isGridEditMode ? 'ダブルクリックで拡大' : undefined}
                                 onClick={(e) => {
-                                    // 4ペイン表示中はどのペインをクリックしても単一表示へ戻す。
-                                    // 呼び出し元(現在)ペインも対象に含め、戻れない不具合を解消する。
-                                    if (isGridMode && !isGridEditMode) {
+                                    // revise3 B-9: シングルクリックは対象ペイン切替のみ。単一表示への拡大は
+                                    // ダブルクリック/ダブルタップに限定する（4面を俯瞰用途で使うため、
+                                    // 触れただけでモードが変わるのを防ぐ）。
+                                    if (!(isGridMode && !isGridEditMode)) return;
+                                    const now = performance.now();
+                                    const isDouble = lastPaneTapRef.current.index === index && now - lastPaneTapRef.current.t < 350;
+                                    lastPaneTapRef.current = { index, t: now };
+                                    if (isDouble) {
                                         setCurrentCanvasIndex(index);
                                         setSelectedIds([]);
                                         setIsGridMode(false);
-                                        e.stopPropagation();
+                                    } else {
+                                        setCurrentCanvasIndex(index);   // 選択ペインの青枠だけ移動
                                     }
+                                    e.stopPropagation();
                                 }}
                             >
+                                {/* revise3 B-12: 単一表示ではラベルが紙面左上を常時占有し描画物と重なるため、4面のみ表示 */}
+                                {isGridMode && (
                                 <div style={{ position: 'absolute', top: 5, left: 5, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '12px', zIndex: 10, pointerEvents: 'none' }}>
                                     Canvas {index + 1}
                                 </div>
+                                )}
 
                                 <Stage
                                     ref={(node) => { stageRefs.current[index] = node; }}
@@ -1221,6 +1505,66 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                         if (isGridMode && !isGridEditMode && !isCurrent) return;
                                         handleStageMouseUp(e, index, scale);
                                     }}
+                                    onTouchStart={(e) => {
+                                        if (isGridMode && !isGridEditMode && !isCurrent) return;
+                                        if (isGridMode && isGridEditMode && !isCurrent) {
+                                            setCurrentCanvasIndex(index);
+                                            setSelectedIds([]);
+                                        }
+                                        // revise3 B-3: 2本指はピンチズーム/パンとして予約（A-15と同じ理由で描画系には渡さない）
+                                        if (compactMode && e.evt.touches.length === 2) {
+                                            e.evt.preventDefault();
+                                            pinchRef.current = null; // 次の move で基準を初期化
+                                            return;
+                                        }
+                                        handleStageMouseDown(e, index, scale);
+                                    }}
+                                    onTouchMove={(e) => {
+                                        if (isGridMode && !isGridEditMode && !isCurrent) return;
+                                        if (compactMode && e.evt.touches.length === 2) {
+                                            e.evt.preventDefault();
+                                            const [t0, t1] = [e.evt.touches[0], e.evt.touches[1]];
+                                            const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+                                            const midX = (t0.clientX + t1.clientX) / 2;
+                                            const midY = (t0.clientY + t1.clientY) / 2;
+                                            if (!pinchRef.current) {
+                                                pinchRef.current = { startDist: dist, startScale: touchView.scale, startMidX: midX, startMidY: midY, startViewX: touchView.x, startViewY: touchView.y };
+                                                return;
+                                            }
+                                            const p = pinchRef.current;
+                                            const newScale = Math.min(4, Math.max(1, p.startScale * (dist / Math.max(1, p.startDist))));
+                                            const ratio = newScale / p.startScale;
+                                            const rawX = midX - (p.startMidX - p.startViewX) * ratio;
+                                            const rawY = midY - (p.startMidY - p.startViewY) * ratio;
+                                            // 紙面が完全に画面外へ出ない範囲にクランプ
+                                            const maxPanX = stageRenderW * newScale;
+                                            const maxPanY = stageRenderH * newScale;
+                                            setTouchView({
+                                                scale: newScale,
+                                                x: Math.min(stageRenderW * 0.5, Math.max(stageRenderW * 0.5 - maxPanX, rawX)),
+                                                y: Math.min(stageRenderH * 0.5, Math.max(stageRenderH * 0.5 - maxPanY, rawY)),
+                                            });
+                                            return;
+                                        }
+                                        handleStageMouseMove(e, index, scale);
+                                    }}
+                                    onTouchEnd={(e) => {
+                                        if (isGridMode && !isGridEditMode && !isCurrent) return;
+                                        if (compactMode) {
+                                            if (e.evt.touches.length < 2) pinchRef.current = null;
+                                            if (e.evt.touches.length === 0) {
+                                                // revise3 B-3: ダブルタップでリセット
+                                                const now = performance.now();
+                                                if (touchView.scale !== 1 && now - lastTapRef.current < 350) {
+                                                    setTouchView({ scale: 1, x: 0, y: 0 });
+                                                    lastTapRef.current = 0;
+                                                } else {
+                                                    lastTapRef.current = now;
+                                                }
+                                            }
+                                        }
+                                        handleStageMouseUp(e, index, scale);
+                                    }}
                                     onContextMenu={(e) => e.evt.preventDefault()}
                                     style={{
                                         cursor: placementMode && isCurrent ? 'crosshair' : (isGridMode && !isGridEditMode ? 'pointer' : 'default'),
@@ -1230,7 +1574,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                         backgroundSize: `${24 * effScale}px ${24 * effScale}px`
                                     }}
                                 >
-                                    <Layer scaleX={effScale} scaleY={effScale}>
+                                    <Layer scaleX={layerScale} scaleY={layerScale} x={layerX} y={layerY}>
                                         {isFontLoaded && objs.map((obj) => {
                                             if (obj.id === editingTextId) return null;
 
@@ -1257,6 +1601,27 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 obj,
                                                 isDrawingMode,
                                                 ...groupDragHandlers,
+                                                // 最重要2: 複数選択の連動ドラッグ。Transformer の _proxyDrag は attach 済みノード（非テキスト）
+                                                // 同士にしか効かないため、(a) 起点が何であれ選択中テキストへ、(b) 起点がテキストなら選択中
+                                                // 非テキストへも、startDrag を伝播する。isDragging() ガードで二重開始しない。
+                                                onDragStart: (e: Konva.KonvaEventObject<DragEvent>) => {
+                                                    setDraggingSelection(true);
+                                                    // ドラッグ開始時点の座標を基準として固定（revise2 №16: dragend 二重適用防止）
+                                                    const base = new Map<string, { x: number; y: number }>();
+                                                    objs.forEach(o => base.set(o.id, { x: o.x ?? 0, y: o.y ?? 0 }));
+                                                    dragBaseRef.current = base;
+
+                                                    if (selectedIds.length < 2 || !selectedIds.includes(obj.id)) return;
+                                                    const stage = stageRefs.current[index];
+                                                    if (!stage) return;
+                                                    objs.forEach(o => {
+                                                        if (o.id === obj.id || !selectedIds.includes(o.id)) return;
+                                                        // 起点が非テキストの場合、非テキスト同士は Transformer が連動させるので対象外
+                                                        if (obj.type !== 'text' && o.type !== 'text') return;
+                                                        const node = stage.findOne(`#${o.id}`);
+                                                        if (node && !node.isDragging()) node.startDrag(e);
+                                                    });
+                                                },
                                                 // ドラッグ確定はグループ/単体ともに統一ハンドラへ（#4 ペイン跨ぎ移動対応）
                                                 onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleObjectDragEnd(e, obj, index, scale),
                                                 onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -1300,7 +1665,27 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                     if (isGridMode && isGridEditMode && !isCurrent) setCurrentCanvasIndex(index);
 
                                                     handleShapeContextMenu(e, obj);
-                                                }
+                                                },
+                                                // revise3 B-4: 長押し(500ms・移動10px未満)でタッチからも ShapeContextMenu を開く
+                                                onTouchStart: (e: Konva.KonvaEventObject<TouchEvent>) => {
+                                                    if (e.evt.touches.length !== 1) return;
+                                                    if (isGridMode && !isGridEditMode && !isCurrent) return;
+                                                    const t = e.evt.touches[0];
+                                                    if (longPressRef.current.timer) clearTimeout(longPressRef.current.timer);
+                                                    longPressRef.current = {
+                                                        x: t.clientX, y: t.clientY,
+                                                        timer: setTimeout(() => {
+                                                            setShapeContextMenu({
+                                                                id: obj.id, type: obj.type as ExtendedNoteObjectType,
+                                                                x: t.clientX, y: t.clientY,
+                                                                stroke: obj.stroke || '#000000',
+                                                                strokeWidth: obj.strokeWidth || 2,
+                                                                fill: obj.fill,
+                                                                lineStyle: obj.lineStyle || 'normal',
+                                                            });
+                                                        }, 500),
+                                                    };
+                                                },
                                             };
 
                                             if (obj.type === 'image') return <URLImage key={obj.id} {...props} />;
@@ -1308,24 +1693,30 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             return <ShapeObject key={obj.id} {...props} />;
                                         })}
 
-                                        {/* 複数選択時、テキストノードの選択インジケーター（Transformerが除外するため個別描画） */}
+                                        {/* 複数選択時、テキストノードの選択インジケーター（Transformerが除外するため個別描画）。
+                                            実ノードの実寸を使う（旧: 固定推定値のため長文/改行テキストと食い違っていた。revise2 №17） */}
                                         {selectedIds.length > 1 && objs
                                             .filter(o => o.type === 'text' && selectedIds.includes(o.id))
-                                            .map(o => (
-                                                <Rect
-                                                    key={`sel_indicator_${o.id}`}
-                                                    name="__export_exclude"
-                                                    x={(o.x ?? 0) - 2}
-                                                    y={(o.y ?? 0) - 2}
-                                                    width={(o.width || 150) + 4}
-                                                    height={(o.fontSize || 24) * 1.5 + 4}
-                                                    stroke="#007acc"
-                                                    strokeWidth={1 / effScale}
-                                                    dash={[4 / effScale, 4 / effScale]}
-                                                    fill="transparent"
-                                                    listening={false}
-                                                />
-                                            ))
+                                            .map(o => {
+                                                const node = stageRefs.current[index]?.findOne(`#${o.id}`);
+                                                const w = node ? node.width() * (node.scaleX() || 1) : (o.width || 150);
+                                                const h = node ? node.height() * (node.scaleY() || 1) : (o.fontSize || 24) * 1.5;
+                                                return (
+                                                    <Rect
+                                                        key={`sel_indicator_${o.id}`}
+                                                        name="__export_exclude"
+                                                        x={(o.x ?? 0) - 2}
+                                                        y={(o.y ?? 0) - 2}
+                                                        width={w + 4}
+                                                        height={h + 4}
+                                                        stroke="#007acc"
+                                                        strokeWidth={1 / effScale}
+                                                        dash={[4 / effScale, 4 / effScale]}
+                                                        fill="transparent"
+                                                        listening={false}
+                                                    />
+                                                );
+                                            })
                                         }
 
                                         {drawingActive && drawingShapeInfoRef.current && drawingShapeInfoRef.current.canvasIndex === index && (
@@ -1377,16 +1768,23 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                 <Transformer
                                                     ref={(el) => { trRefs.current[index] = el; }}
                                                     name="__export_exclude"
+                                                    // revise3 B-20: Konva既定10pxではモバイルの縮小率と相まってハンドルが掴めない
+                                                    anchorSize={compactMode ? 16 : 10}
+                                                    anchorCornerRadius={compactMode ? 4 : 0}
+                                                    rotateAnchorOffset={compactMode ? 36 : 50}
+                                                    padding={compactMode ? 6 : 0}
                                                     boundBoxFunc={(oldBox, newBox) => {
                                                         if (newBox.width < 5 || newBox.height < 5) return oldBox;
                                                         return newBox;
                                                     }}
                                                     keepRatio={
-                                                        selectedIds.length === 1 && (
-                                                            selectedObject?.type === 'circle' ||
-                                                            selectedObject?.type === 'triangle' ||
-                                                            (selectedObject?.type === 'image' && (selectedObject?.keepRatio ?? true))
-                                                        )
+                                                        selectedIds.length === 1
+                                                            ? (selectedObject?.type === 'circle' || selectedObject?.type === 'triangle' ||
+                                                               (selectedObject?.type === 'image' && (selectedObject?.keepRatio ?? true)))
+                                                            // 複数選択に比率維持画像/円/三角が含まれるなら全体をkeepRatioにする。
+                                                            // 旧: 単独選択しか見ておらず、複数選択に立ち絵が混ざると自由比率で伸縮され歪んでいた（revise2 №14）
+                                                            : currentCanvasObjects.some(o => selectedIds.includes(o.id) &&
+                                                               (o.type === 'circle' || o.type === 'triangle' || (o.type === 'image' && (o.keepRatio ?? true))))
                                                     }
                                                     enabledAnchors={isOnlyText ? [] : undefined}
                                                     rotateEnabled={!isOnlyText}
@@ -1454,12 +1852,13 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                             autoFocus
                                             style={{
                                                 position: 'absolute',
-                                                top: stageOffsetY + obj.y * effScale,
-                                                left: stageOffsetX + obj.x * effScale,
+                                                // revise3 B-3: ピンチズーム中もテキスト編集の位置/フォントサイズが追従する
+                                                top: stageOffsetY + layerY + obj.y * layerScale,
+                                                left: stageOffsetX + layerX + obj.x * layerScale,
                                                 width: `${editWidth}px`,
                                                 height: 'auto',
-                                                minHeight: `${(obj.fontSize || 24) * 1.4 * effScale}px`,
-                                                fontSize: `${(obj.fontSize || 24) * effScale}px`,
+                                                minHeight: `${(obj.fontSize || 24) * 1.4 * layerScale}px`,
+                                                fontSize: `${(obj.fontSize || 24) * layerScale}px`,
                                                 fontWeight: obj.fontWeight || 'normal',
                                                 fontFamily: HANDWRITING_FONT,
                                                 color: obj.fill || 'black',
@@ -1484,36 +1883,40 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 </div>
                 </div>
 
-                {/* U3: 旧「4ペイン切替」「グリッド編集」の絵文字トグル2つを1つのセグメント操作に統合。
-                    isGridMode/isGridEditMode の3状態(単一/4面/編集)を1箇所で切り替えられるようにする。 */}
-                <div style={{
-                    position: 'absolute', bottom: '20px', right: '20px', zIndex: 1000,
-                    display: 'flex', backgroundColor: 'rgba(30, 30, 30, 0.85)', borderRadius: '8px',
-                    padding: '3px', gap: '2px', border: '1px solid #444', boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                }}>
-                    {([
-                        { key: 'single', label: '1面', title: '単一表示', onSelect: () => { setIsGridMode(false); setIsGridEditMode(false); } },
-                        { key: 'grid', label: '4面', title: '4ペイン表示', onSelect: () => { setIsGridMode(true); setIsGridEditMode(false); } },
-                        { key: 'edit', label: '編集', title: '4ペインをまとめて編集', onSelect: () => { setIsGridMode(true); setIsGridEditMode(true); } },
-                    ] as const).map(seg => {
-                        const active = seg.key === 'single' ? !isGridMode : seg.key === 'grid' ? (isGridMode && !isGridEditMode) : (isGridMode && isGridEditMode);
-                        return (
-                            <button
-                                key={seg.key}
-                                onClick={seg.onSelect}
-                                title={seg.title}
-                                style={{
-                                    background: active ? '#007acc' : 'transparent',
-                                    border: 'none', color: active ? '#fff' : '#aaa',
-                                    borderRadius: '5px', padding: '6px 10px', fontSize: '0.78rem', cursor: 'pointer',
-                                    fontWeight: active ? 'bold' : 'normal', minHeight: '30px',
-                                }}
-                            >
-                                {seg.label}
-                            </button>
-                        );
-                    })}
-                </div>
+                {/* モバイル: 表示モード切替(1面/4面/編集)を tools の上の専用行(左寄せ)に置く。
+                    旧: Canvas右下のフロートが下部ツール列とヘルプ(?)FABに重なっていた（本行で解消）。 */}
+                {compactMode && isMobileVp && (
+                    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+                                  background: 'var(--surface-1, #1a1a1a)', borderTop: '1px solid var(--border-default, #333)' }}>
+                        <div style={{ display: 'flex', gap: 2, backgroundColor: 'rgba(30, 30, 30, 0.85)', borderRadius: 8,
+                                      padding: 3, border: '1px solid var(--border-default, #444)' }}>
+                            {renderViewSegment()}
+                        </div>
+                    </div>
+                )}
+
+                {/* revise3 B-18: モバイルビューポートでは左ドックの代わりに下部の横スクロール列にツールを出す。
+                    末尾に FAB(ヘルプ?ボタン)幅ぶんのスペーサを置き、最後尾のツールが FAB の下に隠れないようにする。 */}
+                {compactMode && isMobileVp && (
+                    <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'row', gap: 4, overflowX: 'auto',
+                                  padding: '4px 6px', background: 'var(--surface-1, #1a1a1a)', borderTop: '1px solid var(--border-default, #333)',
+                                  WebkitOverflowScrolling: 'touch' }}>
+                        {renderPortalUI()}
+                        <div aria-hidden style={{ flex: '0 0 52px' }} />
+                    </div>
+                )}
+
+                {/* U3: 表示モードセグメント（desktop / compact-desktop は Canvas 右下のフロート）。
+                    モバイルは上の専用行へ移設済みのため、ここでは非モバイル時のみ描画する。 */}
+                {!(compactMode && isMobileVp) && (
+                    <div style={{
+                        position: 'absolute', bottom: '20px', right: '20px', zIndex: 1000,
+                        display: 'flex', backgroundColor: 'rgba(30, 30, 30, 0.85)', borderRadius: '8px',
+                        padding: '3px', gap: '2px', border: '1px solid var(--border-default, #444)', boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                    }}>
+                        {renderViewSegment()}
+                    </div>
+                )}
 
                 {shapeContextMenu && (
                     <ShapeContextMenu
@@ -1533,14 +1936,17 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                 {assetContextMenu && (
                     <div
                         style={{
-                            position: 'fixed', top: assetContextMenu.y, left: assetContextMenu.x,
-                            background: '#1e1e1e', border: '1px solid #444', borderRadius: '4px', zIndex: 1000002
+                            // revise3 B-5: 高さ固定(~36px)なので簡易クランプで画面外はみ出しを防ぐ
+                            position: 'fixed', top: Math.min(assetContextMenu.y, window.innerHeight - 44), left: Math.min(assetContextMenu.x, window.innerWidth - 130),
+                            background: 'var(--surface-3, #1e1e1e)', border: '1px solid var(--border-default, #444)', borderRadius: '4px', zIndex: 1000002
                         }}
                     >
                         <div
                             style={{ padding: '8px 12px', cursor: 'pointer', color: '#ff4444', fontSize: '0.9rem' }}
                             onClick={() => {
-                                removeNoteAsset(targetType, displayTargetId, assetContextMenu.index);
+                                const idx = assets.indexOf(assetContextMenu.asset);
+                                if (idx !== -1) removeNoteAsset(targetType, displayTargetId, idx);
+                                else toast.info('この画像は既に削除されています');
                                 setAssetContextMenu(null);
                             }}
                         >

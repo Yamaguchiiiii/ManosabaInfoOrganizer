@@ -97,13 +97,15 @@ export const AnimateView = () => {
     if (!timelinePos) setTimelinePos({ x: 12, y: Math.round(window.innerHeight * 0.6) });
   }, [timelinePos, playbackPinned]);
 
-  const handleTimelineDragStart = (e: React.MouseEvent) => {
+  // revise3 B-6: mousedown+mousemove はタッチで動かせないため Pointer Events へ統一
+  const handleTimelineDragStart = (e: React.PointerEvent) => {
     if (!timelinePos) return;
     setIsDraggingTimeline(true);
     timelineDragStartRef.current = { x: e.clientX, y: e.clientY, posX: timelinePos.x, posY: timelinePos.y };
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!isDraggingTimeline) return;
       const dx = e.clientX - timelineDragStartRef.current.x;
       const dy = e.clientY - timelineDragStartRef.current.y;
@@ -111,11 +113,23 @@ export const AnimateView = () => {
     };
     const onUp = () => setIsDraggingTimeline(false);
     if (isDraggingTimeline) {
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
     }
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
   }, [isDraggingTimeline]);
+
+  // ウィンドウを縮めてもフローティング再生盤(📌解除時)が画面外に取り残されないようにする（revise2 №18）
+  useEffect(() => {
+    const onResize = () => {
+      setTimelinePos(p => p && ({
+        x: Math.min(Math.max(0, p.x), window.innerWidth - 60),
+        y: Math.min(Math.max(0, p.y), window.innerHeight - 40),
+      }));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // ui.md P2: ContextPanel は折りたたみで幅を制御できるため、Animate での強制縮小は廃止。
   // （sidebarWidth の強制 set をやめ、ユーザーのパネル幅/折りたたみ設定を尊重する）
@@ -128,6 +142,7 @@ export const AnimateView = () => {
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      if (useAppStore.getState().dialog) return; // ダイアログ表示中は背後の再生を切り替えない（revise2 №29）
       e.preventDefault();
       const { isPlaying, setIsPlaying } = usePlaybackStore.getState();
       setIsPlaying(!isPlaying);
@@ -176,13 +191,19 @@ export const AnimateView = () => {
           </ReadOnlyMapView>
         </div>
         <div className={`animate-mobile-note ${noteCollapsed ? 'collapsed' : ''}`}>
-          <button className="note-collapse-bar" onClick={() => setNoteCollapsed(v => !v)}>
-            事件ノート {noteCollapsed ? '▸' : '▾'}
-          </button>
+          <div className="note-collapse-row">
+            <button className="note-collapse-bar" onClick={() => setNoteCollapsed(v => !v)}>
+              事件ノート {noteCollapsed ? '▸' : '▾'}
+            </button>
+            {/* 0711_2 #2: 選択中オブジェクト操作バーの portal 先（CanvasWorkspace(compact) が挿す）。
+                行の高さは固定なので、バーが出ても canvas がピコピコ動かない。 */}
+            <div id="animate-note-selection-slot" className="note-selection-slot" />
+          </div>
           {!noteCollapsed && <div className="note-body"><NotesPanel /></div>}
         </div>
         <div className="animate-mobile-playbar" data-tour={TOUR_TARGETS.animatePlayback}>
-          <AnimationTimeline />
+          {/* 0711_2 #4: イベントタップで発生フロアのマップへ切替（時刻シークは AnimationTimeline 内で実施済み） */}
+          <AnimationTimeline onEventJump={(ev) => { if (ev.floor) setMobileFloor(ev.floor); }} />
         </div>
       </div>
     );
@@ -242,16 +263,16 @@ export const AnimateView = () => {
             style={{
               position: 'fixed', left: timelinePos.x, top: timelinePos.y, zIndex: 9000,
               width: '480px', maxWidth: '92vw',
-              background: '#222', border: '1px solid #444', borderRadius: '8px',
+              background: 'var(--surface-2)', border: '1px solid var(--border-default)', borderRadius: '8px',
               boxShadow: '0 6px 24px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column',
               overflow: 'hidden'
             }}
           >
             <div
-              onMouseDown={handleTimelineDragStart}
-              style={{ cursor: isDraggingTimeline ? 'grabbing' : 'grab', padding: '3px', display: 'flex', justifyContent: 'center', background: '#2a2a2a', borderBottom: '1px solid #333' }}
+              onPointerDown={handleTimelineDragStart}
+              style={{ cursor: isDraggingTimeline ? 'grabbing' : 'grab', padding: '3px', display: 'flex', justifyContent: 'center', background: 'var(--surface-3)', borderBottom: '1px solid var(--border-default)', touchAction: 'none' }}
             >
-              <div style={{ width: '34px', height: '4px', borderRadius: '2px', background: '#666' }} />
+              <div style={{ width: '34px', height: '4px', borderRadius: '2px', background: 'var(--text-disabled)' }} />
             </div>
             <AnimationTimeline />
           </div>,

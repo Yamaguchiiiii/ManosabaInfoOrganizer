@@ -5,15 +5,18 @@ import { useAppStore } from '../store';
 export const useTutorial = () => {
     const tutorialSeen = useAppStore(s => s.tutorialSeen);
     const setTutorialSeen = useAppStore(s => s.setTutorialSeen);
+    const setHelpOverlayOpen = useAppStore(s => s.setHelpOverlayOpen);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [tourOpen, setTourOpen] = useState(false);
 
-    // 初回のみ、少し待ってからツアーを自動開始する。
-    // ただしモバイル幅では自動起動しない（ツアーはデスクトップUI(NavRail/ICONS等)を指すため、
-    // モバイルでは対象が存在せずハイライトできない。ヘルプからは手動で開ける）。
+    // revise3 A-12: ヘルプ/ツアー表示中はキャンバスのショートカットを無効化する
+    useEffect(() => {
+        setHelpOverlayOpen(drawerOpen || tourOpen);
+    }, [drawerOpen, tourOpen, setHelpOverlayOpen]);
+
+    // 初回のみ、少し待ってからツアーを自動開始する（0711_2 #3: モバイル専用ステップを用意したため全ビューポートで起動）。
     useEffect(() => {
         if (tutorialSeen) return;
-        if (window.innerWidth < 768) return;
         const t = setTimeout(() => setTourOpen(true), 600);
         return () => clearTimeout(t);
         // 初回マウント時の判定のみ
@@ -24,16 +27,23 @@ export const useTutorial = () => {
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.isComposing || e.keyCode === 229) return; // IME変換中は奪わない
+            // F1 は文字入力に使われないため、入力欄フォーカス中でも常に受け付ける。
+            // ブラウザ既定のヘルプより先に受けるため capture で listen し、必ず preventDefault する。0711 #9
+            if (e.key === 'F1') {
+                e.preventDefault();
+                setDrawerOpen(o => !o);
+                return;
+            }
             const t = e.target as HTMLElement | null;
             const tag = t?.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
-            if (e.key === 'F1' || (e.shiftKey && (e.key === '?' || e.key === '/'))) {
+            if (e.shiftKey && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
                 e.preventDefault();
                 setDrawerOpen(o => !o);
             }
         };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
     }, []);
 
     const closeTour = useCallback(() => { setTourOpen(false); setTutorialSeen(true); }, [setTutorialSeen]);

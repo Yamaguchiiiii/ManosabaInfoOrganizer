@@ -19,12 +19,15 @@ export interface NoteObjectComponentProps {
     onChange: (attrs: Partial<NoteObject>) => void;
     onToggleEdit?: () => void;
     onContextMenu?: (e: Konva.KonvaEventObject<PointerEvent>) => void;
+    onDragStart?: (e: Konva.KonvaEventObject<DragEvent>) => void;
     onDragMove?: (e: Konva.KonvaEventObject<DragEvent>) => void;
     onDragEnd?: (e: Konva.KonvaEventObject<DragEvent>) => void;
+    // revise3 B-4: 長押しで ShapeContextMenu を開くための起点（タッチには右クリックが無い）
+    onTouchStart?: (e: Konva.KonvaEventObject<TouchEvent>) => void;
 }
 
 // --- 画像コンポーネント (メモ化) ---
-export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: NoteObjectComponentProps) => {
+export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, onDragStart, onDragMove, onDragEnd, onTouchStart, isDrawingMode }: NoteObjectComponentProps) => {
     // content が asset:// なら Blob の object URL を解決してから読み込む（P2）。
     const resolvedSrc = useAssetUrl(obj.content ?? '');
     const [img, status] = useImage(resolvedSrc || '');
@@ -47,6 +50,8 @@ export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, on
                 onClick={onSelect}
                 onTap={onSelect}
                 onContextMenu={onContextMenu}
+                onTouchStart={onTouchStart}
+                onDragStart={onDragStart}
                 onDragMove={onDragMove}
                 onDragEnd={onDragEnd ?? ((e) => onChange({ x: e.target.x(), y: e.target.y() }))}
             >
@@ -63,6 +68,7 @@ export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, on
             onClick={onSelect}
             onTap={onSelect}
             onContextMenu={onContextMenu}
+            onTouchStart={onTouchStart}
             image={img}
             x={obj.x}
             y={obj.y}
@@ -72,6 +78,7 @@ export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, on
             scaleX={obj.scaleX}
             scaleY={obj.scaleY}
             draggable={!isDrawingMode}
+            onDragStart={onDragStart}
             onDragMove={onDragMove}
             onDragEnd={onDragEnd ?? ((e) => { onChange({ x: e.target.x(), y: e.target.y() }); })}
             onTransformEnd={(e) => {
@@ -93,7 +100,7 @@ export const URLImage = React.memo(({ obj, onSelect, onChange, onContextMenu, on
 });
 
 // --- テキストコンポーネント (メモ化) ---
-export const EditableText = React.memo(({ obj, onSelect, onChange, onToggleEdit, onDragMove, onDragEnd, isDrawingMode }: NoteObjectComponentProps) => {
+export const EditableText = React.memo(({ obj, onSelect, onChange, onToggleEdit, onDragStart, onDragMove, onDragEnd, isDrawingMode }: NoteObjectComponentProps) => {
     return (
         <Text
             id={obj.id}
@@ -112,6 +119,7 @@ export const EditableText = React.memo(({ obj, onSelect, onChange, onToggleEdit,
             scaleX={obj.scaleX}
             scaleY={obj.scaleY}
             draggable={!isDrawingMode}
+            onDragStart={onDragStart}
             onDragMove={onDragMove}
             onDragEnd={onDragEnd ?? ((e) => { onChange({ x: e.target.x(), y: e.target.y() }); })}
         />
@@ -119,19 +127,21 @@ export const EditableText = React.memo(({ obj, onSelect, onChange, onToggleEdit,
 });
 
 // --- 図形コンポーネント (メモ化) ---
-export const ShapeObject = React.memo(({ obj, onSelect, onChange, onContextMenu, onDragMove, onDragEnd, isDrawingMode }: NoteObjectComponentProps) => {
+export const ShapeObject = React.memo(({ obj, onSelect, onChange, onContextMenu, onDragStart, onDragMove, onDragEnd, onTouchStart, isDrawingMode }: NoteObjectComponentProps) => {
     const commonProps: Konva.ShapeConfig = {
         id: obj.id,
         name: "note-object",
         onClick: onSelect,
         onTap: onSelect,
         onContextMenu: onContextMenu,
+        onTouchStart: onTouchStart,
         x: obj.x,
         y: obj.y,
         rotation: obj.rotation,
         scaleX: obj.scaleX,
         scaleY: obj.scaleY,
         draggable: !isDrawingMode,
+        onDragStart: onDragStart,
         onDragMove: onDragMove,
         onDragEnd: onDragEnd ?? ((e: Konva.KonvaEventObject<DragEvent>) => onChange({ x: e.target.x(), y: e.target.y() })),
         onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {

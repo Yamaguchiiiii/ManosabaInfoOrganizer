@@ -72,22 +72,26 @@ function App() {
     const handleTransition = (action: () => void) => {
         transitionBusyRef.current = true;
         setOverlayPhase('visible');
-        const shownAt = performance.now();
-        // オーバーレイを1フレーム描画してから重い処理（enterMode→ビュー再マウント）を実行する
-        requestAnimationFrame(() => {
-            action();
-            // 新ビューの初回描画が終わった次フレームで、最低表示時間を満たしてから閉じる
+        // オーバーレイのフェードイン完了後に重い処理（ビュー差し替え）を行う。
+        // 旧: 次フレームで即実行 → 遷移先が半透明オーバーレイ越しに一瞬見えていた（0711 #2）
+        window.setTimeout(() => {
+            const shownAt = performance.now();
             requestAnimationFrame(() => {
-                const wait = Math.max(0, MIN_OVERLAY_MS - (performance.now() - shownAt));
-                setTimeout(() => {
-                    setOverlayPhase('leaving');
-                    setTimeout(() => {
-                        setOverlayPhase('hidden');
-                        transitionBusyRef.current = false;
-                    }, FADE_MS);
-                }, wait);
+                try { action(); } finally {
+                    // 新ビューの初回描画が終わった次フレームで、最低表示時間を満たしてから閉じる
+                    requestAnimationFrame(() => {
+                        const wait = Math.max(0, MIN_OVERLAY_MS - (performance.now() - shownAt));
+                        setTimeout(() => {
+                            setOverlayPhase('leaving');
+                            setTimeout(() => {
+                                setOverlayPhase('hidden');
+                                transitionBusyRef.current = false;
+                            }, FADE_MS);
+                        }, wait);
+                    });
+                }
             });
-        });
+        }, FADE_MS);
     };
 
     const changeModeWithTransition = async (newMode: 'create' | 'animate' | 'note') => {
@@ -110,7 +114,7 @@ function App() {
     // 現在のビュー本体（デスクトップ/モバイルで共通に再利用する）。R6: lazy化したビューの
     // 初回チャンク読み込み待ちは、遷移オーバーレイと同じ LoadingScreen で覆う。
     const viewElement = (
-        <Suspense fallback={<LoadingScreen overlay />}>
+        <Suspense fallback={overlayPhase === 'hidden' ? <LoadingScreen overlay /> : null}>
             {mode === 'create' ? (
                 <CreateView
                     onFloorChange={changeFloorWithTransition}

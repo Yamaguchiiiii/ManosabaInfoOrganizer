@@ -25,8 +25,9 @@ export default defineConfig(async () => ({
       devOptions: { enabled: false },
       workbox: {
         // コードのみ precache（巨大な logo.png 等は入れない）。データは IndexedDB なので対象外。
-        globPatterns: ["**/*.{js,css,html}"],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // revise3 A-9: 手書きフォント(ttf)を self-host したため precache 対象に追加。
+        globPatterns: ["**/*.{js,css,html,ttf}"],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       // includeAssets は指定しない（アイコンは manifest で参照。オフライン時はブラウザキャッシュ任せ）
       manifest: {

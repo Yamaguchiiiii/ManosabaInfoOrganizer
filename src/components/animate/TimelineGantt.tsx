@@ -3,7 +3,7 @@ import { useAppStore, usePlaybackStore } from '../../store';
 import { formatCharName } from '../../utils/charName';
 import { TARGET_FPS } from '../../constants';
 import { usePresetEvents } from '../../hooks/usePresetEvents';
-import { resolveStartTimes, normalizeTimelineData, precomputePath, computeAnchors, getNodeVisitTimes } from '../../utils/animationUtils';
+import { resolveStartTimes, normalizeTimelineData, precomputePath, computeAnchors, getNodeVisitTimesAnchored } from '../../utils/animationUtils';
 
 // F2: キャラ行動ガントバー。1キャラ=1行、帯=移動、濃帯=滞在、ドット=イベント（⚇遭遇/💬会話）。
 interface GanttRow {
@@ -52,7 +52,8 @@ export const TimelineGantt: React.FC = () => {
                 const uniqueNodeIds = Array.from(new Set(charData.path));
                 const stays: { start: number; end: number }[] = [];
                 uniqueNodeIds.forEach(nodeId => {
-                    getNodeVisitTimes(charData, nodeId, nodes).forEach(v => {
+                    // sync（アンカー）反映済みの時刻で滞在帯を計算する（revise2 №1: 旧は duration 按分でズレていた）
+                    getNodeVisitTimesAnchored(charData, nodeId, nodes).forEach(v => {
                         if (v.departure > v.arrival) stays.push({ start: v.arrival - offset, end: v.departure - offset });
                     });
                 });
@@ -68,7 +69,7 @@ export const TimelineGantt: React.FC = () => {
     const pct = (t: number) => `${(Math.min(maxDuration, Math.max(0, t)) / maxDuration) * 100}%`;
 
     return (
-        <div style={{ maxHeight: '35vh', overflowY: 'auto', borderTop: '1px solid #333', background: '#1a1a1a' }}>
+        <div style={{ maxHeight: '35vh', overflowY: 'auto', borderTop: '1px solid var(--border-default)', background: 'var(--surface-1)' }}>
             {rows.map(row => {
                 const rowEvents = events.filter(e => e.charIds.includes(row.charId));
                 const isFiltered = eventFilterChar === row.charId;
@@ -86,7 +87,7 @@ export const TimelineGantt: React.FC = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 110, flexShrink: 0, padding: '0 6px', overflow: 'hidden' }}>
                             <img src={`./icon/${row.charId}`} alt="" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                             <span style={{
-                                fontSize: '0.7rem', color: '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                fontSize: '0.7rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                                 textDecoration: row.isDead ? 'line-through' : 'none',
                             }}>
                                 {formatCharName(row.charId)}
@@ -127,7 +128,7 @@ export const TimelineGantt: React.FC = () => {
                                     style={{
                                         position: 'absolute', top: '50%', width: 8, height: 8, borderRadius: '50%',
                                         left: pct(e.t), transform: 'translate(-50%, -50%)',
-                                        background: e.kind === 'pass' ? 'var(--gold, #d4a94f)' : '#2fd0d0',
+                                        background: e.kind === 'pass' ? 'var(--gold, #d4a94f)' : 'var(--talk)',
                                         border: '1px solid rgba(0,0,0,0.4)',
                                     }}
                                 />

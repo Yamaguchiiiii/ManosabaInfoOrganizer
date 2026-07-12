@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store';
+import { TOUR_TARGETS } from '../tutorial/tourTargets';
 
 interface BottomTabBarProps {
   onModeChange: (mode: 'create' | 'animate' | 'note') => Promise<void> | void;
@@ -24,7 +25,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({ onModeChange }) => {
   };
 
   return (
-    <nav className="mobile-tabbar">
+    <nav className="mobile-tabbar" data-tour={TOUR_TARGETS.sidebarPages}>
       {TABS.map(t => (
         <button
           key={t.mode}
