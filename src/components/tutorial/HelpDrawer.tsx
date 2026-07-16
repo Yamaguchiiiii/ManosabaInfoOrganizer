@@ -70,7 +70,11 @@ export const HelpDrawer: React.FC<HelpDrawerProps> = ({ open, onClose, onStartTo
                             <BackupSection />
                             <SnapshotSection />
                             {isWeb() && (
-                                <div style={{ marginTop: 10, textAlign: 'center' }}>
+                                <div style={{ marginTop: 10, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 12 }}>
+                                    <a href="./about.html" target="_blank" rel="noopener"
+                                       style={{ color: 'var(--text-disabled)', fontSize: '0.72rem' }}>アプリ紹介</a>
+                                    <a href="./guide.html" target="_blank" rel="noopener"
+                                       style={{ color: 'var(--text-disabled)', fontSize: '0.72rem' }}>使い方ガイド</a>
                                     <a href="./privacy.html" target="_blank" rel="noopener"
                                        style={{ color: 'var(--text-disabled)', fontSize: '0.72rem' }}>プライバシーポリシー</a>
                                 </div>

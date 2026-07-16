@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>使い方ガイド — 魔法少女の魔女裁判 推理ノート</title>
+  <meta name="description" content="魔法少女の魔女裁判 推理ノートの使い方ガイド。Create（経路作成）・Animate（再生）・Note（推理整理）各ページの操作手順とキーボードショートカットを解説します。" />
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3488157439848001" crossorigin="anonymous"></script>
+  <style>
+    body { max-width: 720px; margin: 0 auto; padding: 24px 16px; font-family: sans-serif;
+           background: #1e1e1e; color: #ddd; line-height: 1.8; }
+    h1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 2em; }
+    a { color: #66b3ff; }
+    nav { display: flex; flex-wrap: wrap; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid #333; font-size: .9rem; }
+    .cta { display:inline-block; margin-top: 8px; padding: 10px 18px; background:#2a6; color:#fff; border-radius:6px; text-decoration:none; }
+    ul { padding-left: 1.2em; }
+    table { width: 100%; border-collapse: collapse; margin-top: .5em; font-size: .9rem; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #333; }
+    th { color: #aaa; font-weight: normal; }
+    code { background: #2a2a2a; padding: 1px 5px; border-radius: 3px; font-size: .85em; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="./about.html">ホーム</a>
+    <a href="./guide.html">使い方ガイド</a>
+    <a href="./characters.html">キャラクター一覧</a>
+    <a href="/">アプリを開く</a>
+    <a href="./privacy.html">プライバシー</a>
+  </nav>
+
+  <h1>使い方ガイド</h1>
+  <p>サイドバーで Create／Animate／Note を切り替えて使います。作業内容は自動保存され、再読み込みしても復元されます。データはこの端末のブラウザ内にのみ保存され、サーバーには送られません。アプリ内では右下の「?」ボタン・F1・Shift+/ でいつでもこのガイドと同じ内容のヘルプを開けます。</p>
+
+  <h2>Create — 行動経路をつくる</h2>
+  <ul>
+    <li>ICONS からキャラを選択（Shift+クリックで複数選択）。</li>
+    <li>マップは 2F／1F／B1 を同時表示。ホバーしたペインが編集対象フロアです。</li>
+    <li>地点をクリックして Start→Goal を指定。右の地点一覧からも選べ、選ぶと次の入力欄へ自動で進みます。</li>
+    <li>「Add Stop」で経由地を追加し、各地点の滞在時間も設定できます。</li>
+    <li>「Save Path」で選択キャラの行動として保存（キャラ未選択なら保存先を選ぶウィンドウが出ます）。</li>
+    <li>sync（⏱）で他キャラとの「すれ違い／合流／同行」を設定し、到達時刻を合わせられます（同じ地点の2回目の訪問も指定可）。</li>
+    <li>どくろ（💀）でキャラを死亡設定（B1の牢獄に表示）。別ページへ移ると自動解除されます。</li>
+    <li>未保存の経路があるまま移動しようとすると保存確認が出ます。元に戻すは Ctrl+Z。</li>
+  </ul>
+
+  <h2>Animate — 再生して検証する</h2>
+  <ul>
+    <li>Space または下部の操作盤 ▶ で再生／一時停止。プリセット・速度・再生位置・全体時間を表示します。📌でドラッグ移動できるフローティング表示にも切替可能です。</li>
+    <li>マップは全フロア同時表示。ウィンドウ幅に応じて 2x2／縦1x4 に自動レイアウトします。</li>
+    <li>キャラは経路どおりに移動し、階段で別フロアへ、死亡キャラは B1 牢獄に表示されます。</li>
+    <li>右下の「事件ノート」Canvas に状況メモを重ねられます（左のツールで図形/テキスト/画像、画像一覧から立ち絵も配置）。</li>
+  </ul>
+
+  <h2>Note — 推理を整理する</h2>
+  <ul>
+    <li>4種類: 全体ノート／事件ノート／キャラクターノート／メモ。サイドバーから切替。</li>
+    <li>ツール: テキスト・ペン（フリーハンド）・図形（円/三角/四角/直線/矢印/曲線）・画像。</li>
+    <li>画像は「Images」（追加分）と「Character Images」（全キャラの立ち絵）から配置。図形はドラッグでサイズ指定、画像はクリックで比率維持配置。</li>
+    <li>選択: クリック／Shift+クリックで複数選択。Ctrl+G グループ化／Ctrl+Shift+G 解除。</li>
+    <li>編集: コピー/切り取り/貼り付け（Ctrl+C/X/V）・削除（Del）・元に戻す（Ctrl+Z）。</li>
+    <li>テキストはダブルクリックで編集、Enter で確定・Shift+Enter で改行。</li>
+    <li>4ペイン表示で4枚を並べて編集（W/S・↑/↓でペイン切替）。キャラノートは A/D・←/→でキャラ切替、立ち絵がデフォルト配置されます。</li>
+    <li>キャンバスの広さ: 事件ノートは 1200×800 固定。全体/キャラ/メモはウィンドウの形に合わせて紙面が広がります（端末・ウィンドウごとに縦横比が変わるのは仕様です）。パネルの開閉では縮尺は変わらず、紙面が広がる/パネルの下に隠れるだけです（隠れた分は Tools の 🧲 で回収できます）。</li>
+  </ul>
+
+  <h2>キーボードショートカット</h2>
+  <p>※ Mac では Ctrl が ⌘ で表示されます。</p>
+
+  <h3 style="font-size:1rem; margin-top:1.5em;">ノート（Canvas）</h3>
+  <table>
+    <tr><th>キー</th><th>操作</th></tr>
+    <tr><td><code>Ctrl+Z</code></td><td>元に戻す（Undo）</td></tr>
+    <tr><td><code>Ctrl+Shift+Z</code></td><td>やり直し（Redo・Ctrl+Y も可）</td></tr>
+    <tr><td><code>Ctrl+C</code></td><td>コピー</td></tr>
+    <tr><td><code>Ctrl+X</code></td><td>切り取り</td></tr>
+    <tr><td><code>Ctrl+V</code></td><td>貼り付け</td></tr>
+    <tr><td><code>Delete</code></td><td>選択を削除（Backspace も可）</td></tr>
+    <tr><td><code>Ctrl+G</code></td><td>グループ化（2個以上選択時）</td></tr>
+    <tr><td><code>Ctrl+Shift+G</code></td><td>グループ解除</td></tr>
+    <tr><td><code>Shift+Click</code></td><td>複数選択（トグル）</td></tr>
+    <tr><td><code>W</code></td><td>前のCanvasペインへ（↑ も可）</td></tr>
+    <tr><td><code>S</code></td><td>次のCanvasペインへ（↓ も可）</td></tr>
+    <tr><td><code>A</code></td><td>前のキャラへ（キャラノート、← も可）</td></tr>
+    <tr><td><code>D</code></td><td>次のキャラへ（キャラノート、→ も可）</td></tr>
+    <tr><td><code>Esc</code></td><td>配置モード解除／テキスト編集を終了</td></tr>
+  </table>
+
+  <h3 style="font-size:1rem; margin-top:1.5em;">Create（経路作成）</h3>
+  <table>
+    <tr><th>キー</th><th>操作</th></tr>
+    <tr><td><code>Ctrl+Z</code></td><td>元に戻す（グラフ編集モード時）</td></tr>
+    <tr><td><code>Esc</code></td><td>ノード接続をキャンセル</td></tr>
+    <tr><td>Hover</td><td>ホバー中のペインが編集対象フロア</td></tr>
+    <tr><td><code>Shift+Click</code></td><td>ICONSで複数キャラを選択</td></tr>
+  </table>
+
+  <h3 style="font-size:1rem; margin-top:1.5em;">Animate（再生）</h3>
+  <table>
+    <tr><th>キー</th><th>操作</th></tr>
+    <tr><td><code>Space</code></td><td>再生 / 一時停止</td></tr>
+  </table>
+
+  <p style="margin-top:2em;"><a class="cta" href="/">▶ アプリを開いて使ってみる</a></p>
+  <hr style="margin:2em 0; border-color:#333;" />
+  <p style="font-size:.8rem; color:#888;"><a href="./privacy.html">プライバシーポリシー</a></p>
+</body>
+</html>
