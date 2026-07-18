@@ -25,7 +25,7 @@ export const LoadingScreen: React.FC<{ text?: string; overlay?: boolean; visible
                 flexDirection: 'column',
                 justifyContent: 'center',
                 alignItems: 'center',
-                height: overlay ? undefined : '100vh',
+                height: overlay ? undefined : '100dvh',
                 width: overlay ? undefined : '100vw',
                 backgroundColor: 'var(--surface-1, #1e1e1e)',
                 color: 'var(--text-secondary, #ccc)',

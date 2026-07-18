@@ -62,6 +62,20 @@ function App() {
         document.documentElement.dataset.theme = theme;
     }, [theme]);
 
+    // #smartphone_address-C: スマホのアドレスバー出入りに追従する実高さを CSS 変数へ。
+    // dvh 非対応ブラウザ用の保険。window.innerHeight を使う（iOS ではソフトキーボードで
+    // 縮まないので、キーボード表示で下タブが飛び上がらない）。プラットフォーム判定はしない。
+    useEffect(() => {
+        const setH = () => document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+        setH();
+        window.addEventListener('resize', setH);
+        window.visualViewport?.addEventListener('resize', setH);
+        return () => {
+            window.removeEventListener('resize', setH);
+            window.visualViewport?.removeEventListener('resize', setH);
+        };
+    }, []);
+
     if (!_hasHydrated) {
         return <LoadingScreen />;
     }

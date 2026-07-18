@@ -6,6 +6,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;   // #smartphone_address-B: URLバー表示中もオーバーレイが可視領域に収まる
   background-color: rgba(0, 0, 0, 0.6); // 背景を暗く
   backdrop-filter: blur(2px); // すりガラス効果
   display: flex;

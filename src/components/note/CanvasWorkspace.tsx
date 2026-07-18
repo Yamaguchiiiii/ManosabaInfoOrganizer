@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Stage, Layer, Rect, Arrow, Transformer, Line } from 'react-konva';
 import Konva from 'konva';
@@ -252,12 +252,30 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
     );
 
 
-    useEffect(() => {
+    // #smartphone_jikennote-A: 初回マウントで canvasSize=0 のまま描画が確定すると panesW=0 で
+    // Stage が1枚も出ない。ResizeObserver の初回コールバックを待たず、マウント直後に同期採寸して
+    // シードし、さらに次フレームでも測り直す（flex 高さ確定が1フレーム遅れる端末対策）。
+    useLayoutEffect(() => {
         const container = canvasContainerRef.current;
         if (!container) return;
 
         // ノート切替で新しい紙面に合わせ直す（stableSize を初期化）
         setStableSize({ width: 0, height: 0, winW: 0, winH: 0 });
+
+        const measure = () => {
+            const r = container.getBoundingClientRect();
+            const w = Math.round(r.width), h = Math.round(r.height);
+            if (w === 0 && h === 0) return;
+            setCanvasSize(prev => (prev.width === w && prev.height === h) ? prev : { width: w, height: h });
+            setStableSize(prev => {
+                const winW = window.innerWidth, winH = window.innerHeight;
+                return (prev.width === 0 || prev.winW !== winW || prev.winH !== winH)
+                    ? { width: w, height: h, winW, winH } : prev;
+            });
+        };
+
+        measure();                              // 同期シード（初回空白フレーム防止）
+        const raf = requestAnimationFrame(measure); // flex 高さ確定が遅れる端末の取りこぼし回収
 
         const observer = new ResizeObserver((entries) => {
             for (const entry of entries) {
@@ -277,7 +295,7 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         });
 
         observer.observe(container);
-        return () => observer.disconnect();
+        return () => { cancelAnimationFrame(raf); observer.disconnect(); };
     }, [targetType, targetId]);
 
     useEffect(() => {

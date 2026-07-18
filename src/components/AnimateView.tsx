@@ -58,7 +58,9 @@ export const AnimateView = () => {
   // モバイルは1フロアずつ表示（4ペインは狭すぎるため）。#smartphone.md M2
   const [mobileFloor, setMobileFloor] = useState<AnimFloorId>('1F');
   // モバイル: 下段の事件ノートの折りたたみ（20.md #3）。縦が細い端末は初期折りたたみ
-  const [noteCollapsed, setNoteCollapsed] = useState(() => window.innerHeight < 700);
+  // #smartphone_jikennote-B: 既定は常に展開。旧実装は初回マウント時の innerHeight（アドレスバー
+  // 出入りで変動）に依存し、初回だけ折りたたまれて事件ノートが出ない不具合の一因だった。
+  const [noteCollapsed, setNoteCollapsed] = useState(false);
   // モバイル: フロア切替を上部バー（Animate の横）へ portal するためのスロット解決。
   // 独立した .floor-segment 行を廃し、縦の圧迫を1行ぶん解消する。
   const [appbarSlot, setAppbarSlot] = useState<HTMLElement | null>(null);

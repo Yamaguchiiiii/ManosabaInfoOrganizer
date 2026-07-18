@@ -382,7 +382,9 @@ body {
 .mobile-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100vh;                 // 1) 最古フォールバック（JSもdvhも無い）
+  height: var(--app-height);     // 2) JS計測値（未設定なら宣言ごと無効化され1)へ）
+  height: 100dvh;                // 3) dvh対応ブラウザはこれが最終的に勝つ #smartphone_address-A
   width: 100vw;
   overflow: hidden;
   background-color: var(--surface-1);
