@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Stage, Layer, Rect, Arrow, Transformer, Line } from 'react-konva';
+import { Stage, Layer, Rect, Arrow, Transformer, Line, Circle } from 'react-konva';
 import Konva from 'konva';
 import { useAppStore, NoteObject, NoteObjectType, NoteTargetType } from '../../store';
 import { NOTE_CANVAS } from '../../constants';
@@ -201,7 +201,8 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [targetId, displayTargetId, finishTextEditing]);
 
-    const [isFontLoaded, setIsFontLoaded] = useState(false);
+    // 24.md §1: フォントゲート(旧 isFontLoaded)は撤去。描画はロードを待たず、ロード完了時に
+    // 下の effect が Text を再計測＋再描画して Yomogi 字形へ差し替える。
 
     // revise3 B-3: モバイルの Canvas にピンチズーム/パンを追加する。effScale はそのまま（デスクトップの
     // 「全体が常に見える」レイアウトは崩さない）で、compactMode(タッチ)時だけ Layer に合成適用する。
@@ -300,8 +301,20 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
     useEffect(() => {
         let done = false;
-        const finish = () => { if (!done) { done = true; setIsFontLoaded(true); } };
-        // FontFaceSet で明示ロード。1.5s で諦めて代替フォントのまま描画を開始する（revise3 A-9）
+        // 24.md §1: フォントロード完了で全 Stage の Text を再計測＋再描画し、フォールバック字形で
+        // 描かれたテキストを Yomogi 字形へ差し替える（描画自体はロードを待たない＝空白にしない）。
+        // fontFamily を同値で再設定すると Konva が _setTextData を dirty にし、次の描画で再計測される。
+        const finish = () => {
+            if (done) return;
+            done = true;
+            stageRefs.current.forEach(stage => {
+                stage?.find('Text').forEach(node => {
+                    const t = node as Konva.Text;
+                    t.fontFamily(t.fontFamily());
+                });
+                stage?.getLayers().forEach(layer => layer.batchDraw());
+            });
+        };
         document.fonts.load('24px "Yomogi"').then(finish).catch(finish);
         const t = setTimeout(finish, 1500);
         return () => clearTimeout(t);
@@ -606,11 +619,16 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
             const { blob, width, height } = await processFile(files[0]);
             const key = await putAsset(blob);
             addNoteAsset(targetType, displayTargetId, key);
+            // 24.md §5: Blob は元解像度を保持（拡大/書き出しで鮮明）。表示初期サイズだけ長辺500pxに丸める。
+            const DISP = 500;
+            let dw = width, dh = height;
+            if (dw > dh) { if (dw > DISP) { dh = Math.round(dh * DISP / dw); dw = DISP; } }
+            else         { if (dh > DISP) { dw = Math.round(dw * DISP / dh); dh = DISP; } }
             addNoteObject(targetType, displayTargetId, {
                 id: genObjId('img'),
                 type: 'image',
                 x: pos.x, y: pos.y,
-                width, height,
+                width: dw, height: dh,
                 content: key,
                 rotation: 0, scaleX: 1, scaleY: 1,
                 keepRatio: true,
@@ -1635,7 +1653,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                     }}
                                 >
                                     <Layer scaleX={layerScale} scaleY={layerScale} x={layerX} y={layerY}>
-                                        {isFontLoaded && objs.map((obj) => {
+                                        {/* 24.md §1: フォント未ロードでも描画する（旧: isFontLoaded ゲートが
+                                            手書きフォント(Yomogi 3.85MB)ロード完了まで事件ノートの全オブジェクトを
+                                            非表示にし、初回 Animate が空白になっていた）。フォント確定時に
+                                            下の effect が batchDraw して字形を差し替える。 */}
+                                        {objs.map((obj) => {
                                             if (obj.id === editingTextId) return null;
 
                                             // グループドラッグ: ドラッグ中に同グループの他メンバーを追従させる
@@ -1824,6 +1846,11 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
 
                                         {isCurrent && (() => {
                                             const isOnlyText = selectedIds.length === 1 && selectedObject?.type === 'text';
+                                            // 24.md §4: line 系(freehand以外)単一選択は端点ハンドル編集にするので
+                                            // Transformer のボックス(枠・アンカー・回転)を隠す。
+                                            const isEditableLine = selectedIds.length === 1
+                                                && !!selectedObject
+                                                && ['line', 'arrow', 'curve', 'curve_arrow'].includes(selectedObject.type);
                                             return (
                                                 <Transformer
                                                     ref={(el) => { trRefs.current[index] = el; }}
@@ -1846,10 +1873,59 @@ export const CanvasWorkspace = React.memo(({ targetType, targetId, sidebarHeader
                                                             : currentCanvasObjects.some(o => selectedIds.includes(o.id) &&
                                                                (o.type === 'circle' || o.type === 'triangle' || (o.type === 'image' && (o.keepRatio ?? true))))
                                                     }
-                                                    enabledAnchors={isOnlyText ? [] : undefined}
-                                                    rotateEnabled={!isOnlyText}
+                                                    enabledAnchors={(isOnlyText || isEditableLine) ? [] : undefined}
+                                                    rotateEnabled={!isOnlyText && !isEditableLine}
+                                                    borderEnabled={!isEditableLine}
                                                 />
                                             );
+                                        })()}
+
+                                        {/* 24.md §4: line 系(freehand以外)は Transformer ボックスの代わりに
+                                            端点/制御点ハンドルで編集する（PowerPoint 風）。ドラッグで points を更新。 */}
+                                        {isCurrent && selectedIds.length === 1 && (() => {
+                                            const one = objs.find(o => o.id === selectedIds[0]);
+                                            if (!one || !['line', 'arrow', 'curve', 'curve_arrow'].includes(one.type)) return null;
+                                            const pts = one.points
+                                                ?? (one.type.includes('curve') ? [0, 0, 50, -50, 100, 0] : [0, 0, 100, 0]);
+                                            const ox = one.x ?? 0, oy = one.y ?? 0;
+                                            const handleR = 6 / effScale;
+                                            const clamp = (v: number, max: number) =>
+                                                targetType === 'preset' ? Math.max(0, Math.min(max, v)) : v;
+                                            // 端点(始点・終点)は青枠白丸、曲線の中間制御点は少し小さいオレンジ丸で区別する。
+                                            return Array.from({ length: pts.length / 2 }, (_, i) => {
+                                                const isControl = one.type.includes('curve') && i === 1; // [start, control, end]
+                                                const applyAt = (commit: boolean) => (e: Konva.KonvaEventObject<DragEvent>) => {
+                                                    const absX = clamp(e.target.x(), CANVAS_BASE_W);
+                                                    const absY = clamp(e.target.y(), CANVAS_BASE_H);
+                                                    // クランプ後の座標にハンドル自身も吸着させる
+                                                    e.target.x(absX); e.target.y(absY);
+                                                    const np = [...pts];
+                                                    np[i * 2] = absX - ox;
+                                                    np[i * 2 + 1] = absY - oy;
+                                                    const lineNode = stageRefs.current[index]?.findOne(`#${one.id}`) as Konva.Line | undefined;
+                                                    if (lineNode) { lineNode.points(np); lineNode.getLayer()?.batchDraw(); }
+                                                    if (commit) {
+                                                        saveHistoryOnceThenSkip();
+                                                        updateNoteObject(targetType, displayTargetId, one.id, { points: np }, true);
+                                                    }
+                                                };
+                                                return (
+                                                    <Circle
+                                                        key={`ep_${one.id}_${i}`}
+                                                        name="__export_exclude"
+                                                        x={ox + pts[i * 2]}
+                                                        y={oy + pts[i * 2 + 1]}
+                                                        radius={isControl ? handleR * 0.85 : handleR}
+                                                        fill="#ffffff"
+                                                        stroke={isControl ? '#e67e22' : '#007acc'}
+                                                        strokeWidth={2 / effScale}
+                                                        hitStrokeWidth={18 / effScale}
+                                                        draggable
+                                                        onDragMove={applyAt(false)}
+                                                        onDragEnd={applyAt(true)}
+                                                    />
+                                                );
+                                            });
                                         })()}
 
                                         {selectionRect.visible && selectionRect.canvasIndex === index && (

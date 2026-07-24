@@ -13,7 +13,9 @@
 // F2ガントバー展開時はガント側の内部スクロール(35vh)を尊重してdock自体も伸びる。
 .animate-playback-dock {
   flex-shrink: 0;
-  min-height: 140px;
+  // 24.md §2: 中身(AnimationTimeline ~84px)より高い min-height:140px が下に
+  // 56px の空帯(#222)を作っていた。中身にフィットさせて余計なマージンを消す。
+  // ガント/一覧の展開時は中身が伸び、max-height:45vh まで dock も追従する（挙動不変）。
   max-height: 45vh;
   overflow-y: auto;
   background-color: #222;

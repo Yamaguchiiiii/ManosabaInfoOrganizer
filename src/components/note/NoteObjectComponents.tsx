@@ -184,10 +184,26 @@ export const ShapeObject = React.memo(({ obj, onSelect, onChange, onContextMenu,
                     rotation: node.rotation(),
                 });
             } else {
+                // 24.md §3: line 系(line/arrow/curve/curve_arrow/freehand)は width/height を持たず
+                // points で形状が決まる。旧実装は scale を捨てて scaleX/Y=1 に戻すだけで、拡大が
+                // points に反映されず「元サイズに戻る」バグになっていた。scale(と回転)を points へ
+                // 焼き込んでから scale を 1 に正規化する。
+                const basePoints = obj.points
+                    ?? (obj.type.includes('curve') ? [0, 0, 50, -50, 100, 0] : [0, 0, 100, 0]);
+                const rot = (node.rotation() * Math.PI) / 180;
+                const cos = Math.cos(rot), sin = Math.sin(rot);
+                const newPoints: number[] = [];
+                for (let i = 0; i < basePoints.length; i += 2) {
+                    // まず scale、次に回転を各点へ適用（Konva の transform 適用順に一致）
+                    const sx = basePoints[i] * scaleX;
+                    const sy = basePoints[i + 1] * scaleY;
+                    newPoints.push(sx * cos - sy * sin, sx * sin + sy * cos);
+                }
                 onChange({
                     x: node.x(), y: node.y(),
+                    points: newPoints,
                     scaleX: 1, scaleY: 1,
-                    rotation: node.rotation(),
+                    rotation: 0, // 回転は points へ焼き込んだので 0 に正規化
                 });
             }
         }

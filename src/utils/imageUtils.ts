@@ -29,7 +29,8 @@ export const autocropTransparent = (
     originalBlob: Blob,
     dataUrl: string,
     imgWidth: number,
-    imgHeight: number
+    imgHeight: number,
+    maxDim = 4096   // 24.md §5: 既定を実質無縮小に。元解像度を保つ。
 ): Promise<{ blob: Blob; width: number; height: number }> => {
     return new Promise((resolve) => {
         const canvas = document.createElement('canvas');
@@ -57,6 +58,13 @@ export const autocropTransparent = (
                 resolve({ blob: originalBlob, width: imgWidth, height: imgHeight });
                 return;
             }
+            // 24.md §5: 透明縁トリミングが不要（全面が不透明）で、かつ上限内なら元 Blob をそのまま保存。
+            // 再エンコード(PNG化)による劣化/肥大を避け、元解像度・元形式を完全に保つ。
+            const noTrim = minX === 0 && minY === 0 && maxX === imgWidth - 1 && maxY === imgHeight - 1;
+            if (noTrim && imgWidth <= maxDim && imgHeight <= maxDim) {
+                resolve({ blob: originalBlob, width: imgWidth, height: imgHeight });
+                return;
+            }
             const cropW = maxX - minX + 1;
             const cropH = maxY - minY + 1;
             const cropCanvas = document.createElement('canvas');
@@ -64,7 +72,7 @@ export const autocropTransparent = (
             cropCanvas.height = cropH;
             const cropCtx = cropCanvas.getContext('2d')!;
             cropCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
-            const maxDim = 500;
+            // 24.md §5: 引数 maxDim（既定4096）で上限。トリミング後も原則縮小しない。
             let w = cropW, h = cropH;
             if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
             else       { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
@@ -86,14 +94,14 @@ export const autocropTransparent = (
 };
 
 // アップロード画像を「autocrop済みPNG Blob + 表示寸法」に変換する（base64は state に載せない）。
-export const processFile = (file: File): Promise<{ blob: Blob, width: number, height: number }> => {
+export const processFile = (file: File, maxDim = 4096): Promise<{ blob: Blob, width: number, height: number }> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const dataUrl = e.target?.result as string;
             const img = new Image();
             img.onload = () => {
-                autocropTransparent(file, dataUrl, img.width, img.height).then(resolve);
+                autocropTransparent(file, dataUrl, img.width, img.height, maxDim).then(resolve);
             };
             img.onerror = reject;
             img.src = dataUrl;

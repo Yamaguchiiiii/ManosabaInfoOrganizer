@@ -62,6 +62,12 @@ function App() {
         document.documentElement.dataset.theme = theme;
     }, [theme]);
 
+    // 24.md §1(C): 手書きフォント(Yomogi 3.85MB TTF)を起動時に先読みする。事件ノート/ノートの
+    // 初回表示前に温めておき、フォールバック字形のフラッシュを減らす（失敗しても描画側が代替字形で出す）。
+    useEffect(() => {
+        document.fonts?.load('24px "Yomogi"').catch(() => {});
+    }, []);
+
     // #smartphone_address-C: スマホのアドレスバー出入りに追従する実高さを CSS 変数へ。
     // dvh 非対応ブラウザ用の保険。window.innerHeight を使う（iOS ではソフトキーボードで
     // 縮まないので、キーボード表示で下タブが飛び上がらない）。プラットフォーム判定はしない。
